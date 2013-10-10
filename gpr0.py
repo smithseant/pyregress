@@ -28,7 +28,7 @@ Reading the code and development:
 # @author: Sean T. Smith
 
 #from termcolor import colored  # may not work on windows
-from numpy import (array, empty, zeros, ones, eye, shape,
+from numpy import (array, empty, zeros, ones, eye, shape, tile,
                    maximum, diag, trace, sum, sqrt)
 from numpy.linalg.linalg import LinAlgError
 from scipy import pi, log
@@ -83,7 +83,7 @@ class GPR:
         Yd: array - 1D or 2D column shaped,
             dependent variable of the observations - same length as the first
             dimension of Xd.
-        Kspec: dictionary or list,
+        Kspec: dict or list BaseKernel objects,
             specification of the prior covariance kernel. It is a composit sum
             of base-kernels. Each key entry is the name of a BaseKernel class,
             while each value entry is a list of the parameter values in order.
@@ -216,6 +216,20 @@ class GPR:
                              "with: 0, 1, and/or 2.", self.explicit_basis)
         return (Ntheta, H)
     
+    def _calculate_radius2(self, X, Y):
+        """
+        Calculate the squared distance matrix (radius) between two lists.
+        """
+        # Previously used: cdist(X, Y, 'seuclidean',V=self.anisotropy), which
+        # required: from scipy.spatial.distance import cdist
+        (Nx, Ny) = (X.shape[0], Y.shape[0])
+        Rk2 = empty((Nx, Ny, self.Nx))
+        for k in xrange(self.Nx):
+            Rk2[:,:,k] = ( tile(X[k,:].T**2, (1,Ny)) - 2.0*X[k,:].T.dot(Y[k,:])
+                          +tile(Y[k,:]**2, (Nx,1)) )
+            Rk2[:,:,k] *= self.anisotropy[k]
+        return Rk2
+    
     def calculate_kernel(self, R, no_noise=False, grad=False):
         """
         Kernel (prior covariance matrix) function of a radius matrix.
@@ -311,42 +325,34 @@ class GPR:
             return (lnP_neg, lnP_grad)
     
     
-    def maximize_hyper_posterior(self, hyper_params):
+    def maximize_hyper_posterior(self, hyper_params=None):
         """
         Find the maximum of the hyper-parameter posterior.
         
         Arguments
         ---------
-        hyper_params: dictionary,
+        hyper_params: dict (optional),
             each dict key is the name of the kernel component corresponding to
             an entry in the argument Kspec of __init__, and each value is a
             list of bools indicating which kernel params. are hyper parameters.
-        
-        Returns
-        -------
-        self: GPR object,
-            the object is updated to the new parameter values and returned.
         """
-        # TODO: make hyper_params optional, so a more advanced user could
-        #       pre-specify hyper parameters. This would require a different
-        #       mechanism for calculating Nhyper.
+        
         # Setup hyper-parameters in the BaseKernels
-        Nhyper = 0
-        for (input_kern, hyper_bool) in hyper_params.iteritems():
-            for my_base_kern in self.Kernel:
-                if isinstance(my_base_kern, eval(input_kern)):
-                    Nhyper += my_base_kern.declare_hyper(hyper_bool)
+        if hyper_params:
+            Nhyper = 0
+            for (input_kern, hyper_bool) in hyper_params.iteritems():
+                for base_kern in self.Kernel:
+                    if isinstance(base_kern, eval(input_kern)):
+                        Nhyper += base_kern.declare_hyper(hyper_bool)
+        else:
+            Nhyper = sum(kern.Nhyper for kern in self.Kernel)
         
         # Map the hyper parameters to a single array (for minimization)
         all_hyper = empty(Nhyper)
         i = 0
-        for base_kern in self.Kernel:
-            for j in range(len(base_kern.hyper)):
-                if base_kern.hyper[j]:
-                    all_hyper[i] = base_kern.p[j]
-                    base_kern.p[j] = all_hyper[i:i+1]
-                    i += 1
-        # -- generalize so the length-scale can be an array --
+        for kern in self.Kernel:
+            kern.map_hyper(all_hyper[i:i+kern.Nhyper])
+            i += kern.Nhyper
         
         # Perform minimization
         myResult = minimize(self.hyper_posterior, all_hyper,
@@ -362,11 +368,9 @@ class GPR:
         
         #copy values back to Kernel (remove mapping)
         i = 0
-        for base_kern in self.Kernel:
-            for j in range(len(base_kern.hyper)):
-                if base_kern.hyper[j]:
-                    base_kern.p[j] = myResult.x[i]
-                    i += 1
+        for kern in self.Kernel:
+            kern.map_hyper(myResult.x[i:i+kern.Nhyper], unmap=True)
+            i += kern.Nhyper
         
         # Do as many calculations as possible in preparation for the inference
         self.Kdd = self.calculate_kernel(self.Rdd)
