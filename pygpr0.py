@@ -5,8 +5,8 @@ Docstring for the pygpr module - needs work.
 For basic useage see the documentation in the GPR class.
 This docstring covers more advanced topics.
 Performance:
-  Calculation time will greatly depend on which Blas/Lapack libraries are used.
-  Most default python/numpy/scipy packages are based on unoptimized libraries
+  Calculation time will greatly depend on which Blas/Lapack libs are used.
+  Most default python/numpy/scipy packages are based on unoptimized libs
   (including linux repositories and downloaded executables).
 Beyond commonly used kernels and basis functions:
   overview of BaseKernel object and BaseBasis interface.
@@ -32,7 +32,7 @@ from numpy import (array, empty, zeros, ones, eye, shape, tile,
                    maximum, diag, trace, sum, sqrt)
 from numpy.linalg.linalg import LinAlgError
 from scipy import pi, log
-from scipy.spatial.distance import cdist
+#from scipy.spatial.distance import cdist
 from scipy.linalg import cho_factor, cho_solve
 from scipy.optimize import minimize
     
@@ -44,11 +44,6 @@ HLOG2PI = 0.5*log(2*pi)
 class GPR:
     """
     Doctring for the GPR class - needs work.
-    
-    Describe basic usage of the GPR class including two simple examples -
-    the first example will demonstrate __init__ and inference at a single point
-    (with as few options as possible), and the second example will demonstrate
-    maximize_hyper_posterior and the most commonly used options.
     
     Examples
     --------
@@ -77,29 +72,29 @@ class GPR:
         
         Arguments
         ---------
-        Xd: array-2D,
-            independent variables of the observations. First dimension is for
-            data samples, and second dimension is for the multiple variables.
-        Yd: array - 1D or 2D column shaped,
-            dependent variable of the observations - same length as the first
+        Xd:  array-2D,
+            independent-variable observed values. First dimension is for
+            multiple observations, and second dimension for multiple variables.
+        Yd:  array-1D [or column-shaped 2D],
+            dependent-variable observed values - same length as the first
             dimension of Xd.
-        Kspec: dict or list BaseKernel objects,
-            specification of the prior covariance kernel. It is a composit sum
-            of base-kernels. Each key entry is the name of a BaseKernel class,
-            while each value entry is a list of the parameter values in order.
+        Kspec:  dict or list of BaseKernel objects,
+            specification of the prior covariance kernel - a composite sum
+            of base-kernels. Each dict key is the name of a BaseKernel class,
+            while each dict value is a list of the parameter values in order.
             Options include: Noise, OU, GammaExp, SquareExp, or RatQuad.
             Alternatively, pass a list of pre-initialized BaseKernel objects.
-        anisotropy: string or bool or array-1D (optional),
+        anisotropy:  string or bool or array-1D (optional),
             scaling of the independent variables. For 'auto' or True, it uses
             range scaling. For False, no scaling. For an array with the same
             length as the second dimension of Xd, it uses manual scaling.
-        Yd_mean: array - 1D or 2D column shaped (optional),
-            prior mean of the dependent variable at Xd. Must be the same length
-            as Yd. If omitted, uses a prior mean of zero.
-        explicit_basis: list (optional),
+        Yd_mean:  array-1D [or column-shaped 2D] (optional),
+            prior mean of the dependent variable at Xd. Must be the same
+            length as Yd. If omitted, uses a prior mean of zero.
+        explicit_basis:  list (optional),
             explicit basis functions are specified by any combination of the
-            integers: 0, 1, 2 - corresponding to its polynomial order.
-        transform, string or BaseClass object (optional)
+            integers: 0, 1, 2 - each corresponding to its polynomial order.
+        transform:  string or BaseClass object (optional)
             specify a dependent variable transformation with the name of a
             BaseTransform class (as a string) or a BaseTransform object.
             Options include: Logarithm, Probit, ProbitBeta, or Logit.
@@ -165,10 +160,10 @@ class GPR:
             raise InputError("GPR argument Kspec must be list or dict.", Kspec)
         
         # Do as many calculations as possible in preparation for the inference
-        self.Rdd = cdist(self.Xd,self.Xd, 'seuclidean',V=self.anisotropy)
+        self.R2dd = self._calculate_radius2(self.Xd, self.Xd)
         # -- the following is repeated in maximize_hyper_posterior,
         #    create a separate function? --
-        self.Kdd = self.calculate_kernel(self.Rdd)
+        self.Kdd = self.calculate_kernel(self.R2dd)
         try:
             self.LKdd = cho_factor(self.Kdd)
         except LinAlgError as e:
@@ -230,35 +225,36 @@ class GPR:
             Rk2[:,:,k] *= self.anisotropy[k]
         return Rk2
     
-    def calculate_kernel(self, R, no_noise=False, grad=False):
+    def calculate_kernel(self, R2, no_noise=False, grad=False):
         """
         Kernel (prior covariance matrix) function of a radius matrix.
         
         Arguments
         ---------
-        R: array-2D,
-            distance matrix (radius) between two lists of points.
-        no_noise: bool (optional),
+        R2:  array-3D,
+            directional square distance matrix (radius^2) between two arrays
+            of points.
+        no_noise:  bool (optional),
             when no_noise is true, exclude Noise BaseKernels from calculation.
-        grad: bool (optional),
-            when grad is not False, must return gradK.
+        grad:  bool (optional),
+            when grad is not False, return gradK.
         
         Returns
         -------
-        K: array-2D,
-            kernel values - shape matchs argument R.
-        gradK: list of arrays (optional - depending on argument grad),
+        K:  array-2D,
+            kernel values - shape matches first two dimensions of argument R.
+        gradK:  list of arrays (optional - depending on argument grad),
             partial derivative of kernel with respect to each hyper parameter.
         """
-        K = zeros(shape(R))
+        K = zeros(R2.shape[:2])
         gradK = []
         kernel_no_noise = [base_kern for base_kern in self.Kernel
                            if not (no_noise and isinstance(base_kern, Noise))]
         for base_kern in kernel_no_noise:
             if not grad or base_kern.Nhyper==0:
-                K += base_kern(R)
+                K += base_kern(R2)
             else:
-                (K_tmp, gradK_tmp) = base_kern(R, grad=True)
+                (K_tmp, gradK_tmp) = base_kern(R2, grad=True)
                 K += K_tmp
                 gradK += gradK_tmp
         if not grad:
@@ -268,22 +264,22 @@ class GPR:
     
     def hyper_posterior(self, params, p_mapped, grad=True):
         """
-        Calculate negative log of the hyper-parameter posterior & its gradient.
+        Negative log of the hyper-parameter posterior & its gradient.
         
         Arguments
         ---------
-        params: array-1D,
+        params:  array-1D,
             hyper parameters in an array for the minimization routine.
-        p_mapped: array-1D,
+        p_mapped:  array-1D,
             hyper parameter values that map to self.Kernel.
-        grad: bool (optional),
+        grad:  bool (optional),
             when grad is not False, must return lnP_grad.
         
         Returns
         -------
-        lnP_neg: float,
+        lnP_neg:  float,
             negative log of the hyper-parameter posterior.
-        lnP_grad: array-1D (optional - depending on argument grad),
+        lnP_grad:  array-1D (optional - depending on argument grad),
             gradient of lnP_neg with respect to each hyper-parameter.
         """
         p_mapped[:] = params
@@ -331,10 +327,10 @@ class GPR:
         
         Arguments
         ---------
-        hyper_params: dict (optional),
-            each dict key is the name of the kernel component corresponding to
-            an entry in the argument Kspec of __init__, and each value is a
-            list of bools indicating which kernel params. are hyper parameters.
+        hyper_params:  dict (optional),
+            each dict key is a BaseKernel class name corresponding to
+            an entry in the argument Kspec of __init__, and each value
+            is a list of bools indicating which are hyper parameters.
         """
         
         # Setup hyper-parameters in the BaseKernels
@@ -391,22 +387,22 @@ class GPR:
         
         Arguments
         ---------
-        Xi: array-2D,
-            values of independent variables where to make inferences. First
-            dimension is for multiple locations, and second dimension must
-            match the second dimension of the __init__ argument Xd.
-        Yi_mean: array - 1D or 2D column shaped (optional),
+        Xi:  array-2D,
+            independent variables - where to make inferences. First
+            dimension is for multiple inferences, and second dimension must
+            match the second dimension of the argurment Xd in __init__.
+        Yi_mean:  array-1D [or column-shaped 2D] (optional),
             prior mean of the inferences. Must be the same length as Yi_mean.
             If omitted, uses a prior mean of zero.
-        infer_std: bool (optional),
+        infer_std:  bool (optional),
             if True, return the inferred standard deviation.
-        no_noise: bool (optional),
-            if True, make inferences of without contribution of noise kernel.
+        no_noise:  bool (optional),
+            if True, make inferences without contribution of the noise kernel.
         
         Returns
         -------
-        post_mean: array-2D,
-            inferred mean at each location in Xi.
+        post_mean:  array-2D,
+            inferred mean at each location in the argument Xi.
         post_std: array-2D or list (optional - depending on infer_std),
             inferred standard deviation of the inferrences
             (if a variable transformation is used, both the positive and
@@ -422,8 +418,9 @@ class GPR:
                              "dimension length must match that of Xd.", Xi)
         
         # Mixed i-d kernel & inference of posterior mean
-        Rid = cdist(Xi,self.Xd, 'seuclidean',V=self.anisotropy)
-        Kid = self.calculate_kernel(Rid, no_noise=no_noise)
+        #Rid = cdist(Xi,self.Xd, 'seuclidean',V=self.anisotropy)
+        R2id = self._calculate_radius2(Xi, self.Xd)
+        Kid = self.calculate_kernel(R2id, no_noise=no_noise)
         if self.explicit_basis is None:
             post_mean = Kid.dot(self.invKdd_Yd)
         else:
@@ -444,8 +441,9 @@ class GPR:
         
         # Inference of posterior covariance
         if infer_std:
-            Rii = cdist(Xi,Xi, 'seuclidean',V=self.anisotropy)
-            Kii = self.calculate_kernel(Rii, no_noise=no_noise)
+            #Rii = cdist(Xi,Xi, 'seuclidean',V=self.anisotropy)
+            R2ii = self._calculate_radius2(Xi, Xi)
+            Kii = self.calculate_kernel(R2ii, no_noise=no_noise)
             post_covar = Kii-Kid.dot(cho_solve(self.LKdd, Kid.T))
             if self.explicit_basis is not None:
                 A = Hi - Kid.dot(self.invKdd_Hd)
@@ -481,11 +479,11 @@ class InputError(Error):  # -- not a ValueError? --
     
     Arguments
     ---------
-        msg: string,
+        msg:  string,
             explanation of the error.
-        input_argument: any (optional),
-            input argument for which the error occurrs - so the value of that
-            variable can be reported when the error is caught.
+        input_argument:  any (optional),
+            input argument that is the source of the error. Provided so the
+            value of that variable can be reported when the error is caught.
     """
     def __init__(self, msg, input_argument=None):
         self.args = (msg,)
