@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 __author__ = 'Sean .T. Smith'
 
-from .gpr0 import GPR
+from .pygpr0 import GPR
 from .kernels import BaseKernel, Noise, OU, GammaExp, SquareExp, RatQuad
 from .transforms import BaseTransform, Logarithm, Probit, ProbitBeta, Logit
 

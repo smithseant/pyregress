@@ -112,7 +112,7 @@ class BaseKernel:
                     im += 1
     
     @abstractmethod
-    def __call__(self, R, grad=False):
+    def __call__(self, Rk2, grad=False):
         """
         Calculate and return kernel values given the radius array.
         
@@ -145,16 +145,17 @@ class Noise(BaseKernel):
     def __init__(self, params):
         super(Noise, self).__init__(1, params)
     def __call__(self, Rk2, grad=False):
+        w2 = self.p[0]**2
         R2diag = sum(Rk2.diagonal(), 1)
         K = diag( array([1.0*b for b in R2diag == 0.0]) )
         if not grad:
-            return self.p[0]**2*K
+            return w2*K
         else:
             if not self.hyper[0]:
                 Kprime = []
             else:
                 Kprime = [ 2.0*self.p[0]*K ]
-            return (self.p[0]**2*K, Kprime)
+            return (w2*K, Kprime)
 
 class OU(BaseKernel):
     r"""
@@ -166,17 +167,29 @@ class OU(BaseKernel):
     """
     def __init__(self, params):
         super(OU, self).__init__(2, params)
-    def __call__(self, R, grad=False):
-        K = exp(-R/self.p[1])
+    def __call__(self, Rk2, grad=False):
+        if not isinstance(self.p[1], list):
+            R2l2 = sum(Rk2,2)/self.p[1]**2
+        else:
+            R2l2 = zeros(Rk2.shape[0:2])
+            for k in xrange(Rk2.shape[2]):
+                R2l2 += Rk2[:,:,k]/self.p[1][k]**2
+        w2 = self.p[0]**2
+        Rl = R2l2**0.5
+        K = exp(-Rl)
         if not grad:
-            return self.p[0]**2*K
+            return w2*K
         else:  # -- generalize so p[1] can be an array --
             Kprime = []
             if self.hyper[0]:
                 Kprime += [ 2.0*self.p[0]*K ]
-            if self.hyper[1]:
-                Kprime += [ self.p[0]**2*R/self.p[1]*K ] 
-            return (self.p[0]**2*K, Kprime)
+            if self.hyper[1] and not isinstance(self.hyper[1], list):
+                Kprime += [ w2*Rl*K ] 
+            elif isinstance(self.hyper[1], list):
+                for k in xrange(len(self.hyper[1])):
+                    if self.hyper[1][k]:
+                        Kprime += [ w2*Rk2[:,:,k]/(self.p[1][k]**3*Rl)*K ]
+            return (w2*K, Kprime)
 
 class GammaExp(BaseKernel):
     r"""
@@ -189,21 +202,34 @@ class GammaExp(BaseKernel):
     def __init__(self, params):
         """Docstring under __init__"""
         super(GammaExp, self).__init__(3, params)
-    def __call__(self, R, grad=False):
-        K = exp(-(R/self.p[1])**self.p[2])
+    def __call__(self, Rk2, grad=False):
+        if not isinstance(self.p[1], list):
+            R2l2 = sum(Rk2,2)/self.p[1]**2
+        else:
+            R2l2 = zeros(Rk2.shape[0:2])
+            for k in xrange(Rk2.shape[2]):
+                R2l2 += Rk2[:,:,k]/self.p[1][k]**2
+        w2 = self.p[0]**2
+        K = exp(-R2l2**(0.5*self.p[2]))
         if not grad:
-            return self.p[0]**2*K
-        else:  # -- generalize so p[1] can be an array --
+            return w2*K
+        else:
             Kprime = []
             if self.hyper[0]:
                 Kprime += [ 2.0*self.p[0]*K ]
-            if self.hyper[1]:
-                tmp = self.p[0]**2*(R/self.p[1])**self.p[2]
+            if self.hyper[1] and not isinstance(self.hyper[1], list):
+                tmp = w2*R2l2**(0.5*self.p[2])
                 Kprime += [ self.p[2]*tmp/self.p[1]*K ]
+            elif isinstance(self.hyper[1], list):
+                for k in xrange(len(self.hyper[1])):
+                    if self.hyper[1][k]:
+                        tmp1 = Rk2[:,:,k]/self.p[1][k]**2
+                        tmp2 = R2l2**(0.5*self.p[2]-1)
+                        Kprime += [ w2*self.p[2]/self.p[1][k]*tmp1*tmp2*K ]
             if self.hyper[2]:
-                tmp = self.p[0]**2*(R/self.p[1])**self.p[2]
-                Kprime += [ -tmp*log(R/self.p[1])*K ]
-            return (self.p[0]**2*K, Kprime)
+                tmp = w2*R2l2**(0.5*self.p[2])
+                Kprime += [ -0.5*tmp*log(R2l2)*K ]
+            return (w2*K, Kprime)
 
 class SquareExp(BaseKernel):
     r"""
@@ -217,46 +243,60 @@ class SquareExp(BaseKernel):
         super(SquareExp, self).__init__(2, params)
     def __call__(self, Rk2, grad=False):
         if not isinstance(self.p[1], list):
-            R2l2 = sum(Rk2,3)/self.p[1]**2
+            R2l2 = sum(Rk2,2)/self.p[1]**2
         else:
             R2l2 = zeros(Rk2.shape[0:2])
             for k in xrange(Rk2.shape[2]):
                 R2l2 += Rk2[:,:,k]/self.p[1][k]**2
+        w2 = self.p[0]**2
         K = exp(-0.5*R2l2)
         if not grad:
-            return self.p[0]**2*K
+            return w2*K
         else:
             Kprime = []
             if self.hyper[0]:
                 Kprime += [ 2.0*self.p[0]*K ]
-            if not isinstance(self.hyper[1], list) and self.hyper[1]:
-                Kprime += [ self.p[0]**2*R2l2/self.p[1]*K ]
+            if self.hyper[1] and not isinstance(self.hyper[1], list):
+                Kprime += [ w2*R2l2/self.p[1]*K ]
             elif isinstance(self.hyper[1], list):
                 for k in xrange(len(self.hyper[1])):
                     if self.hyper[1][k]:
-                        Kprime += [ self.p[0]**2*Rk2[:,:,k]/self.p[1][k]**3*K ]
-            return (self.p[0]**2*K, Kprime)
+                        Kprime += [ w2*Rk2[:,:,k]/self.p[1][k]**3*K ]
+            return (w2*K, Kprime)
 
 class RatQuad(BaseKernel):
     r"""
     Rational-quadratic kernel object.
     .. math::
-        K(R) = w^2*( 1 + \frac{R^2}{2*alpha*l^2} )^2,
+        K(R) = w^2*( 1 + \frac{R^2}{2*\alpha*l^2} )^{-\alpha},
     where the parameter list is params = [w, l, alpha].
     Rational quadratic is SE over a gamma distribution of length scales.
     """
     def __init__(self, params):
         super(RatQuad, self).__init__(3, params)
-    def __call__(self, R, grad=False):
-        K = (1.0 + (R/self.p[1])**2/(2.0*self.p[2]))**(-self.p[2])
+    def __call__(self, Rk2, grad=False):
+        if not isinstance(self.p[1], list):
+            R2l2 = sum(Rk2,2)/self.p[1]**2
+        else:
+            R2l2 = zeros(Rk2.shape[0:2])
+            for k in xrange(Rk2.shape[2]):
+                R2l2 += Rk2[:,:,k]/self.p[1][k]**2
+        w2 = self.p[0]**2
+        tmp = 1.0 + R2l2/(2.0*self.p[2])
+        K = tmp**(-self.p[2])
         if not grad:
-            return self.p[0]**2*K
-        else:  # -- generalize so p[1] can be an array --
+            return w2*K
+        else:
             Kprime = []
             if self.hyper[0]:
                 Kprime += [ 2.0*self.p[0]*K ]
-            if self.hyper[1]:
-                Kprime += [ self.p[0]**2*(R/self.p[1])**2/self.p[1]*K ]
-            return (self.p[0]**2*K, Kprime)
+            if self.hyper[1] and not isinstance(self.hyper[1], list):
+                Kprime += [ w2*R2l2*K/(self.p[1]*tmp) ]
+            elif isinstance(self.hyper[1], list):
+                for k in xrange(len(self.hyper[1])):
+                    if self.hyper[1][k]:
+                        Kprime += [ w2*Rk2[:,:,k]*K/(self.p[1][k]**3*tmp) ]
+            # TODO: add partial with respect to alpha
+            return (w2*K, Kprime)
 
 # -- would like to add periodic, but it would require general handling of R --

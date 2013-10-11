@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Docstring for the gpr module - needs work.
+Docstring for the pygpr module - needs work.
 
 For basic useage see the documentation in the GPR class.
 This docstring covers more advanced topics.
@@ -18,7 +18,7 @@ Reading the code and development:
     d => data values (observations),
     i => inferred values,
     s => sampled values,
-    R => distance (radius) in independent variable space,
+    R2 => square distance (radius^2) in independent variable space,
     K => kernel values (covariance matrix),
     p => parameters (hyper-parameters) of the kernel,
     H => explicit basis functions evaluated at X,
@@ -68,7 +68,7 @@ class GPR:
     >>> print myGPR(array([[0.10, 0.10],[0.50, 0.42]]))
     [[ 0.22531132]
      [ 0.77618499]]
- 
+    
     """
     def __init__(self, Xd, Yd, Kspec, anisotropy='auto',
                  Yd_mean=None, explicit_basis=None, transform=None):
