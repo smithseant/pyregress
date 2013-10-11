@@ -220,8 +220,9 @@ class GPR:
         (Nx, Ny) = (X.shape[0], Y.shape[0])
         Rk2 = empty((Nx, Ny, self.Nx))
         for k in xrange(self.Nx):
-            Rk2[:,:,k] = ( tile(X[k,:].T**2, (1,Ny)) - 2.0*X[k,:].T.dot(Y[k,:])
-                          +tile(Y[k,:]**2, (Nx,1)) )
+            Rk2[:,:,k] = ( tile(X[:,[k]]**2, (1, Ny))
+                          +tile(Y[:,[k]].T**2, (Nx, 1))
+                          -2.0*X[:,[k]].dot(Y[:,[k]].T) )
             Rk2[:,:,k] *= self.anisotropy[k]
         return Rk2
     
@@ -283,7 +284,7 @@ class GPR:
             gradient of lnP_neg with respect to each hyper-parameter.
         """
         p_mapped[:] = params
-        (K, Kprime) = self.calculate_kernel(self.Rdd, grad=True)
+        (K, Kprime) = self.calculate_kernel(self.R2dd, grad=True)
         try:
             LK = cho_factor(K)
         except LinAlgError as e:
@@ -369,7 +370,7 @@ class GPR:
             i += kern.Nhyper
         
         # Do as many calculations as possible in preparation for the inference
-        self.Kdd = self.calculate_kernel(self.Rdd)
+        self.Kdd = self.calculate_kernel(self.R2dd)
         self.LKdd = cho_factor(self.Kdd)
         self.invKdd_Yd = cho_solve(self.LKdd, self.Yd)
         if self.explicit_basis is not None:
