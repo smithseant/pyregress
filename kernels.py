@@ -95,21 +95,22 @@ class BaseKernel:
         for i in range(len(self.p)):
             if im == p_mapped.size:
                 break
-            if not isinstance(self.p[i], list):
+            if self.hyper[i] is True:
                 if not unmap:
                     p_mapped[im] = self.p[i]
                     self.p[i] = p_mapped[im:im+1]
                 else:
                     self.p[i] = p_mapped[im]
                 im += 1
-            else:
+            elif isinstance(self.p[i], list):
                 for j in range(len(self.p[i])):
-                    if not unmap:
-                        p_mapped[im] = self.p[i][j]
-                        self.p[i][j] = p_mapped[im:im+1]
-                    else:
-                        self.p[i][j] = p_mapped[im]
-                    im += 1
+                    if self.hyper[i][j] is True:
+                        if not unmap:
+                            p_mapped[im] = self.p[i][j]
+                            self.p[i][j] = p_mapped[im:im+1]
+                        else:
+                            self.p[i][j] = p_mapped[im]
+                        im += 1
     
     @abstractmethod
     def __call__(self, Rk2, grad=False):
@@ -171,7 +172,7 @@ class OU(BaseKernel):
         if not isinstance(self.p[1], list):
             R2l2 = sum(Rk2,2)/self.p[1]**2
         else:
-            R2l2 = zeros(Rk2.shape[0:2])
+            R2l2 = zeros(Rk2.shape[:2])
             for k in xrange(Rk2.shape[2]):
                 R2l2 += Rk2[:,:,k]/self.p[1][k]**2
         w2 = self.p[0]**2
@@ -206,7 +207,7 @@ class GammaExp(BaseKernel):
         if not isinstance(self.p[1], list):
             R2l2 = sum(Rk2,2)/self.p[1]**2
         else:
-            R2l2 = zeros(Rk2.shape[0:2])
+            R2l2 = zeros(Rk2.shape[:2])
             for k in xrange(Rk2.shape[2]):
                 R2l2 += Rk2[:,:,k]/self.p[1][k]**2
         w2 = self.p[0]**2
@@ -245,7 +246,7 @@ class SquareExp(BaseKernel):
         if not isinstance(self.p[1], list):
             R2l2 = sum(Rk2,2)/self.p[1]**2
         else:
-            R2l2 = zeros(Rk2.shape[0:2])
+            R2l2 = zeros(Rk2.shape[:2])
             for k in xrange(Rk2.shape[2]):
                 R2l2 += Rk2[:,:,k]/self.p[1][k]**2
         w2 = self.p[0]**2
@@ -278,7 +279,7 @@ class RatQuad(BaseKernel):
         if not isinstance(self.p[1], list):
             R2l2 = sum(Rk2,2)/self.p[1]**2
         else:
-            R2l2 = zeros(Rk2.shape[0:2])
+            R2l2 = zeros(Rk2.shape[:2])
             for k in xrange(Rk2.shape[2]):
                 R2l2 += Rk2[:,:,k]/self.p[1][k]**2
         w2 = self.p[0]**2

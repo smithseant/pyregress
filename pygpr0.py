@@ -50,9 +50,9 @@ class GPR:
     >>> from gpr import GPR
     >>> Xd = array([[0.1],[0.3],[0.6]])
     >>> Yd = array([[0.0],[1.0],[0.5]])
-    >>> myGPR = GPR(Xd, Yd, {'Noise':[0.15],'SquareExp':[2.0,0.5]})
+    >>> myGPR = GPR(Xd, Yd, {'Noise':[0.1],'SquareExp':[1.0,0.1]})
     >>> print myGPR( array([[0.2]]) )
-    [[ 0.55758742]]
+    [[ 0.54048043]]
     
     >>> Xd = array([[0.00, 0.00],[0.50,-0.10],[1.00, 0.00],
     ...             [0.15, 0.50],[0.85, 0.50],[0.50, 0.85]])
@@ -249,13 +249,13 @@ class GPR:
         """
         K = zeros(R2.shape[:2])
         gradK = []
-        kernel_no_noise = [base_kern for base_kern in self.Kernel
-                           if not (no_noise and isinstance(base_kern, Noise))]
-        for base_kern in kernel_no_noise:
-            if not grad or base_kern.Nhyper==0:
-                K += base_kern(R2)
+        kernel_no_noise = [kern for kern in self.Kernel
+                           if not (no_noise and isinstance(kern, Noise))]
+        for kern in kernel_no_noise:
+            if kern.Nhyper==0 or not grad:
+                K += kern(R2)
             else:
-                (K_tmp, gradK_tmp) = base_kern(R2, grad=True)
+                (K_tmp, gradK_tmp) = kern(R2, grad=True)
                 K += K_tmp
                 gradK += gradK_tmp
         if not grad:
@@ -501,9 +501,11 @@ if __name__ == "__main__":
     # Simple case, 1D with three data points and one regression point
     Xd1 = array([[0.1],[0.3],[0.6]])
     Yd1 = array([[0.0],[1.0],[0.5]])
-    myGPR1 = GPR(Xd1, Yd1, {'Noise':[0.15],'SquareExp':[2.0,0.5]})
-    Xi1_ex = array([[0.2]])
-    Yi1_ex = myGPR1( Xi1_ex )
+    myGPR1 = GPR(Xd1, Yd1, {'Noise':[0.1],'SquareExp':[1.0,0.1]})
+    xi1 = array([[0.2]])
+    yi1 = myGPR1( xi1 )
+    print 'Example 1:'
+    print 'x = ', xi1, ',  y = ', yi1
     
     # Example 2:
     # 2D with six data points and two regression points
@@ -513,22 +515,25 @@ if __name__ == "__main__":
     myGPR2 = GPR(Xd2, Yd2, {'RatQuad':[0.6,0.75,1.0]}, anisotropy=False,
                  explicit_basis=[0,1], transform='Probit')
     myGPR2.maximize_hyper_posterior({'RatQuad':[False, True, False]})
-    Xi2_ex = array([[0.1,0.1],[0.5,0.42]])
-    Yi2_ex = myGPR2(Xi2_ex)
+    xi2 = array([[0.1,0.1],[0.5,0.42]])
+    yi2 = myGPR2(xi2)
+    print 'Example 2:'
+    print 'x = ', xi2
+    print 'y = ', yi2
     
     # Figures to support the examples
-    # example 1
+    # fig. example 1
     Xi1 = linspace(0.0, 0.75)
-    (Yi1, Yi1_std) = myGPR1(Xi1, infer_std=True)
-    (Yi1, Yi1_std) = (Yi1.reshape(-1), Yi1_std.reshape(-1))
+    (Yi1, Yi1std) = myGPR1(Xi1, infer_std=True)
+    (Yi1, Yi1std) = (Yi1.reshape(-1), Yi1std.reshape(-1))
     
     fig1 = plt.figure(figsize=(5,3), dpi=150)
-    p1, = plt.plot(Xd1,Yd1, 'ko')
-    p2, = plt.plot(Xi1,Yi1, 'b-', linewidth=2.0)
-    plt.fill_between(Xi1, Yi1-Yi1_std, Yi1+Yi1_std, alpha=0.25)    
+    p1, = plt.plot(Xd1, Yd1, 'ko')
+    p2, = plt.plot(Xi1, Yi1, 'b-', linewidth=2.0)
+    plt.fill_between(Xi1, Yi1-Yi1std, Yi1+Yi1std, alpha=0.25)    
     p3 = plt.Rectangle((0.0, 0.0), 1.0, 1.0, facecolor='blue', alpha=0.25)
-    p4, = plt.plot(Xi1_ex,Yi1_ex, 'ro')
-    fig1.subplots_adjust(left=0.15, right=0.95, bottom=0.15,top=0.9)
+    p4, = plt.plot(xi1, yi1, 'ro')
+    fig1.subplots_adjust(left=0.15, right=0.95, bottom=0.15, top=0.9)
     plt.title('Example 1', fontsize=16)
     plt.xlabel('Independent Variable, X', fontsize=12)
     plt.ylabel('Dependent Variable, Y', fontsize=12)
@@ -536,21 +541,21 @@ if __name__ == "__main__":
                'Uncertainty (one std.)', 'Example regression point'),
                numpoints=1, loc='best', prop={'size':8})
 
-    # example 2
+    # fig. example 2
     Ni = (30,30)
     xi_1 = linspace(-0.2,1.2,Ni[0])
     xi_2 = linspace(-0.2,1.0,Ni[1])
     (Xi_1,Xi_2) = meshgrid(xi_1,xi_2, indexing='ij')
     Xi2 = hstack([Xi_1.reshape((-1,1)), Xi_2.reshape((-1,1))])
-    (Yi2, Yi2_std) = myGPR2.inference(Xi2, infer_std=True)
+    (Yi2, Yi2std) = myGPR2.inference(Xi2, infer_std=True)
     
     fig = plt.figure(figsize=(7,5), dpi=150)
     ax = fig.gca(projection='3d')
     ax.plot_surface(Xi_1,Xi_2, Yi2.reshape(Ni), alpha=0.75,
                     linewidth=0.5,cmap=mpl.cm.jet, rstride=1,cstride=1)
-    ax.plot_surface(Xi_1,Xi_2, reshape(Yi2+Yi2_std[0], Ni), alpha=0.25,
+    ax.plot_surface(Xi_1,Xi_2, reshape(Yi2+Yi2std[0], Ni), alpha=0.25,
                     linewidth=0.25,color='black', rstride=1,cstride=1)
-    ax.plot_surface(Xi_1,Xi_2, reshape(Yi2-Yi2_std[1], Ni), alpha=0.25,
+    ax.plot_surface(Xi_1,Xi_2, reshape(Yi2-Yi2std[1], Ni), alpha=0.25,
                     linewidth=0.25,color='black', rstride=1,cstride=1)
     ax.scatter(Xd2[:,0],Xd2[:,1],Yd2, c='black', s=50)
     ax.set_zlim([0.0,1.0])
