@@ -11,12 +11,12 @@ from scipy import exp, log
 
 class BaseKernel:
     """
-    Provide methods & an interface for kernels in the gpr class.
+    Provide methods & an interface for kernels in the GPR class.
     
     For advanced use, user-defined kernels will need to inherit this base class
     and define both __init__ and __call__ methods in the derived class.
     This base class provides the abstract interface for the __call__ method
-    and provides the methods: __init__ and declare_hyper.
+    and provides the methods: __init__, declare_hyper, and map_hyper.
     """
     __metaclass__ = ABCMeta
     
@@ -180,12 +180,12 @@ class OU(BaseKernel):
         K = exp(-Rl)
         if not grad:
             return w2*K
-        else:  # -- generalize so p[1] can be an array --
+        else:
             Kprime = []
             if self.hyper[0]:
                 Kprime += [ 2.0*self.p[0]*K ]
             if self.hyper[1] and not isinstance(self.hyper[1], list):
-                Kprime += [ w2*Rl*K ] 
+                Kprime += [ w2*Rl/self.p[1]*K ]
             elif isinstance(self.hyper[1], list):
                 for k in xrange(len(self.hyper[1])):
                     if self.hyper[1][k]:
@@ -244,7 +244,7 @@ class SquareExp(BaseKernel):
         super(SquareExp, self).__init__(2, params)
     def __call__(self, Rk2, grad=False):
         if not isinstance(self.p[1], list):
-            R2l2 = sum(Rk2,2)/self.p[1]**2
+            R2l2 = sum(Rk2,2)/(self.p[1]**2)
         else:
             R2l2 = zeros(Rk2.shape[:2])
             for k in xrange(Rk2.shape[2]):

@@ -355,6 +355,8 @@ class GPR:
         myResult = minimize(self.hyper_posterior, all_hyper,
                             args=(all_hyper,False), method='Nelder-Mead',
                             tol=1e-4, options={'maxiter':200, 'disp':True})
+# -- To use BFGS or CG, I will need to edit those routines to start with
+#    smaller initial steps (based on the arguments fed to the linesearch). --
 #        myResult = minimize(self.hyper_posterior, all_hyper,
 #                            args=(all_hyper,), method='BFGS', jac=True,
 #                            tol=1e-4, options={'maxiter':200, 'disp':True})
