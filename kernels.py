@@ -189,7 +189,9 @@ class OU(BaseKernel):
             elif isinstance(self.hyper[1], list):
                 for k in xrange(len(self.hyper[1])):
                     if self.hyper[1][k]:
+                        print self.p[1][k], Rl
                         Kprime += [ w2*Rk2[:,:,k]/(self.p[1][k]**3*Rl)*K ]
+                        # This only applies where R != 0, it is 0 otherwise.
             return (w2*K, Kprime)
 
 class GammaExp(BaseKernel):
@@ -227,6 +229,7 @@ class GammaExp(BaseKernel):
                         tmp1 = Rk2[:,:,k]/self.p[1][k]**2
                         tmp2 = R2l2**(0.5*self.p[2]-1)
                         Kprime += [ w2*self.p[2]/self.p[1][k]*tmp1*tmp2*K ]
+                        # This only applies where R != 0, it is 0 otherwise.
             if self.hyper[2]:
                 tmp = w2*R2l2**(0.5*self.p[2])
                 Kprime += [ -0.5*tmp*log(R2l2)*K ]

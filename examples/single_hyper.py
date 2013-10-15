@@ -6,6 +6,7 @@ This demonstration generates a random sample from a 1D Gaussian process.
 Then, using the same kernel with all parameters known except one,
 the posterior of this hyper-parameter is calculated and maximized.
 """
+from compiler.ast import flatten
 import numpy as np
 from numpy.random import random, randn
 import matplotlib.pyplot as plt
@@ -17,12 +18,11 @@ Xt = Xd = 8.0*(random(Nd)).reshape((-1,1))
 #Xt = Xd = np.linspace(0.0, 8.0, Nt).reshape((-1,1))
 Yt_prior = Yd_prior = 5.0*(Xt/8.0 - 0.5)
 
-#(myK, myHyper) = (OU([1.0, 1.0]), [True, False])
-#(myK, myHyper) = (GammaExp([1.0, 1.0, 2.0]), [True, False, False])
-(myK, myHyper) = (SquareExp([1.0, [1.0]]), [False, [True]])
-#(myK, myHyper) = (RatQuad([1.0, 1.0, 5.0]), [True, False, False])
-#i_hyper = myHyper.index(True)
-i_hyper = 1
+(myK, myHyper) = (OU([1.0, [1.0]]), [False, [True]])
+#(myK, myHyper) = (GammaExp([1.0, [1.0], 2.0]), [False, [True], False])
+#(myK, myHyper) = (SquareExp([1.0, [1.0]]), [False, [True]])
+#(myK, myHyper) = (RatQuad([1.0, [1.0], 5.0]), [False, [True], False])
+i_hyper = flatten(myHyper).index(True)
 
 trainingGPR = GPR(Xt, np.zeros(np.shape(Xt)), [myK], anisotropy=False)
 Yt = Yd = trainingGPR.Kdd.dot(randn(Nt)).reshape((-1,1)) + Yt_prior
@@ -32,7 +32,10 @@ Yt = Yd = trainingGPR.Kdd.dot(randn(Nt)).reshape((-1,1)) + Yt_prior
 myGPR = GPR(Xd, Yd, [myK], anisotropy=False, Yd_mean=Yd_prior)
 (myK.Nhyper, myK.hyper) = (1, myHyper)
 p_mapped = np.empty(1)
-myK.p[i_hyper] = p_mapped[0:1]
+if not isinstance(myK.p[i_hyper], list):
+    myK.p[i_hyper] = p_mapped[0:1]
+else:
+    myK.p[i_hyper] = [p_mapped[0:1]]
 
 # Posterior of the hyper-parameter
 #hyper = np.logspace(sp.log10(0.1),sp.log10(0.8),200)
@@ -58,11 +61,14 @@ print ' '
 # but I don't trust it anymore.
 
 # Maximize the hyper-parameter posterior
-#myK.p[i_hyper] = 0.9
-myK.p[i_hyper] = [0.9]
+if not isinstance(myK.p[i_hyper], list) :
+    myK.p[i_hyper] = 0.9
+else:
+    myK.p[i_hyper] = [0.9]
 myGPR.maximize_hyper_posterior()
 print 'Optimized value of the hyper-parameter:', myK.p[i_hyper]
-(hopt_post, hopt_grad) = myGPR.hyper_posterior(myK.p[i_hyper:i_hyper+1], p_mapped)
+param = np.array(flatten(myK.p))
+(hopt_post, hopt_grad) = myGPR.hyper_posterior(param[i_hyper:i_hyper+1], p_mapped)
 
 # Inference over the entire domain
 Ni = 100
