@@ -6,7 +6,7 @@ Docstring for the kernels module - needs to be written
 # @author: Sean T. Smith
 
 from abc import ABCMeta, abstractmethod
-from numpy import array, zeros, diag, sum
+from numpy import array, zeros, diag, sum, where
 from scipy import exp, log
 
 class BaseKernel:
@@ -74,7 +74,10 @@ class BaseKernel:
                         self.Nhyper += hyper_params[i].count(True)
                     elif hyper_params[i]==False or hyper_params[i]=='none':
                         self.hyper[i] = [False]*len(self.p[i])
-                    elif hyper_params[i]==True or hyper_params[i]=='all':
+                    elif hyper_params[i]==True:
+                        self.hyper[i] = [True]*len(self.p[i])
+                        self.Nhyper += len(self.p[i]) - 1
+                    elif hyper_params[i]=='all':
                         self.hyper[i] = [True]*len(self.p[i])
                         self.Nhyper += len(self.p[i])
         return self.Nhyper
@@ -147,7 +150,7 @@ class Noise(BaseKernel):
         super(Noise, self).__init__(1, params)
     def __call__(self, Rk2, grad=False):
         w2 = self.p[0]**2
-        R2diag = sum(Rk2.diagonal(), 1)
+        R2diag = sum(Rk2.diagonal(), 0)
         K = diag( array([1.0*b for b in R2diag == 0.0]) )
         if not grad:
             return w2*K
@@ -189,9 +192,9 @@ class OU(BaseKernel):
             elif isinstance(self.hyper[1], list):
                 for k in xrange(len(self.hyper[1])):
                     if self.hyper[1][k]:
-                        print self.p[1][k], Rl
-                        Kprime += [ w2*Rk2[:,:,k]/(self.p[1][k]**3*Rl)*K ]
-                        # This only applies where R != 0, it is 0 otherwise.
+                        Kprime += [ where(Rl != 0.0,
+                                          w2*Rk2[:,:,k]/(self.p[1][k]**3*Rl)*K,
+                                          0.0) ]
             return (w2*K, Kprime)
 
 class GammaExp(BaseKernel):
@@ -226,13 +229,14 @@ class GammaExp(BaseKernel):
             elif isinstance(self.hyper[1], list):
                 for k in xrange(len(self.hyper[1])):
                     if self.hyper[1][k]:
-                        tmp1 = Rk2[:,:,k]/self.p[1][k]**2
-                        tmp2 = R2l2**(0.5*self.p[2]-1)
-                        Kprime += [ w2*self.p[2]/self.p[1][k]*tmp1*tmp2*K ]
-                        # This only applies where R != 0, it is 0 otherwise.
+                        tmp = Rk2[:,:,k]/self.p[1][k]**2
+                        tmp *= R2l2**(0.5*self.p[2] - 1)
+                        Kprime += [ where(R2l2 != 0.0,
+                                          w2*self.p[2]/self.p[1][k]*tmp*K,
+                                          0.0) ]
             if self.hyper[2]:
-                tmp = w2*R2l2**(0.5*self.p[2])
-                Kprime += [ -0.5*tmp*log(R2l2)*K ]
+                Kprime += [ where(R2l2 != 0.0,
+                                  -w2*R2l2**(0.5*self.p[2])*log(R2l2)*K, 0.0) ]
             return (w2*K, Kprime)
 
 class SquareExp(BaseKernel):
@@ -300,7 +304,8 @@ class RatQuad(BaseKernel):
                 for k in xrange(len(self.hyper[1])):
                     if self.hyper[1][k]:
                         Kprime += [ w2*Rk2[:,:,k]*K/(self.p[1][k]**3*tmp) ]
-            # TODO: add partial with respect to alpha
+            if self.hyper[2]:
+                Kprime += [ w2*((tmp-1)/tmp - log(tmp))*tmp**(-self.p[2]) ]
             return (w2*K, Kprime)
 
 # -- would like to add periodic, but it would require general handling of R --

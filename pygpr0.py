@@ -52,15 +52,15 @@ class GPR:
     >>> Yd = array([[0.0],[1.0],[0.5]])
     >>> myGPR = GPR(Xd, Yd, {'Noise':[0.1],'SquareExp':[1.0,0.1]})
     >>> print myGPR( array([[0.2]]) )
-    [[ 0.54048043]]
+    [[ 0.54303481]]
     
-    >>> Xd = array([[0.00, 0.00],[0.50,-0.10],[1.00, 0.00],
-    ...             [0.15, 0.50],[0.85, 0.50],[0.50, 0.85]])
-    >>> Yd = array([[0.10],[0.30],[0.60],[0.70],[0.90],[0.90]])
+    >>> Xd = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
+    ...             [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
+    >>> Yd = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
     >>> myGPR = GPR(Xd, Yd, {'RatQuad':[0.6,0.75,1.0]}, anisotropy=False,
     ...             explicit_basis=[0,1], transform='Probit')
     >>> myGPR.maximize_hyper_posterior({'RatQuad':[False, True, False]})
-    >>> print myGPR(array([[0.10, 0.10],[0.50, 0.42]]))
+    >>> print myGPR(array([[0.10, 0.10], [0.50, 0.42]]))
     [[ 0.22531132]
      [ 0.77618499]]
     
@@ -74,7 +74,7 @@ class GPR:
         ---------
         Xd:  array-2D,
             independent-variable observed values. First dimension is for
-            multiple observations, and second dimension for multiple variables.
+            multiple observations, second dimension for multiple variables.
         Yd:  array-1D [or column-shaped 2D],
             dependent-variable observed values - same length as the first
             dimension of Xd.
@@ -94,7 +94,7 @@ class GPR:
         explicit_basis:  list (optional),
             explicit basis functions are specified by any combination of the
             integers: 0, 1, 2 - each corresponding to its polynomial order.
-        transform:  string or BaseClass object (optional)
+        transform:  string or BaseTransform object (optional)
             specify a dependent variable transformation with the name of a
             BaseTransform class (as a string) or a BaseTransform object.
             Options include: Logarithm, Probit, ProbitBeta, or Logit.
@@ -163,7 +163,7 @@ class GPR:
         self.R2dd = self._calculate_radius2(self.Xd, self.Xd)
         # -- the following is repeated in maximize_hyper_posterior,
         #    create a separate function? --
-        self.Kdd = self.calculate_kernel(self.R2dd)
+        self.Kdd = self._calculate_kernel(self.R2dd)
         try:
             self.LKdd = cho_factor(self.Kdd)
         except LinAlgError as e:
@@ -182,7 +182,7 @@ class GPR:
     
     
     def _get_basis(self, X):
-        """Calculate the basis functions given the independent variables."""
+        """Calculate the basis functions given independent variables."""
         if ( isinstance(self.explicit_basis, list) and
              sum(self.explicit_basis.count(i) for i in [0, 1, 2]) > 0 ):
             N = X.shape[0]
@@ -212,11 +212,9 @@ class GPR:
         return (Ntheta, H)
     
     def _calculate_radius2(self, X, Y):
-        """
-        Calculate the squared distance matrix (radius) between two lists.
-        """
-        # Previously used: cdist(X, Y, 'seuclidean',V=self.anisotropy), which
-        # required: from scipy.spatial.distance import cdist
+        """Calculate the squared distance matrix (radius)."""
+        # Previously used: cdist(X, Y, 'seuclidean',V=self.anisotropy),
+        # which required: from scipy.spatial.distance import cdist
         (Nx, Ny) = (X.shape[0], Y.shape[0])
         Rk2 = empty((Nx, Ny, self.Nx))
         for k in xrange(self.Nx):
@@ -226,26 +224,26 @@ class GPR:
             Rk2[:,:,k] *= self.anisotropy[k]
         return Rk2
     
-    def calculate_kernel(self, R2, no_noise=False, grad=False):
+    def _calculate_kernel(self, R2, no_noise=False, grad=False):
         """
         Kernel (prior covariance matrix) function of a radius matrix.
         
         Arguments
         ---------
         R2:  array-3D,
-            directional square distance matrix (radius^2) between two arrays
-            of points.
+            directional square distance matrix (radius^2) between two
+            arrays of points.
         no_noise:  bool (optional),
-            when no_noise is true, exclude Noise BaseKernels from calculation.
+            when true, exclude the Noise BaseKernel from calculation.
         grad:  bool (optional),
-            when grad is not False, return gradK.
+            when not False, return gradK.
         
         Returns
         -------
         K:  array-2D,
-            kernel values - shape matches first two dimensions of argument R.
+            kernel values - shape matches argument R2[:,:,0].
         gradK:  list of arrays (optional - depending on argument grad),
-            partial derivative of kernel with respect to each hyper parameter.
+            partial derivative of kernel with respect to hyper parameters.
         """
         K = zeros(R2.shape[:2])
         gradK = []
@@ -284,7 +282,7 @@ class GPR:
             gradient of lnP_neg with respect to each hyper-parameter.
         """
         p_mapped[:] = params
-        (K, Kprime) = self.calculate_kernel(self.R2dd, grad=True)
+        (K, Kprime) = self._calculate_kernel(self.R2dd, grad=True)
         try:
             LK = cho_factor(K)
         except LinAlgError as e:
@@ -372,7 +370,7 @@ class GPR:
             i += kern.Nhyper
         
         # Do as many calculations as possible in preparation for the inference
-        self.Kdd = self.calculate_kernel(self.R2dd)
+        self.Kdd = self._calculate_kernel(self.R2dd)
         self.LKdd = cho_factor(self.Kdd)
         self.invKdd_Yd = cho_solve(self.LKdd, self.Yd)
         if self.explicit_basis is not None:
@@ -381,7 +379,7 @@ class GPR:
             self.Stheta = cho_solve(LStheta, eye(self.Ntheta))
             self.Theta = cho_solve(LStheta, self.Hd.T.dot(self.invKdd_Yd))
             self.invKdd_HdTheta = cho_solve(self.LKdd, self.Hd.dot(self.Theta))
-        return self
+        return (self, myResult.x)
     
     
     def inference(self, Xi, Yi_mean=None, infer_std=False, no_noise=True):
@@ -395,12 +393,12 @@ class GPR:
             dimension is for multiple inferences, and second dimension must
             match the second dimension of the argurment Xd in __init__.
         Yi_mean:  array-1D [or column-shaped 2D] (optional),
-            prior mean of the inferences. Must be the same length as Yi_mean.
-            If omitted, uses a prior mean of zero.
+            prior mean of inferences. Must be the same length as argument
+            Yd_mean in __init__. If omitted, uses a prior mean of zero.
         infer_std:  bool (optional),
             if True, return the inferred standard deviation.
         no_noise:  bool (optional),
-            if True, make inferences without contribution of the noise kernel.
+            if True, make inferences without contribution of Noise kernel.
         
         Returns
         -------
@@ -421,9 +419,8 @@ class GPR:
                              "dimension length must match that of Xd.", Xi)
         
         # Mixed i-d kernel & inference of posterior mean
-        #Rid = cdist(Xi,self.Xd, 'seuclidean',V=self.anisotropy)
         R2id = self._calculate_radius2(Xi, self.Xd)
-        Kid = self.calculate_kernel(R2id, no_noise=no_noise)
+        Kid = self._calculate_kernel(R2id, no_noise=no_noise)
         if self.explicit_basis is None:
             post_mean = Kid.dot(self.invKdd_Yd)
         else:
@@ -444,9 +441,8 @@ class GPR:
         
         # Inference of posterior covariance
         if infer_std:
-            #Rii = cdist(Xi,Xi, 'seuclidean',V=self.anisotropy)
             R2ii = self._calculate_radius2(Xi, Xi)
-            Kii = self.calculate_kernel(R2ii, no_noise=no_noise)
+            Kii = self._calculate_kernel(R2ii, no_noise=no_noise)
             post_covar = Kii-Kid.dot(cho_solve(self.LKdd, Kid.T))
             if self.explicit_basis is not None:
                 A = Hi - Kid.dot(self.invKdd_Hd)
@@ -478,17 +474,19 @@ class Error(Exception):
     pass
 
 class InputError(Error):  # -- not a ValueError? --
-    """Exception raised for errors in method input arguments.
-    
-    Arguments
-    ---------
-        msg:  string,
-            explanation of the error.
-        input_argument:  any (optional),
-            input argument that is the source of the error. Provided so the
-            value of that variable can be reported when the error is caught.
-    """
+    """Exception raised for errors in input arguments."""
     def __init__(self, msg, input_argument=None):
+        """
+        Initialize an InputError.
+        
+        Arguments
+        ---------
+            msg:  string,
+                explanation of the error.
+            input_argument:  any (optional),
+                input argument that is the source of error. Provided so
+                the value can be reported when the error is caught.
+        """
         self.args = (msg,)
         self.input_argument = input_argument
 
@@ -511,13 +509,13 @@ if __name__ == "__main__":
     
     # Example 2:
     # 2D with six data points and two regression points
-    Xd2 = array([[0.0,0.0],[0.5,-0.1],[1.0,0.0],
-                 [0.15,0.5],[0.85,0.5],[0.5,0.85]])
-    Yd2 = array([[0.1],[0.3],[0.6],[0.7],[0.9],[0.9]])
+    Xd2 = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
+                 [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
+    Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
     myGPR2 = GPR(Xd2, Yd2, {'RatQuad':[0.6,0.75,1.0]}, anisotropy=False,
                  explicit_basis=[0,1], transform='Probit')
     myGPR2.maximize_hyper_posterior({'RatQuad':[False, True, False]})
-    xi2 = array([[0.1,0.1],[0.5,0.42]])
+    xi2 = array([[0.1, 0.1], [0.5, 0.42]])
     yi2 = myGPR2(xi2)
     print 'Example 2:'
     print 'x = ', xi2
@@ -547,19 +545,19 @@ if __name__ == "__main__":
     Ni = (30,30)
     xi_1 = linspace(-0.2,1.2,Ni[0])
     xi_2 = linspace(-0.2,1.0,Ni[1])
-    (Xi_1,Xi_2) = meshgrid(xi_1,xi_2, indexing='ij')
+    (Xi_1, Xi_2) = meshgrid(xi_1,xi_2, indexing='ij')
     Xi2 = hstack([Xi_1.reshape((-1,1)), Xi_2.reshape((-1,1))])
     (Yi2, Yi2std) = myGPR2.inference(Xi2, infer_std=True)
     
     fig = plt.figure(figsize=(7,5), dpi=150)
     ax = fig.gca(projection='3d')
-    ax.plot_surface(Xi_1,Xi_2, Yi2.reshape(Ni), alpha=0.75,
-                    linewidth=0.5,cmap=mpl.cm.jet, rstride=1,cstride=1)
-    ax.plot_surface(Xi_1,Xi_2, reshape(Yi2+Yi2std[0], Ni), alpha=0.25,
-                    linewidth=0.25,color='black', rstride=1,cstride=1)
-    ax.plot_surface(Xi_1,Xi_2, reshape(Yi2-Yi2std[1], Ni), alpha=0.25,
-                    linewidth=0.25,color='black', rstride=1,cstride=1)
-    ax.scatter(Xd2[:,0],Xd2[:,1],Yd2, c='black', s=50)
+    ax.plot_surface(Xi_1, Xi_2, Yi2.reshape(Ni), alpha=0.75,
+                    linewidth=0.5, cmap=mpl.cm.jet, rstride=1, cstride=1)
+    ax.plot_surface(Xi_1, Xi_2, reshape(Yi2+Yi2std[0], Ni), alpha=0.25,
+                    linewidth=0.25, color='black', rstride=1, cstride=1)
+    ax.plot_surface(Xi_1, Xi_2, reshape(Yi2-Yi2std[1], Ni), alpha=0.25,
+                    linewidth=0.25, color='black', rstride=1, cstride=1)
+    ax.scatter(Xd2[:,0], Xd2[:,1],Yd2, c='black', s=50)
     ax.set_zlim([0.0,1.0])
     ax.set_title('Example 2', fontsize=16)
     ax.set_xlabel('Independent Variable, X1', fontsize=12)

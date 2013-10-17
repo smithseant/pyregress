@@ -12,33 +12,37 @@ from numpy.random import random, randn
 import matplotlib.pyplot as plt
 from pygpr import *
 
-# Setup the Training Data
+# Setup the source GP with any single hyper-parameter
 Nt = Nd = 5*2**1
 Xt = Xd = 8.0*(random(Nd)).reshape((-1,1))
 #Xt = Xd = np.linspace(0.0, 8.0, Nt).reshape((-1,1))
 Yt_prior = Yd_prior = 5.0*(Xt/8.0 - 0.5)
 
-(myK, myHyper) = (OU([1.0, [1.0]]), [False, [True]])
-#(myK, myHyper) = (GammaExp([1.0, [1.0], 2.0]), [False, [True], False])
-#(myK, myHyper) = (SquareExp([1.0, [1.0]]), [False, [True]])
-#(myK, myHyper) = (RatQuad([1.0, [1.0], 5.0]), [False, [True], False])
-i_hyper = flatten(myHyper).index(True)
+#(myK, myHyper) = (Noise([1.0]), [True])
+#(myK, myHyper) = (OU([1.0, [1.0]]), [False, [True]])
+#(myK, myHyper) = (GammaExp([1.0, 1.0, 2.0]), [False, True, False])
+(myK, myHyper) = (SquareExp([1.0, 1.0]), [False, True])
+#(myK, myHyper) = (RatQuad([1.0, 1.0, 1.0]), [False, True, False])
 
-trainingGPR = GPR(Xt, np.zeros(np.shape(Xt)), [myK], anisotropy=False)
-Yt = Yd = trainingGPR.Kdd.dot(randn(Nt)).reshape((-1,1)) + Yt_prior
-(Xt, Yt) = (Xd.reshape(-1), Yd.reshape(-1))
-
-# Setup the GPR object
-myGPR = GPR(Xd, Yd, [myK], anisotropy=False, Yd_mean=Yd_prior)
+# Setup hyper-parameters in the kernel and map to an array
 (myK.Nhyper, myK.hyper) = (1, myHyper)
+i_hyper = flatten(myHyper).index(True)
 p_mapped = np.empty(1)
+p_mapped[:] = myK.p[i_hyper]
 if not isinstance(myK.p[i_hyper], list):
     myK.p[i_hyper] = p_mapped[0:1]
 else:
     myK.p[i_hyper] = [p_mapped[0:1]]
 
+# Generate the testing data from the source GP
+sourceGP = GPR(Xt, np.zeros(np.shape(Xt)), [myK], anisotropy=False)
+Yt = Yd = sourceGP.Kdd.dot(randn(Nt)).reshape((-1,1)) + Yt_prior
+(Xt, Yt) = (Xd.reshape(-1), Yd.reshape(-1))
+
+# Setup the GPR object
+myGPR = GPR(Xd, Yd, [myK], anisotropy=False, Yd_mean=Yd_prior)
+
 # Posterior of the hyper-parameter
-#hyper = np.logspace(sp.log10(0.1),sp.log10(0.8),200)
 hyper = np.linspace(0.2, 2.0, 100)
 h_post = np.empty(np.shape(hyper))
 h_grad = np.empty(np.shape(hyper))
@@ -65,10 +69,9 @@ if not isinstance(myK.p[i_hyper], list) :
     myK.p[i_hyper] = 0.9
 else:
     myK.p[i_hyper] = [0.9]
-myGPR.maximize_hyper_posterior()
+(myGPR, param) = myGPR.maximize_hyper_posterior()
 print 'Optimized value of the hyper-parameter:', myK.p[i_hyper]
-param = np.array(flatten(myK.p))
-(hopt_post, hopt_grad) = myGPR.hyper_posterior(param[i_hyper:i_hyper+1], p_mapped)
+(hopt_post, hopt_grad) = myGPR.hyper_posterior(param, p_mapped)
 
 # Inference over the entire domain
 Ni = 100
@@ -99,13 +102,13 @@ plot1.legend(loc='lower center',  prop={'size':10}, numpoints=1)
 fig2 = plt.figure(figsize=(5,3), dpi=150)
 p1, = plt.plot(Xt,Yt, 'ko')
 p2, = plt.plot(Xi,post_mean, linewidth=2.0, color='blue')
-plt.fill_between(Xi, post_mean-post_std, post_mean+post_std, alpha=0.25)    
+plt.fill_between(Xi, post_mean-2.0*post_std, post_mean+2.0*post_std, alpha=0.25)    
 p3 = plt.Rectangle((0.0, 0.0), 1.0, 1.0, facecolor='blue', alpha=0.25)
 fig2.subplots_adjust(left=0.15, right=0.95, bottom=0.15,top=0.9)
 plt.title('Inference', fontsize=16)
 plt.xlabel('Independent Variable, X', fontsize=12)
 plt.ylabel('Dependent Variable, Y', fontsize=12)
-plt.legend([p1,p2,p3], ('Data', 'Inferred mean', 'Uncertainty (1*sigma)'),
+plt.legend([p1,p2,p3], ('Data', 'Inferred mean', 'Inference +/-2 sigma'),
            numpoints=1, loc='best', prop={'size':8})
 
 plt.show()
