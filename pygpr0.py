@@ -9,7 +9,7 @@ Performance:
   Most default python/numpy/scipy packages are based on unoptimized libs
   (including linux repositories and downloaded executables).
 Beyond commonly used kernels and basis functions:
-  overview of BaseKernel object and BaseBasis interface.
+  overview of Kernel object and BaseBasis interface.
 Reading the code and development:
   Notation used throughout the code:
     X => independent variables,
@@ -28,7 +28,7 @@ Reading the code and development:
 # @author: Sean T. Smith
 
 #from termcolor import colored  # may not work on windows
-from numpy import (array, empty, zeros, ones, eye, shape, tile,
+from numpy import (array, empty, ones, eye, shape, tile,
                    maximum, diag, trace, sum, sqrt)
 from numpy.linalg.linalg import LinAlgError
 from scipy import pi, log
@@ -36,7 +36,7 @@ from scipy import pi, log
 from scipy.linalg import cho_factor, cho_solve
 from scipy.optimize import minimize
     
-from kernels import BaseKernel, Noise, OU, GammaExp, SquareExp, RatQuad
+from kernels import Kernel, Noise, OU, GammaExp, SquareExp, RatQuad
 from transforms import BaseTransform, Logarithm, Probit, ProbitBeta, Logit
 
 HLOG2PI = 0.5*log(2*pi)
@@ -47,25 +47,26 @@ class GPR:
     
     Examples
     --------
-    >>> from gpr import GPR
+    >>> import numpy as np
+    >>> from gpr import GPR, Noise, SquareExp, RatQuad
     >>> Xd = array([[0.1],[0.3],[0.6]])
     >>> Yd = array([[0.0],[1.0],[0.5]])
-    >>> myGPR = GPR(Xd, Yd, {'Noise':[0.1],'SquareExp':[1.0,0.1]})
-    >>> print myGPR( array([[0.2]]) )
+    >>> myGPR = GPR( Xd, Yd, Noise([0.1])+SquareExp([1.0,0.1]) )
+    >>> print myGPR( np.array([[0.2]]) )
     [[ 0.54303481]]
     
     >>> Xd = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
     ...             [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     >>> Yd = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
-    >>> myGPR = GPR(Xd, Yd, {'RatQuad':[0.6,0.75,1.0]}, anisotropy=False,
-    ...             explicit_basis=[0,1], transform='Probit')
-    >>> myGPR.maximize_hyper_posterior({'RatQuad':[False, True, False]})
-    >>> print myGPR(array([[0.10, 0.10], [0.50, 0.42]]))
+    >>> myGPR = GPR( Xd, Yd, RatQuad([0.6,0.75,1.0]), anisotropy=False,
+    ...             explicit_basis=[0,1], transform='Probit' )
+    >>> myGPR.maximize_hyper_posterior( [False, True, False] )
+    >>> print myGPR( np.array([[0.10, 0.10], [0.50, 0.42]]) )
     [[ 0.22531132]
      [ 0.77618499]]
     
     """
-    def __init__(self, Xd, Yd, Kspec, anisotropy='auto',
+    def __init__(self, Xd, Yd, Cov, anisotropy='auto',
                  Yd_mean=None, explicit_basis=None, transform=None):
         """
         Create a GPR object and prepare for inference.
@@ -78,12 +79,9 @@ class GPR:
         Yd:  array-1D [or column-shaped 2D],
             dependent-variable observed values - same length as the first
             dimension of Xd.
-        Kspec:  dict or list of BaseKernel objects,
-            specification of the prior covariance kernel - a composite sum
-            of base-kernels. Each dict key is the name of a BaseKernel class,
-            while each dict value is a list of the parameter values in order.
-            Options include: Noise, OU, GammaExp, SquareExp, or RatQuad.
-            Alternatively, pass a list of pre-initialized BaseKernel objects.
+        Cov:  Kernel object,
+            prior covariance kernel. Options include: Noise, OU, GammaExp,
+            SquareExp, RatQuad, or the sum of any of these.
         anisotropy:  string or bool or array-1D (optional),
             scaling of the independent variables. For 'auto' or True, it uses
             range scaling. For False, no scaling. For an array with the same
@@ -110,11 +108,11 @@ class GPR:
             raise InputError("GPR argument Xd must be a 2D array.", Xd)
         (self.Nd, self.Nx) = shape(Xd)
         if not anisotropy:
-            self.anisotropy = ones(self.Nx)
+            self.aniso = ones(self.Nx)
         elif anisotropy == True or anisotropy == 'auto':
-            self.anisotropy = (Xd.max(0)-Xd.min(0))**2
+            self.aniso = (Xd.max(0)-Xd.min(0))**2
         elif shape(anisotropy) == (self.Nx,):
-            self.anisotropy = anisotropy
+            self.aniso = anisotropy
         else:
             raise InputError("GPR argument anisotropy must be one of: False, "+
                              "True, 'auto', or 1D array (same length as the "+
@@ -127,13 +125,13 @@ class GPR:
         self.Yd = Yd.copy().reshape((-1,1))
         if transform is None:
             self.Yd = Yd.copy().reshape((-1,1))
-            self.transform = None
+            self.trans = None
         elif isinstance(transform, basestring):
-            self.transform = eval(transform+'(self.Yd)')
-            self.Yd = self.transform(self.Yd)
+            self.trans = eval(transform+'(self.Yd)')
+            self.Yd = self.trans(self.Yd)
         elif isinstance(transform, BaseTransform):
-            self.transform = transform
-            self.Yd = self.transform(self.Yd)
+            self.trans = transform
+            self.Yd = self.trans(self.Yd)
         else:
             raise InputError("GPR argument transform must be a BaseTransform "+
                              "class (string of name) or object.", transform)
@@ -141,29 +139,24 @@ class GPR:
             if Yd_mean.shape[0] != self.Nd:
                 raise InputError("GPR argument Yd_mean must have the same "+
                                  "length as first dimension of Xd.", Yd_mean)
-            if self.transform is None:
+            if self.trans is None:
                 self.Yd -= Yd_mean.reshape((-1,1))
             else:
-                self.Yd -= self.transform(Yd_mean.reshape(-1,1))
-        self.explicit_basis = explicit_basis
-        if self.explicit_basis is not None:
-            (self.Ntheta, self.Hd) = self._get_basis(Xd)
+                self.Yd -= self.trans(Yd_mean.reshape(-1,1))
+        self.basis = explicit_basis
+        if self.basis is not None:
+            (self.Nth, self.Hd) = self._get_basis(Xd)
         
         # Kernel (prior covariance)
-        if isinstance(Kspec, list):
-            self.Kernel = Kspec
-        elif isinstance(Kspec, dict):
-            self.Kernel = []
-            for (base_kern, params) in Kspec.iteritems():
-                self.Kernel += [ eval(base_kern+'(params)') ]
-        else:
-            raise InputError("GPR argument Kspec must be list or dict.", Kspec)
+        self.kernel = Cov
+        if not isinstance(Cov, Kernel):
+            raise InputError("GPR argument Cov must be a Kernel object.", Cov)
         
         # Do as many calculations as possible in preparation for the inference
         self.R2dd = self._calculate_radius2(self.Xd, self.Xd)
         # -- the following is repeated in maximize_hyper_posterior,
         #    create a separate function? --
-        self.Kdd = self._calculate_kernel(self.R2dd)
+        self.Kdd = self.kernel(self.R2dd)
         try:
             self.LKdd = cho_factor(self.Kdd)
         except LinAlgError as e:
@@ -173,93 +166,59 @@ class GPR:
                    "small of weight.")
             raise e
         self.invKdd_Yd = cho_solve(self.LKdd, self.Yd)
-        if self.explicit_basis is not None:
+        if self.basis is not None:
             self.invKdd_Hd = cho_solve(self.LKdd, self.Hd)
-            LStheta = cho_factor(self.Hd.T.dot(self.invKdd_Hd))
-            self.Stheta = cho_solve(LStheta, eye(self.Ntheta))
-            self.Theta = cho_solve(LStheta, self.Hd.T.dot(self.invKdd_Yd))
-            self.invKdd_HdTheta = cho_solve(self.LKdd, self.Hd.dot(self.Theta))
+            LSth = cho_factor(self.Hd.T.dot(self.invKdd_Hd))
+            self.Sth = cho_solve(LSth, eye(self.Nth))
+            self.Th = cho_solve(LSth, self.Hd.T.dot(self.invKdd_Yd))
+            self.invKdd_HdTh = cho_solve(self.LKdd, self.Hd.dot(self.Th))
     
     
     def _get_basis(self, X):
         """Calculate the basis functions given independent variables."""
-        if ( isinstance(self.explicit_basis, list) and
-             sum(self.explicit_basis.count(i) for i in [0, 1, 2]) > 0 ):
+        if ( isinstance(self.basis, list) and
+             sum(self.basis.count(i) for i in [0, 1, 2]) > 0 ):
             N = X.shape[0]
-            Ntheta = sum( self.Nx**array(self.explicit_basis) )
-            H = empty((N, Ntheta))
+            Nth = sum( self.Nx**array(self.basis) )
+            H = empty((N, Nth))
             j = 0
-            if self.explicit_basis.count(0):
+            if self.basis.count(0):
                 H[:,j] = 1.0
                 j += 1
-            if self.explicit_basis.count(1):
+            if self.basis.count(1):
                 H[:,j:j+self.Nx] = X
                 j += self.Nx
-            if self.explicit_basis.count(2):
+            if self.basis.count(2):
                 for ix in range(self.Nx):
                     for jx in range(self.Nx):
                         H[:,j] = X[:,ix]*X[:,jx]
                         j += 1
         # TODO: add a base class or abtract interface for the basis functions.
         #     http://dirtsimple.org/2004/12/python-interfaces-are-not-java.html
-        #elif isinstance(self.explicit_basis,basis_callable):
-        #    H = self.explicit_basis(X)
-        #    self.Ntheta = H.shape[1]
+        #elif isinstance(self.basis,basis_callable):
+        #    H = self.basis(X)
+        #    self.Nth = H.shape[1]
         else:
             # TODO: check that there is more data than degrees of freedom.
             raise InputError("GPR argument explicit_basis must be a list "+
-                             "with: 0, 1, and/or 2.", self.explicit_basis)
-        return (Ntheta, H)
+                             "with: 0, 1, and/or 2.", self.basis)
+        return (Nth, H)
+    
     
     def _calculate_radius2(self, X, Y):
         """Calculate the squared distance matrix (radius)."""
-        # Previously used: cdist(X, Y, 'seuclidean',V=self.anisotropy),
-        # which required: from scipy.spatial.distance import cdist
+        # Previously used: cdist(X, Y, 'seuclidean',V=self.aniso),
+        # which required: from scipy.spatial.distance import cdist.
+        # Consider providing a fortran module function.
         (Nx, Ny) = (X.shape[0], Y.shape[0])
         Rk2 = empty((Nx, Ny, self.Nx))
         for k in xrange(self.Nx):
             Rk2[:,:,k] = ( tile(X[:,[k]]**2, (1, Ny))
                           +tile(Y[:,[k]].T**2, (Nx, 1))
                           -2.0*X[:,[k]].dot(Y[:,[k]].T) )
-            Rk2[:,:,k] *= self.anisotropy[k]
+            Rk2[:,:,k] *= self.aniso[k]
         return Rk2
     
-    def _calculate_kernel(self, R2, no_noise=False, grad=False):
-        """
-        Kernel (prior covariance matrix) function of a radius matrix.
-        
-        Arguments
-        ---------
-        R2:  array-3D,
-            directional square distance matrix (radius^2) between two
-            arrays of points.
-        no_noise:  bool (optional),
-            when true, exclude the Noise BaseKernel from calculation.
-        grad:  bool (optional),
-            when not False, return gradK.
-        
-        Returns
-        -------
-        K:  array-2D,
-            kernel values - shape matches argument R2[:,:,0].
-        gradK:  list of arrays (optional - depending on argument grad),
-            partial derivative of kernel with respect to hyper parameters.
-        """
-        K = zeros(R2.shape[:2])
-        gradK = []
-        kernel_no_noise = [kern for kern in self.Kernel
-                           if not (no_noise and isinstance(kern, Noise))]
-        for kern in kernel_no_noise:
-            if kern.Nhyper==0 or not grad:
-                K += kern(R2)
-            else:
-                (K_tmp, gradK_tmp) = kern(R2, grad=True)
-                K += K_tmp
-                gradK += gradK_tmp
-        if not grad:
-            return K
-        else:
-            return (K, gradK)
     
     def hyper_posterior(self, params, p_mapped, grad=True):
         """
@@ -282,7 +241,7 @@ class GPR:
             gradient of lnP_neg with respect to each hyper-parameter.
         """
         p_mapped[:] = params
-        (K, Kprime) = self._calculate_kernel(self.R2dd, grad=True)
+        (K, Kprime) = self.kernel(self.R2dd, grad=True)
         try:
             LK = cho_factor(K)
         except LinAlgError as e:
@@ -293,17 +252,17 @@ class GPR:
             print (repr(params))
             raise e
         invK_Y = cho_solve(LK, self.Yd)
-        if self.explicit_basis is not None:
+        if self.basis is not None:
             invK_H = cho_solve(LK, self.Hd)
             LSth = cho_factor(self.Hd.T.dot(invK_H))
-            Sth = cho_solve(LSth, eye(self.Ntheta))
+            Sth = cho_solve(LSth, eye(self.Nth))
             Th = cho_solve(LSth, self.Hd.T.dot(invK_Y))
             betaTh = invK_H.dot(Th)
         
         lnP_neg = ( float(self.Nd)*HLOG2PI + sum(log(diag(LK[0]))) +
                     0.5*self.Yd.T.dot(invK_Y) )  # -- subtract prior --
-        if self.explicit_basis is not None:
-            lnP_neg -= ( float(self.Ntheta)*HLOG2PI - sum(log(diag(LSth[0]))) +
+        if self.basis is not None:
+            lnP_neg -= ( float(self.Nth)*HLOG2PI - sum(log(diag(LSth[0]))) +
                          0.5*Th.T.dot(self.Hd.T.dot(betaTh)) )
         
         if not grad:
@@ -313,7 +272,7 @@ class GPR:
             for j in range(lnP_grad.shape[0]):
                 lnP_grad[j] = 0.5*( trace(cho_solve(LK,Kprime[j])) -
                                     invK_Y.T.dot(Kprime[j].dot(invK_Y)) )
-                if self.explicit_basis is not None:
+                if self.basis is not None:
                     bKp = invK_H.T.dot(Kprime[j])
                     lnP_grad[j] -= ( 0.5*(trace(bKp.dot(invK_H).dot(Sth))) +
                                      Th.T.dot(bKp.dot(0.5*betaTh-invK_Y)) )
@@ -326,28 +285,19 @@ class GPR:
         
         Arguments
         ---------
-        hyper_params:  dict (optional),
-            each dict key is a BaseKernel class name corresponding to
-            an entry in the argument Kspec of __init__, and each value
-            is a list of bools indicating which are hyper parameters.
+        hyper_params:  list [possibly nested] (optional),
+            list of bools where the nested structure corresponds to the
+            argument Cov from __init__, and each bool indicates which
+            kernel parameters are hyper-parameters.
         """
         
-        # Setup hyper-parameters in the BaseKernels
+        # Setup hyper-parameters & map values from a single array
         if hyper_params:
-            Nhyper = 0
-            for (input_kern, hyper_bool) in hyper_params.iteritems():
-                for base_kern in self.Kernel:
-                    if isinstance(base_kern, eval(input_kern)):
-                        Nhyper += base_kern.declare_hyper(hyper_bool)
+            Nhyper = self.kernel.declare_hyper(hyper_params)
         else:
-            Nhyper = sum(kern.Nhyper for kern in self.Kernel)
-        
-        # Map the hyper parameters to a single array (for minimization)
+            Nhyper = self.kernel.Nhp
         all_hyper = empty(Nhyper)
-        i = 0
-        for kern in self.Kernel:
-            kern.map_hyper(all_hyper[i:i+kern.Nhyper])
-            i += kern.Nhyper
+        self.kernel.map_hyper(all_hyper)
         
         # Perform minimization
         myResult = minimize(self.hyper_posterior, all_hyper,
@@ -363,26 +313,23 @@ class GPR:
 #                            bounds=[(0.0,None)]*Nhyper, tol=1e-4,
 #                            options={'maxiter':200, 'disp':True})
         
-        #copy values back to Kernel (remove mapping)
-        i = 0
-        for kern in self.Kernel:
-            kern.map_hyper(myResult.x[i:i+kern.Nhyper], unmap=True)
-            i += kern.Nhyper
+        # copy hyper-parameter values back to kernel (remove mapping)
+        self.kernel.map_hyper(all_hyper, unmap=True)
         
         # Do as many calculations as possible in preparation for the inference
-        self.Kdd = self._calculate_kernel(self.R2dd)
+        self.Kdd = self.kernel(self.R2dd)
         self.LKdd = cho_factor(self.Kdd)
         self.invKdd_Yd = cho_solve(self.LKdd, self.Yd)
-        if self.explicit_basis is not None:
+        if self.basis is not None:
             self.invKdd_Hd = cho_solve(self.LKdd, self.Hd)
-            LStheta = cho_factor(self.Hd.T.dot(self.invKdd_Hd))
-            self.Stheta = cho_solve(LStheta, eye(self.Ntheta))
-            self.Theta = cho_solve(LStheta, self.Hd.T.dot(self.invKdd_Yd))
-            self.invKdd_HdTheta = cho_solve(self.LKdd, self.Hd.dot(self.Theta))
+            LSth = cho_factor(self.Hd.T.dot(self.invKdd_Hd))
+            self.Sth = cho_solve(LSth, eye(self.Nth))
+            self.Th = cho_solve(LSth, self.Hd.T.dot(self.invKdd_Yd))
+            self.invKdd_HdTh = cho_solve(self.LKdd, self.Hd.dot(self.Th))
         return (self, myResult.x)
     
     
-    def inference(self, Xi, Yi_mean=None, infer_std=False, no_noise=True):
+    def inference(self, Xi, Yi_mean=None, infer_std=False):
         """
         Make inferences (interpolation or regression) at specified locations.
         
@@ -391,14 +338,12 @@ class GPR:
         Xi:  array-2D,
             independent variables - where to make inferences. First
             dimension is for multiple inferences, and second dimension must
-            match the second dimension of the argurment Xd in __init__.
+            match the second dimension of the argurment Xd from __init__.
         Yi_mean:  array-1D [or column-shaped 2D] (optional),
             prior mean of inferences. Must be the same length as argument
-            Yd_mean in __init__. If omitted, uses a prior mean of zero.
+            Yd_mean from __init__. If omitted, uses a prior mean of zero.
         infer_std:  bool (optional),
             if True, return the inferred standard deviation.
-        no_noise:  bool (optional),
-            if True, make inferences without contribution of Noise kernel.
         
         Returns
         -------
@@ -420,13 +365,13 @@ class GPR:
         
         # Mixed i-d kernel & inference of posterior mean
         R2id = self._calculate_radius2(Xi, self.Xd)
-        Kid = self._calculate_kernel(R2id, no_noise=no_noise)
-        if self.explicit_basis is None:
+        Kid = self.kernel(R2id)
+        if self.basis is None:
             post_mean = Kid.dot(self.invKdd_Yd)
         else:
-            post_mean = Kid.dot(self.invKdd_Yd-self.invKdd_HdTheta)
-            (Ntheta, Hi) = self._get_basis(Xi)
-            post_mean += Hi.dot(self.Theta)
+            post_mean = Kid.dot(self.invKdd_Yd-self.invKdd_HdTh)
+            (Nth, Hi) = self._get_basis(Xi)
+            post_mean += Hi.dot(self.Th)
         
         # Dependent variable
         if Yi_mean is not None:
@@ -434,34 +379,34 @@ class GPR:
                 raise InputError("myGPR argument Yi_mean must have the same "+
                                  "length as first dimension of Xi.", Yi_mean)
             Yi_mean= Yi_mean.copy().reshape((-1,1))
-            if self.transform is None:
+            if self.trans is None:
                 post_mean += Yi_mean
             else:
-                post_mean += self.transform(Yi_mean)
+                post_mean += self.trans(Yi_mean)
         
         # Inference of posterior covariance
         if infer_std:
             R2ii = self._calculate_radius2(Xi, Xi)
-            Kii = self._calculate_kernel(R2ii, no_noise=no_noise)
+            Kii = self.kernel(R2ii)
             post_covar = Kii-Kid.dot(cho_solve(self.LKdd, Kid.T))
-            if self.explicit_basis is not None:
+            if self.basis is not None:
                 A = Hi - Kid.dot(self.invKdd_Hd)
-                post_covar += A.dot(self.Stheta.dot(A.T))
+                post_covar += A.dot(self.Sth.dot(A.T))
             post_var = maximum(0.0, diag(post_covar)).reshape((-1,1))
             post_std = sqrt(post_var)
         # -- option to return the full posterior covariance (would be needed
         #    to sample a processes from the posterior)? --
         
         # Inverse transformation of the dependent variable
-        if self.transform is not None:
+        if self.trans is not None:
             if infer_std:
-                post_std = [self.transform(post_mean-post_std, inverse=True),
-                            self.transform(post_mean+post_std, inverse=True)]
-                post_mean = self.transform(post_mean, inverse=True)
+                post_std = [self.trans(post_mean-post_std, inverse=True),
+                            self.trans(post_mean+post_std, inverse=True)]
+                post_mean = self.trans(post_mean, inverse=True)
                 post_std = [post_std[0]-post_mean,
                             post_mean-post_std[1]]
             else:
-                post_mean = self.transform(post_mean, inverse=True)
+                post_mean = self.trans(post_mean, inverse=True)
         
         if not infer_std:
             return post_mean
@@ -501,7 +446,7 @@ if __name__ == "__main__":
     # Simple case, 1D with three data points and one regression point
     Xd1 = array([[0.1],[0.3],[0.6]])
     Yd1 = array([[0.0],[1.0],[0.5]])
-    myGPR1 = GPR(Xd1, Yd1, {'Noise':[0.1],'SquareExp':[1.0,0.1]})
+    myGPR1 = GPR( Xd1, Yd1, Noise([0.1])+SquareExp([1.0,0.1]) )
     xi1 = array([[0.2]])
     yi1 = myGPR1( xi1 )
     print 'Example 1:'
@@ -512,11 +457,11 @@ if __name__ == "__main__":
     Xd2 = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
                  [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
-    myGPR2 = GPR(Xd2, Yd2, {'RatQuad':[0.6,0.75,1.0]}, anisotropy=False,
+    myGPR2 = GPR( Xd2, Yd2, RatQuad([0.6,0.75,1.0]), anisotropy=False,
                  explicit_basis=[0,1], transform='Probit')
-    myGPR2.maximize_hyper_posterior({'RatQuad':[False, True, False]})
+    myGPR2.maximize_hyper_posterior( [False, True, False] )
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
-    yi2 = myGPR2(xi2)
+    yi2 = myGPR2( xi2 )
     print 'Example 2:'
     print 'x = ', xi2
     print 'y = ', yi2

@@ -6,23 +6,23 @@ Docstring for the kernels module - needs to be written
 # @author: Sean T. Smith
 
 from abc import ABCMeta, abstractmethod
-from numpy import array, zeros, diag, sum, where
+from numpy import array, zeros, diag, sum, prod, where
 from scipy import exp, log
 
-class BaseKernel:
+class Kernel:
     """
     Provide methods & an interface for kernels in the GPR class.
     
-    For advanced use, user-defined kernels will need to inherit this base class
-    and define both __init__ and __call__ methods in the derived class.
-    This base class provides the abstract interface for the __call__ method
-    and provides the methods: __init__, declare_hyper, and map_hyper.
+    User-defined kernels will need to inherit this baseclass and define
+    both __init__ and __call__ methods in the derived class. This base
+    class provides the abstract interface for the __call__ method and
+    provides the methods: __init__, declare_hyper, and map_hyper.
     """
     __metaclass__ = ABCMeta
     
     def __init__(self, Nparams, params):
-        """Create a BaseKernel object - inheritted classes should call this
-        using the super function (as in the examples of commonly used kernels).
+        """
+        Create a Kernel object.
         
         Arguments
         ---------
@@ -34,11 +34,48 @@ class BaseKernel:
         # TODO: throw an error if the number of parameters doesn't match.
         self.Np = Nparams
         self.p = params
-        self.Nhyper = 0
-        self.hyper = [False]*self.Np
+        self.Nhp = 0
+        self.hp = [False]*self.Np
         for i in range(len(self.p)):
             if isinstance(self.p[i], list):
-                self.hyper[i] = [False]*len(self.p[i])
+                self.hp[i] = [False]*len(self.p[i])
+    
+    @abstractmethod
+    def __call__(self, Rk2, grad=False):
+        """
+        Calculate and return kernel values given the radius array.
+        
+        Arguments
+        ---------
+        self: Kernel,
+            kernel parameters (self.p) and hyper-parameter labels (self.hp).
+        Rk2: array-3D,
+            directional square distance matrix (radius squared).
+        grad: bool (optional),
+            when grad is not False, must return gradK.
+        
+        Returns
+        -------
+        K: array-2D,
+            kernel values - shape must match argument R.
+        gradK: list of arrays (optional - depending on argument grad),
+            partial of kernel with respect to each hyper parameter.
+        """
+        return
+    
+    def __add__(self, other):
+        """Overload '+' so Kernel objects can be added."""
+        if isinstance(other, KernelSum):
+            return other.__add__(self, self_on_right=True)
+        else:
+            return KernelSum(self, other)
+    
+    def __mul__(self, other):
+        """Overload '*' so Kernel objects can be multiplied."""
+        if isinstance(other, KernelProd):
+            return other.__mul__(self, self_on_right=True)
+        else:
+            return KernelProd(self, other)
     
     def declare_hyper(self, hyper_params):
         """
@@ -47,8 +84,8 @@ class BaseKernel:
         Arguments
         ---------
         hyper_params: bool or list of bools,
-            which of this kernel's parameters are labled hyper parameters -
-            bool, label all or none; list, manually label each individually.
+            which of this kernel's parameters are hyper-parameters -
+            bool, 'all', 'none', or list for manual selection.
         
         Returns
         -------
@@ -56,31 +93,31 @@ class BaseKernel:
             resulting number of hyper parameters.
         """
         if not hyper_params or hyper_params=='none':
-            self.Nhyper = 0
+            self.Nhp = 0
         elif hyper_params==True or hyper_params=='all':
-            self.Nhyper = self.Np
-            self.hyper = [True]*self.Np
+            self.Nhp = self.Np
+            self.hp[:] = [True]*self.Np
             for i in range(len(self.p)):
                 if isinstance(self.p[i], list):
-                    self.Nhyper += len(self.p[i]) - 1
-                    self.hyper[i] = [True]*len(self.p[i])
+                    self.Nhp += len(self.p[i]) - 1
+                    self.hp[i] = [True]*len(self.p[i])
         else:
             # TODO: throw an error if the number of parameters doesn't match.
-            self.Nhyper = hyper_params.count(True)
-            self.hyper = hyper_params
+            self.Nhp = hyper_params.count(True)
+            self.hp[:] = hyper_params[:]
             for i in range(self.Np):
                 if isinstance(self.p[i], list):
                     if isinstance(hyper_params[i], list):
-                        self.Nhyper += hyper_params[i].count(True)
+                        self.Nhp += hyper_params[i].count(True)
                     elif hyper_params[i]==False or hyper_params[i]=='none':
-                        self.hyper[i] = [False]*len(self.p[i])
+                        self.hp[i] = [False]*len(self.p[i])
                     elif hyper_params[i]==True:
-                        self.hyper[i] = [True]*len(self.p[i])
-                        self.Nhyper += len(self.p[i]) - 1
+                        self.hp[i] = [True]*len(self.p[i])
+                        self.Nhp += len(self.p[i]) - 1
                     elif hyper_params[i]=='all':
-                        self.hyper[i] = [True]*len(self.p[i])
-                        self.Nhyper += len(self.p[i])
-        return self.Nhyper
+                        self.hp[i] = [True]*len(self.p[i])
+                        self.Nhp += len(self.p[i])
+        return self.Nhp
     
     def map_hyper(self, p_mapped, unmap=False):
         """
@@ -98,7 +135,7 @@ class BaseKernel:
         for i in range(len(self.p)):
             if im == p_mapped.size:
                 break
-            if self.hyper[i] is True:
+            if self.hp[i] is True:
                 if not unmap:
                     p_mapped[im] = self.p[i]
                     self.p[i] = p_mapped[im:im+1]
@@ -107,38 +144,17 @@ class BaseKernel:
                 im += 1
             elif isinstance(self.p[i], list):
                 for j in range(len(self.p[i])):
-                    if self.hyper[i][j] is True:
+                    if self.hp[i][j] is True:
                         if not unmap:
                             p_mapped[im] = self.p[i][j]
                             self.p[i][j] = p_mapped[im:im+1]
                         else:
                             self.p[i][j] = p_mapped[im]
                         im += 1
-    
-    @abstractmethod
-    def __call__(self, Rk2, grad=False):
-        """
-        Calculate and return kernel values given the radius array.
-        
-        Arguments
-        ---------
-        self: BaseKernel,
-            kernel parameters (self.p) and hyper-parameter labels (self.hyper).
-        Rk2: array-3D,
-            directional square distance matrix (radius squared).
-        grad: bool (optional),
-            when grad is not False, must return gradK.
-        
-        Returns
-        -------
-        K: array-2D,
-            kernel values - shape must match argument R.
-        gradK: list of arrays (optional - depending on argument grad),
-            partial derivative of kernel with respect to each hyper parameter.
-        """
-        return
-    
-class Noise(BaseKernel):
+        return (self, p_mapped)
+
+
+class Noise(Kernel):
     r"""
     White noise kernel object.
     ..math::
@@ -150,18 +166,21 @@ class Noise(BaseKernel):
         super(Noise, self).__init__(1, params)
     def __call__(self, Rk2, grad=False):
         w2 = self.p[0]**2
-        R2diag = sum(Rk2.diagonal(), 0)
-        K = diag( array([1.0*b for b in R2diag == 0.0]) )
+        if Rk2.shape[0] == Rk2.shape[1]:
+            R2diag = sum(Rk2.diagonal(), 0)
+            K = diag( array([1.0*b for b in R2diag == 0.0]) )
+        else:
+            K = zeros(Rk2.shape[:2])
         if not grad:
             return w2*K
         else:
-            if not self.hyper[0]:
+            if not self.hp[0]:
                 Kprime = []
             else:
                 Kprime = [ 2.0*self.p[0]*K ]
             return (w2*K, Kprime)
 
-class OU(BaseKernel):
+class OU(Kernel):
     r"""
     Ornstein-Uhlenbeck kernel object.
     .. math::
@@ -185,19 +204,19 @@ class OU(BaseKernel):
             return w2*K
         else:
             Kprime = []
-            if self.hyper[0]:
+            if self.hp[0]:
                 Kprime += [ 2.0*self.p[0]*K ]
-            if self.hyper[1] and not isinstance(self.hyper[1], list):
+            if self.hp[1] and not isinstance(self.hp[1], list):
                 Kprime += [ w2*Rl/self.p[1]*K ]
-            elif isinstance(self.hyper[1], list):
-                for k in xrange(len(self.hyper[1])):
-                    if self.hyper[1][k]:
+            elif isinstance(self.hp[1], list):
+                for k in xrange(len(self.hp[1])):
+                    if self.hp[1][k]:
                         Kprime += [ where(Rl != 0.0,
                                           w2*Rk2[:,:,k]/(self.p[1][k]**3*Rl)*K,
                                           0.0) ]
             return (w2*K, Kprime)
 
-class GammaExp(BaseKernel):
+class GammaExp(Kernel):
     r"""
     Gamma-exponential kernel object.
     .. math::
@@ -221,25 +240,25 @@ class GammaExp(BaseKernel):
             return w2*K
         else:
             Kprime = []
-            if self.hyper[0]:
+            if self.hp[0]:
                 Kprime += [ 2.0*self.p[0]*K ]
-            if self.hyper[1] and not isinstance(self.hyper[1], list):
+            if self.hp[1] and not isinstance(self.hp[1], list):
                 tmp = w2*R2l2**(0.5*self.p[2])
                 Kprime += [ self.p[2]*tmp/self.p[1]*K ]
-            elif isinstance(self.hyper[1], list):
-                for k in xrange(len(self.hyper[1])):
-                    if self.hyper[1][k]:
+            elif isinstance(self.hp[1], list):
+                for k in xrange(len(self.hp[1])):
+                    if self.hp[1][k]:
                         tmp = Rk2[:,:,k]/self.p[1][k]**2
                         tmp *= R2l2**(0.5*self.p[2] - 1)
                         Kprime += [ where(R2l2 != 0.0,
                                           w2*self.p[2]/self.p[1][k]*tmp*K,
                                           0.0) ]
-            if self.hyper[2]:
+            if self.hp[2]:
                 Kprime += [ where(R2l2 != 0.0,
                                   -w2*R2l2**(0.5*self.p[2])*log(R2l2)*K, 0.0) ]
             return (w2*K, Kprime)
 
-class SquareExp(BaseKernel):
+class SquareExp(Kernel):
     r"""
     Squared-exponential kernel object.
     .. math::
@@ -262,17 +281,17 @@ class SquareExp(BaseKernel):
             return w2*K
         else:
             Kprime = []
-            if self.hyper[0]:
+            if self.hp[0]:
                 Kprime += [ 2.0*self.p[0]*K ]
-            if self.hyper[1] and not isinstance(self.hyper[1], list):
+            if self.hp[1] and not isinstance(self.hp[1], list):
                 Kprime += [ w2*R2l2/self.p[1]*K ]
-            elif isinstance(self.hyper[1], list):
-                for k in xrange(len(self.hyper[1])):
-                    if self.hyper[1][k]:
+            elif isinstance(self.hp[1], list):
+                for k in xrange(len(self.hp[1])):
+                    if self.hp[1][k]:
                         Kprime += [ w2*Rk2[:,:,k]/self.p[1][k]**3*K ]
             return (w2*K, Kprime)
 
-class RatQuad(BaseKernel):
+class RatQuad(Kernel):
     r"""
     Rational-quadratic kernel object.
     .. math::
@@ -296,16 +315,121 @@ class RatQuad(BaseKernel):
             return w2*K
         else:
             Kprime = []
-            if self.hyper[0]:
+            if self.hp[0]:
                 Kprime += [ 2.0*self.p[0]*K ]
-            if self.hyper[1] and not isinstance(self.hyper[1], list):
+            if self.hp[1] and not isinstance(self.hp[1], list):
                 Kprime += [ w2*R2l2*K/(self.p[1]*tmp) ]
-            elif isinstance(self.hyper[1], list):
-                for k in xrange(len(self.hyper[1])):
-                    if self.hyper[1][k]:
+            elif isinstance(self.hp[1], list):
+                for k in xrange(len(self.hp[1])):
+                    if self.hp[1][k]:
                         Kprime += [ w2*Rk2[:,:,k]*K/(self.p[1][k]**3*tmp) ]
-            if self.hyper[2]:
+            if self.hp[2]:
                 Kprime += [ w2*((tmp-1)/tmp - log(tmp))*tmp**(-self.p[2]) ]
             return (w2*K, Kprime)
 
 # -- would like to add periodic, but it would require general handling of R --
+
+
+class KernelSum(Kernel):
+    """Modified Kernel class that holds the sum of Kernel objects."""
+    def __init__(self, k1, k2):
+        self.terms = [k1, k2]
+        (self.Np, self.p) = (k1.Np + k2.Np, [k1.p, k2.p])
+        (self.Nhp, self.hp) = (k1.Nhp + k1.Nhp, [k1.hp, k2.hp])
+    
+    def __add__(self, other, self_on_right=False):
+        if isinstance(other, KernelSum):
+            self.terms += other.terms
+        elif isinstance(other, Kernel):
+            self.terms += [other]
+        else:
+            # TODO: throw an error!
+            pass
+        self.Np += other.Np
+        self.Nhp += other.Nhp
+        if not self_on_right:
+            self.p += [other.p]
+            self.hp += [other.hp]
+        else:
+            self.p = [other.p] + self.p
+            self.hp = [other.hp] + self.hp
+        return self
+    
+    def declare_hyper(self, hyper_params):
+        # TODO: throw and error if length of hyper_params doesn't match terms.
+        for k in range(len(self.terms)):
+            self.Nhp += self.terms[k].declare_hyper(hyper_params[k])
+        return self.Nhp
+    
+    def map_hyper(self, p_mapped, unmap=False):
+        # TODO: throw and error if the length of p_mapped is not Nhyper.
+        i = 0
+        for k in range(len(self.terms)):
+            self.terms[k].map_hyper(p_mapped[i:i+self.terms[k].Nhp], unmap)
+            i += self.terms[k].Nhp
+        return (self, p_mapped)
+    
+    def __call__(self, Rk2, grad=False):
+        if not grad:
+            K = zeros(Rk2.shape[:2])
+            for kern in self.terms:
+                K += kern(Rk2)
+            return K
+        else:
+            (K, Kprime) = (0.0, [])
+            for kern in self.terms:
+                (K_t, Kprime_t) = kern(Rk2, grad)
+                K += K_t
+                Kprime += Kprime_t
+            return (K, Kprime)
+
+
+class KernelProd(Kernel):
+    """Modified Kernel class that holds the product of Kernel objects."""
+    def __init__(self, k1, k2):
+        self.terms = [k1, k2]
+        (self.Np, self.p) = (k1.Np + k2.Np, [k1.p, k2.p])
+        (self.Nhp, self.hp) = (k1.Nhp + k1.Nhp, [k1.hp, k2.hp])
+    
+    def __mul__(self, other, self_on_right=False):
+        if isinstance(other, KernelProd):
+            self.terms += other.terms
+        elif isinstance(other, Kernel):
+            self.terms += [other]
+        else:
+            # TODO: throw an error!
+            pass
+        self.Np += other.Np
+        self.Nhp += other.Nhp
+        if not self_on_right:
+            self.p += [other.p]
+            self.hp += [other.hp]
+        else:
+            self.p = [other.p] + self.p
+            self.hp = [other.hp] + self.hp
+        return self
+    
+    def declare_hyper(self, hyper_params):
+        # TODO: throw and error if length of hyper_params doesn't match terms.
+        for k in range(len(self.terms)):
+            self.Nhp += self.terms[k].declare_hyper(hyper_params[k])
+        return self.Nhp
+    
+    def map_hyper(self, p_mapped, unmap=False):
+        # TODO: throw and error if the length of p_mapped is not Nhyper.
+        i = 0
+        for k in range(len(self.terms)):
+            self.terms[k].map_hyper(p_mapped[i:i+self.terms[k].Nhp], unmap)
+            i += self.terms[k].Nhp
+        return (self, p_mapped)
+    
+    def __call__(self, Rk2, grad=False):
+        if not grad:
+            return prod([kern(Rk2, grad) for kern in self.terms])
+        else:
+            (K, Kprime) = (0.0, [])
+            for kern in self.terms:
+                (K_t, Kprime_t) = kern(Rk2, grad)
+                K *= K_t
+                Kprime += Kprime_t
+            return (K, Kprime)
