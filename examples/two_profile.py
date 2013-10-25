@@ -6,6 +6,7 @@ This demonstration generates a random sample from a 2D Gaussian process.
 Then, using the same kernel with all parameters known except two,
 the posterior of this hyper-parameter is calculated and maximized.
 """
+import cProfile#, pyprof2calltree
 import numpy as np
 from numpy.random import random, randn
 import matplotlib as mpl
@@ -39,11 +40,17 @@ Nh = (60, 60)
 (hyper1, hyper2) = (np.linspace(0.2, 2.0, Nh[0]), np.linspace(0.2, 2.0, Nh[1]))
 h_post = np.empty(Nh)
 (h_grad1, h_grad2) = (np.empty(Nh), np.empty(Nh))
+
+prof = cProfile.Profile()
+prof.enable()
 for i in xrange(Nh[0]):
     for j in xrange(Nh[1]):
         params = np.array([hyper1[i], hyper2[j]])
         (h_post[i,j], h_grad) = myGPR.hyper_posterior(params, p_mapped)
         (h_grad1[i,j], h_grad2[i,j]) = (h_grad[0], h_grad[1])
+prof.create_stats()
+prof.dump_stats('hyper_posterior1.raw.prof')
+#pyprof2calltree.convert(prof.getstats(), 'hyper_posterior.kgrind')
 
 # Check that the posterior and its gradient are consistent
 test_hyper = np.array([0.9, 0.9])
@@ -73,51 +80,10 @@ Ni = (75, 75)
 (xi1, xi2) = (np.linspace(0.0, 8.0, Ni[0]), np.linspace(0.0, 8.0, Ni[1]))
 (Xi1, Xi2) = np.meshgrid(xi1, xi2, indexing='ij')
 Xi = np.hstack([Xi1.reshape((-1,1)), Xi2.reshape((-1,1))])
-post_mean = myGPR.inference(Xi, infer_std=False)
-post_mean = post_mean.reshape(Ni)
 
-
-# Visualize
-fig1 = plt.figure(figsize=(10,8), dpi=150)
-plt.subplot(2,2,1)
-plt.pcolormesh(hyper1, hyper2, -h_post.T)
-plt.clim(np.max(-h_post)-20.0, None)
-plt.colorbar()
-plt.title('Log Hyper-Parameter Posterior', fontsize=14)
-plt.xlabel('Hyper-parameter 1', fontsize=12)
-plt.ylabel('Hyper-parameter 2', fontsize=12)
-plt.plot(param[0], param[1], 'kx', label='Maximum')
-
-plt.subplot(2,2,3)
-plt.pcolormesh(hyper1, hyper2, -h_grad1.T)
-plt.clim(-20, 20)
-plt.colorbar()
-plt.title('Gradient wrt. Param. 1', fontsize=14)
-plt.xlabel('Hyper-parameter 1', fontsize=12)
-plt.ylabel('Hyper-parameter 2', fontsize=12)
-plt.plot(param[0], param[1], 'kx', label='Maximum')
-
-plt.subplot(2,2,4)
-plt.pcolormesh(hyper1, hyper2, -h_grad2.T)
-plt.clim(-20, 20)
-plt.colorbar()
-plt.title('Gradient wrt. Param. 2', fontsize=14)
-plt.xlabel('Hyper-parameter 1', fontsize=12)
-plt.ylabel('Hyper-parameter 2', fontsize=12)
-plt.plot(param[0], param[1], 'kx', label='Maximum')
-
-fig1.subplots_adjust(left=0.08, right=0.95,
-                     bottom=0.08,top=0.90,
-                     hspace=0.30, wspace=0.20)
-
-fig2 = plt.figure(figsize=(8,5), dpi=150)
-ax = fig2.gca(projection='3d')
-ax.plot_surface(Xi1, Xi2, post_mean, alpha=0.75,
-                linewidth=0.5, cmap=mpl.cm.jet, rstride=1, cstride=1)
-ax.scatter(Xt[0,:], Xt[1,:],Yt, c='black', s=50)
-ax.set_title('Inference', fontsize=16)
-ax.set_xlabel('Independent variable, X1', fontsize=12)
-ax.set_ylabel('Independent variable, X2', fontsize=12)
-ax.set_zlabel('Dependent variable, Y', fontsize=12)
-
-plt.show()
+prof = cProfile.Profile()
+prof.enable()
+post_mean = myGPR.inference(Xi)
+prof.create_stats()
+prof.dump_stats('inference1.raw.prof')
+#pyprof2calltree.convert(prof.getstats(), 'inference.kgrind')

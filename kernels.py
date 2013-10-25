@@ -6,7 +6,7 @@ Docstring for the kernels module - needs to be written
 # @author: Sean T. Smith
 
 from abc import ABCMeta, abstractmethod
-from numpy import array, zeros, diag, sum, prod, where
+from numpy import array, empty, zeros, diag, sum, prod, where
 from scipy import exp, log
 
 class Kernel:
@@ -174,10 +174,9 @@ class Noise(Kernel):
         if not grad:
             return w2*K
         else:
-            if not self.hp[0]:
-                Kprime = []
-            else:
-                Kprime = [ 2.0*self.p[0]*K ]
+            Kprime = empty((Rk2.shape[0], Rk2.shape[1], self.Nhp))
+            if self.hp[0]:
+                Kprime[:,:,0] = 2.0*self.p[0]*K
             return (w2*K, Kprime)
 
 class OU(Kernel):
@@ -203,17 +202,20 @@ class OU(Kernel):
         if not grad:
             return w2*K
         else:
-            Kprime = []
+            Kprime = empty((Rk2.shape[0], Rk2.shape[1], self.Nhp))
+            h = 0
             if self.hp[0]:
-                Kprime += [ 2.0*self.p[0]*K ]
+                Kprime[:,:,h] = 2.0*self.p[0]*K
+                h += 1
             if self.hp[1] and not isinstance(self.hp[1], list):
-                Kprime += [ w2*Rl/self.p[1]*K ]
+                Kprime[:,:,h] = w2*Rl/self.p[1]*K
+                h += 1
             elif isinstance(self.hp[1], list):
                 for k in xrange(len(self.hp[1])):
                     if self.hp[1][k]:
-                        Kprime += [ where(Rl != 0.0,
-                                          w2*Rk2[:,:,k]/(self.p[1][k]**3*Rl)*K,
-                                          0.0) ]
+                        Kprime[:,:,h] = where(Rl != 0.0,
+                                     w2*Rk2[:,:,k]/(self.p[1][k]**3*Rl)*K, 0.0)
+                        h += 1
             return (w2*K, Kprime)
 
 class GammaExp(Kernel):
@@ -229,33 +231,36 @@ class GammaExp(Kernel):
         super(GammaExp, self).__init__(3, params)
     def __call__(self, Rk2, grad=False):
         if not isinstance(self.p[1], list):
-            R2l2 = sum(Rk2,2)/self.p[1]**2
+            R2l2 = sum(Rk2,2)/(self.p[1]**2)
         else:
             R2l2 = zeros(Rk2.shape[:2])
             for k in xrange(Rk2.shape[2]):
-                R2l2 += Rk2[:,:,k]/self.p[1][k]**2
+                R2l2 += Rk2[:,:,k]/(self.p[1][k]**2)
         w2 = self.p[0]**2
         K = exp(-R2l2**(0.5*self.p[2]))
         if not grad:
             return w2*K
         else:
-            Kprime = []
+            Kprime = empty((Rk2.shape[0], Rk2.shape[1], self.Nhp))
+            h = 0
             if self.hp[0]:
-                Kprime += [ 2.0*self.p[0]*K ]
+                Kprime[:,:,h] = 2.0*self.p[0]*K
+                h += 1
             if self.hp[1] and not isinstance(self.hp[1], list):
                 tmp = w2*R2l2**(0.5*self.p[2])
-                Kprime += [ self.p[2]*tmp/self.p[1]*K ]
+                Kprime[:,:,h] = self.p[2]*tmp/self.p[1]*K
+                h += 1
             elif isinstance(self.hp[1], list):
                 for k in xrange(len(self.hp[1])):
                     if self.hp[1][k]:
                         tmp = Rk2[:,:,k]/self.p[1][k]**2
                         tmp *= R2l2**(0.5*self.p[2] - 1)
-                        Kprime += [ where(R2l2 != 0.0,
-                                          w2*self.p[2]/self.p[1][k]*tmp*K,
-                                          0.0) ]
+                        Kprime[:,:,h] = where(R2l2 != 0.0,
+                                          w2*self.p[2]/self.p[1][k]*tmp*K, 0.0)
+                        h += 1
             if self.hp[2]:
-                Kprime += [ where(R2l2 != 0.0,
-                                  -w2*R2l2**(0.5*self.p[2])*log(R2l2)*K, 0.0) ]
+                Kprime[:,:,h] = where(R2l2 != 0.0,
+                                    -w2*R2l2**(0.5*self.p[2])*log(R2l2)*K, 0.0)
             return (w2*K, Kprime)
 
 class SquareExp(Kernel):
@@ -274,21 +279,25 @@ class SquareExp(Kernel):
         else:
             R2l2 = zeros(Rk2.shape[:2])
             for k in xrange(Rk2.shape[2]):
-                R2l2 += Rk2[:,:,k]/self.p[1][k]**2
+                R2l2 += Rk2[:,:,k]/(self.p[1][k]**2)
         w2 = self.p[0]**2
         K = exp(-0.5*R2l2)
         if not grad:
             return w2*K
         else:
-            Kprime = []
+            Kprime = empty((Rk2.shape[0], Rk2.shape[1], self.Nhp))
+            h = 0
             if self.hp[0]:
-                Kprime += [ 2.0*self.p[0]*K ]
+                Kprime[:,:,h] = 2.0*self.p[0]*K
+                h += 1
             if self.hp[1] and not isinstance(self.hp[1], list):
-                Kprime += [ w2*R2l2/self.p[1]*K ]
+                Kprime[:,:,h] = w2*R2l2/self.p[1]*K
+                h += 1
             elif isinstance(self.hp[1], list):
                 for k in xrange(len(self.hp[1])):
                     if self.hp[1][k]:
-                        Kprime += [ w2*Rk2[:,:,k]/self.p[1][k]**3*K ]
+                        Kprime[:,:,h] = w2*Rk2[:,:,k]/self.p[1][k]**3*K
+                        h += 1
             return (w2*K, Kprime)
 
 class RatQuad(Kernel):
@@ -314,17 +323,21 @@ class RatQuad(Kernel):
         if not grad:
             return w2*K
         else:
-            Kprime = []
+            Kprime = empty((Rk2.shape[0], Rk2.shape[1], self.Nhp))
+            h = 0
             if self.hp[0]:
-                Kprime += [ 2.0*self.p[0]*K ]
+                Kprime[:,:,h] = 2.0*self.p[0]*K
+                h += 1
             if self.hp[1] and not isinstance(self.hp[1], list):
-                Kprime += [ w2*R2l2*K/(self.p[1]*tmp) ]
+                Kprime[:,:,h] = w2*R2l2*K/(self.p[1]*tmp)
+                h += 1
             elif isinstance(self.hp[1], list):
                 for k in xrange(len(self.hp[1])):
                     if self.hp[1][k]:
-                        Kprime += [ w2*Rk2[:,:,k]*K/(self.p[1][k]**3*tmp) ]
+                        Kprime[:,:,h] = w2*Rk2[:,:,k]*K/(self.p[1][k]**3*tmp)
+                        h += 1
             if self.hp[2]:
-                Kprime += [ w2*((tmp-1)/tmp - log(tmp))*tmp**(-self.p[2]) ]
+                Kprime[:,:,h] = w2*((tmp-1)/tmp - log(tmp))*tmp**(-self.p[2])
             return (w2*K, Kprime)
 
 # -- would like to add periodic, but it would require general handling of R --
@@ -376,11 +389,12 @@ class KernelSum(Kernel):
                 K += kern(Rk2)
             return K
         else:
-            (K, Kprime) = (0.0, [])
+            (K, Kprime) = (0.0, empty((Rk2.shape[0], Rk2.shape[1], self.Nhp)))
+            h = 0
             for kern in self.terms:
-                (K_t, Kprime_t) = kern(Rk2, grad)
+                (K_t, Kprime[:,:,h:h+kern.Nhp]) = kern(Rk2, grad)
                 K += K_t
-                Kprime += Kprime_t
+                h += kern.Nhp
             return (K, Kprime)
 
 
@@ -427,9 +441,10 @@ class KernelProd(Kernel):
         if not grad:
             return prod([kern(Rk2, grad) for kern in self.terms])
         else:
-            (K, Kprime) = (0.0, [])
+            (K, Kprime) = (0.0, empty((Rk2.shape[0], Rk2.shape[1], self.Nhp)))
+            h = 0
             for kern in self.terms:
-                (K_t, Kprime_t) = kern(Rk2, grad)
+                (K_t, Kprime[:,:,h:h+kern.Nhp]) = kern(Rk2, grad)
                 K *= K_t
-                Kprime += Kprime_t
+                h += kern.Nhp
             return (K, Kprime)

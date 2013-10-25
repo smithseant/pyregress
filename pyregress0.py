@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Docstring for the pygpr module - needs work.
+Docstring for the pyregress module - needs work.
 
 For basic useage see the documentation in the GPR class.
 This docstring covers more advanced topics.
@@ -96,6 +96,11 @@ class GPR:
             specify a dependent variable transformation with the name of a
             BaseTransform class (as a string) or a BaseTransform object.
             Options include: Logarithm, Probit, ProbitBeta, or Logit.
+        
+        Raises
+        ------
+        InputError:
+            an exception is thrown for incompatible format of any inputs.
         """
         self.__call__ = self.inference
         
@@ -260,7 +265,7 @@ class GPR:
             betaTh = invK_H.dot(Th)
         
         lnP_neg = ( float(self.Nd)*HLOG2PI + sum(log(diag(LK[0]))) +
-                    0.5*self.Yd.T.dot(invK_Y) )  # -- subtract prior --
+                    0.5*self.Yd.T.dot(invK_Y) + sum(log(abs(params))) )
         if self.basis is not None:
             lnP_neg -= ( float(self.Nth)*HLOG2PI - sum(log(diag(LSth[0]))) +
                          0.5*Th.T.dot(self.Hd.T.dot(betaTh)) )
@@ -268,12 +273,13 @@ class GPR:
         if not grad:
             return lnP_neg
         else:
-            lnP_grad = empty(shape(params))
-            for j in range(lnP_grad.shape[0]):
-                lnP_grad[j] = 0.5*( trace(cho_solve(LK,Kprime[j])) -
-                                    invK_Y.T.dot(Kprime[j].dot(invK_Y)) )
+            lnP_grad = empty(self.kernel.Nhp)
+            for j in range(self.kernel.Nhp):
+                lnP_grad[j] = 0.5*( trace(cho_solve(LK,Kprime[:,:,j])) -
+                                    invK_Y.T.dot(Kprime[:,:,j].dot(invK_Y)) +
+                                    2.0/params[j] )
                 if self.basis is not None:
-                    bKp = invK_H.T.dot(Kprime[j])
+                    bKp = invK_H.T.dot(Kprime[:,:,j])
                     lnP_grad[j] -= ( 0.5*(trace(bKp.dot(invK_H).dot(Sth))) +
                                      Th.T.dot(bKp.dot(0.5*betaTh-invK_Y)) )
             return (lnP_neg, lnP_grad)
@@ -353,6 +359,11 @@ class GPR:
             inferred standard deviation of the inferrences
             (if a variable transformation is used, both the positive and
             the negative standard deviations are returned - in that order).
+        
+        Raises
+        ------
+        InputError:
+            an exception is thrown for incompatible format of any inputs.
         """
         
         # Independent variables
@@ -410,6 +421,8 @@ class GPR:
         
         if not infer_std:
             return post_mean
+        elif infer_std == 'covar':
+            return (post_mean, post_covar)
         else:
             return (post_mean, post_std)
 

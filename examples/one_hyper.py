@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Example/test of the pygpr package.
+Example/test of the pyregress package.
 
 This demonstration generates a random sample from a 1D Gaussian process.
 Then, using the same kernel with all parameters known except one,
@@ -9,7 +9,7 @@ the posterior of this hyper-parameter is calculated and maximized.
 import numpy as np
 from numpy.random import random, randn
 import matplotlib.pyplot as plt
-from pygpr import *
+from pyregress import *
 
 # Setup the source GP with any single hyper-parameter
 Nt = Nd = 5*2**1
@@ -20,8 +20,8 @@ Yt_prior = Yd_prior = 5.0*(Xt/8.0 - 0.5)
 #(myK, myHyper) = (Noise([1.0]), [True])
 #(myK, myHyper) = (OU([1.0, [1.0]]), [False, [True]])
 #(myK, myHyper) = (GammaExp([1.0, 1.0, 2.0]), [False, True, False])
-(myK, myHyper) = (SquareExp([1.0, [1.0]]), [False, True])
-#(myK, myHyper) = (RatQuad([1.0, 1.0, 1.0]), [False, True, False])
+(myK, myHyper) = (SquareExp([1.0, 1.0]), [False, True])
+#(myK, myHyper) = (RatQuad([1.0, 1.0, 1.0]), [False, False, True])
 
 # Setup hyper-parameters in the kernel and map to an array
 myK.declare_hyper(myHyper)
