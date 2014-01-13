@@ -31,15 +31,15 @@ Reading the code and development:
 from numpy import (array, empty, ones, eye, shape, tile,
                    maximum, diag, trace, sum, sqrt)
 from numpy.linalg.linalg import LinAlgError
+from numpy.random import randn
 from scipy import pi, log
-#from scipy.spatial.distance import cdist
 from scipy.linalg import cho_factor, cho_solve
 from scipy.optimize import minimize
-    
+
 from kernels import Kernel, Noise, OU, GammaExp, SquareExp, RatQuad
 from transforms import BaseTransform, Logarithm, Probit, ProbitBeta, Logit
 
-HLOG2PI = 0.5*log(2*pi)
+HLOG2PI = 0.5*log(2.0*pi)
 
 class GPR:
     """
@@ -335,9 +335,10 @@ class GPR:
         return (self, myResult.x)
     
     
-    def inference(self, Xi, Yi_mean=None, infer_std=False):
+    def inference(self, Xi, Yi_mean=None, infer_std=False, untransform=True):
         """
         Make inferences (interpolation or regression) at specified locations.
+        Limited to a single value for any hyper-parameters.
         
         Arguments
         ---------
@@ -350,6 +351,8 @@ class GPR:
             Yd_mean from __init__. If omitted, uses a prior mean of zero.
         infer_std:  bool (optional),
             if True, return the inferred standard deviation.
+        untransform:  bool (optional),
+            if True, any inverse transformation is applied.
         
         Returns
         -------
@@ -357,8 +360,8 @@ class GPR:
             inferred mean at each location in the argument Xi.
         post_std: array-2D or list (optional - depending on infer_std),
             inferred standard deviation of the inferrences
-            (if a variable transformation is used, both the positive and
-            the negative standard deviations are returned - in that order).
+            (for any inverse transformation, both the positive and negative
+            standard deviations are returned - in that order).
         
         Raises
         ------
@@ -390,7 +393,7 @@ class GPR:
                 raise InputError("myGPR argument Yi_mean must have the same "+
                                  "length as first dimension of Xi.", Yi_mean)
             Yi_mean= Yi_mean.copy().reshape((-1,1))
-            if self.trans is None:
+            if self.trans is None or not untransform:
                 post_mean += Yi_mean
             else:
                 post_mean += self.trans(Yi_mean)
@@ -409,7 +412,7 @@ class GPR:
         #    to sample a processes from the posterior)? --
         
         # Inverse transformation of the dependent variable
-        if self.trans is not None:
+        if self.trans is not None and untransform:
             if infer_std:
                 post_std = [self.trans(post_mean-post_std, inverse=True),
                             self.trans(post_mean+post_std, inverse=True)]
@@ -425,6 +428,40 @@ class GPR:
             return (post_mean, post_covar)
         else:
             return (post_mean, post_std)
+    
+    
+    def sample(self, Xs, Ys_mean=None):
+        """
+        Sample the Gassian process at specified locations.
+        
+        Arguments
+        ---------
+        Xs:  array-2D,
+            independent variables - where to sample. First dimension is for
+            multiple inferences, and second dimension mustmatch the second
+            dimension of the argurment Xd from __init__.
+        Ys_mean:  array-1D [or column-shaped 2D] (optional),
+            prior mean of samples. Must be the same length as argument
+            Yd_mean from __init__. If omitted, uses a prior mean of zero.
+        
+        Returns
+        -------
+        Ys:  array-2D,
+            sample value at each location in the argument Xs.
+        
+        Raises
+        ------
+        InputError:
+            an exception is thrown for incompatible format of any inputs.
+        """
+        Ns = Xs.size
+        (Ys_post, Cov) = self.inference(Xs, Ys_mean, infer_std='covar',
+                                        untransform=False)
+        Z = randn(Ns).reshape((Ns,1))
+        Ys = Ys_post + Cov.dot(Z)
+        if self.trans is not None:
+            Ys = self.trans(Ys, inverse=True)
+        return Ys
 
 
 class Error(Exception):
