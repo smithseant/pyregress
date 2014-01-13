@@ -58,12 +58,12 @@ class GPR:
     >>> Xd = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
     ...             [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     >>> Yd = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
-    >>> myGPR = GPR( Xd, Yd, RatQuad([0.6,0.75,1.0]), anisotropy=False,
+    >>> myGPR = GPR( Xd, Yd, RatQuad([0.6,0.33,1.0]), anisotropy=False,
     ...             explicit_basis=[0,1], transform='Probit' )
     >>> myGPR.maximize_hyper_posterior( [False, True, False] )
     >>> print myGPR( np.array([[0.10, 0.10], [0.50, 0.42]]) )
-    [[ 0.22531132]
-     [ 0.77618499]]
+    [[ 0.21513894]
+     [ 0.75675894]]
     
     """
     def __init__(self, Xd, Yd, Cov, anisotropy='auto',
@@ -470,7 +470,7 @@ if __name__ == "__main__":
     Xd2 = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
                  [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
-    myGPR2 = GPR( Xd2, Yd2, RatQuad([0.6,0.75,1.0]), anisotropy=False,
+    myGPR2 = GPR( Xd2, Yd2, RatQuad([0.6,0.33,1.0]), anisotropy=False,
                  explicit_basis=[0,1], transform='Probit')
     myGPR2.maximize_hyper_posterior( [False, True, False] )
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
@@ -515,7 +515,7 @@ if __name__ == "__main__":
                     linewidth=0.25, color='black', rstride=1, cstride=1)
     ax.plot_surface(Xi_1, Xi_2, reshape(Yi2-Yi2std[1], Ni), alpha=0.25,
                     linewidth=0.25, color='black', rstride=1, cstride=1)
-    ax.scatter(Xd2[:,0], Xd2[:,1],Yd2, c='black', s=50)
+    ax.scatter(Xd2[:,0], Xd2[:,1],Yd2, c='black', s=35)
     ax.set_zlim([0.0,1.0])
     ax.set_title('Example 2', fontsize=16)
     ax.set_xlabel('Independent Variable, X1', fontsize=12)
