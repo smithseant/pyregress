@@ -36,8 +36,8 @@ from scipy import pi, log
 from scipy.linalg import cho_factor, cho_solve
 from scipy.optimize import minimize
 
-from kernels import Kernel, Noise, OU, GammaExp, SquareExp, RatQuad
-from transforms import BaseTransform, Logarithm, Probit, ProbitBeta, Logit
+from kernels import Kernel
+from transforms import BaseTransform
 
 HLOG2PI = 0.5*log(2.0*pi)
 
@@ -48,7 +48,7 @@ class GPR:
     Examples
     --------
     >>> import numpy as np
-    >>> from gpr import GPR, Noise, SquareExp, RatQuad
+    >>> from pyregress import GPR, Noise, SquareExp, RatQuad
     >>> Xd = array([[0.1],[0.3],[0.6]])
     >>> Yd = array([[0.0],[1.0],[0.5]])
     >>> myGPR = GPR( Xd, Yd, Noise([0.1])+SquareExp([1.0,0.1]) )
@@ -140,8 +140,12 @@ class GPR:
         else:
             raise InputError("GPR argument transform must be a BaseTransform "+
                              "class (string of name) or object.", transform)
-        if Yd_mean is not None:
-            if Yd_mean.shape[0] != self.Nd:
+        self.prior_mean = Yd_mean
+        if self.prior_mean is not None:
+            # TODO: input a function rather than data so there is no
+            #       requirement to input a corresponding mean at the
+            #       inference stage?
+            if self.prior_mean.shape[0] != self.Nd:
                 raise InputError("GPR argument Yd_mean must have the same "+
                                  "length as first dimension of Xd.", Yd_mean)
             if self.trans is None:
@@ -221,7 +225,7 @@ class GPR:
             Rk2[:,:,k] = ( tile(X[:,[k]]**2, (1, Ny))
                           +tile(Y[:,[k]].T**2, (Nx, 1))
                           -2.0*X[:,[k]].dot(Y[:,[k]].T) )
-            Rk2[:,:,k] *= self.aniso[k]
+            Rk2[:,:,k] /= self.aniso[k]
         return Rk2
     
     
@@ -264,8 +268,9 @@ class GPR:
             Th = cho_solve(LSth, self.Hd.T.dot(invK_Y))
             betaTh = invK_H.dot(Th)
         
+        # TODO: provide a prior based on max & min values in the distance matrix
         lnP_neg = ( float(self.Nd)*HLOG2PI + sum(log(diag(LK[0]))) +
-                    0.5*self.Yd.T.dot(invK_Y) + sum(log(abs(params))) )
+                    0.5*self.Yd.T.dot(invK_Y)  )#+ sum(log(abs(params))) )
         if self.basis is not None:
             lnP_neg -= ( float(self.Nth)*HLOG2PI - sum(log(diag(LSth[0]))) +
                          0.5*Th.T.dot(self.Hd.T.dot(betaTh)) )
@@ -347,8 +352,9 @@ class GPR:
             dimension is for multiple inferences, and second dimension must
             match the second dimension of the argurment Xd from __init__.
         Yi_mean:  array-1D [or column-shaped 2D] (optional),
-            prior mean of inferences. Must be the same length as argument
-            Yd_mean from __init__. If omitted, uses a prior mean of zero.
+            prior mean of inferences. It is required when the option
+            Yd_mean was used in __init__, and it must be the same length as
+            argument Yd_mean from __init__.
         infer_std:  bool (optional),
             if True, return the inferred standard deviation.
         untransform:  bool (optional),
@@ -374,8 +380,8 @@ class GPR:
             Xi = Xi.copy().reshape((-1,1))
         Ni = Xi.shape[0]
         if Xi.ndim != 2 or Xi.shape[1] != self.Nx:
-            raise InputError("myGPR argument Xi must be a 2D array (second "+
-                             "dimension length must match that of Xd.", Xi)
+            raise InputError("GPR object argument Xi must be a 2D array (2nd "+
+                             "dimension length must match that of Xd.)", Xi)
         
         # Mixed i-d kernel & inference of posterior mean
         R2id = self._calculate_radius2(Xi, self.Xd)
@@ -388,9 +394,16 @@ class GPR:
             post_mean += Hi.dot(self.Th)
         
         # Dependent variable
+        if self.prior_mean is not None and Yi_mean is None:
+            # TODO: allow the option of Yi_mean='Defect'.
+            raise InputError("GPR object argument Yi_mean is required when "+
+                             "Yd_mean was provided in __init__.")
+        elif self.prior_mean is None and Yi_mean is not None:
+            raise InputError("GPR object argument Yi_mean must be ommitted "+
+                             "when Yd_mean was not provided in __init__.")
         if Yi_mean is not None:
             if Yi_mean.shape[0] != Ni:
-                raise InputError("myGPR argument Yi_mean must have the same "+
+                raise InputError("GPR argument Yi_mean must have the same "+
                                  "length as first dimension of Xi.", Yi_mean)
             Yi_mean= Yi_mean.copy().reshape((-1,1))
             if self.trans is None or not untransform:
@@ -465,7 +478,7 @@ class GPR:
 
 
 class Error(Exception):
-    """Base class for exceptions in the gpr module."""
+    """Base class for exceptions in the pyregress module."""
     pass
 
 class InputError(Error):  # -- not a ValueError? --
@@ -491,6 +504,8 @@ if __name__ == "__main__":
     import matplotlib as mpl
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
+    from kernels import Noise, SquareExp, RatQuad
+    from transforms import Probit
     
     # Example 1:
     # Simple case, 1D with three data points and one regression point
