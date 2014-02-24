@@ -9,7 +9,7 @@ Performance:
   Most default python/numpy/scipy packages are based on unoptimized libs
   (including linux repositories and downloaded executables).
 Beyond commonly used kernels and basis functions:
-  overview of Kernel object and BaseBasis interface.
+  --give an overview of Kernel object and BaseBasis interface.--
 Reading the code and development:
   Notation used throughout the code:
     X => independent variables,
@@ -49,18 +49,18 @@ class GPR:
     --------
     >>> import numpy as np
     >>> from pyregress import GPR, Noise, SquareExp, RatQuad
-    >>> Xd = array([[0.1],[0.3],[0.6]])
-    >>> Yd = array([[0.0],[1.0],[0.5]])
-    >>> myGPR = GPR( Xd, Yd, Noise([0.1])+SquareExp([1.0,0.1]) )
+    >>> Xd = array([[0.1], [0.3], [0.6]])
+    >>> Yd = array([[0.0], [1.0], [0.5]])
+    >>> myGPR = GPR( Xd, Yd, Noise([0.1]) + SquareExp([1.0, 0.1]) )
     >>> print myGPR( np.array([[0.2]]) )
     [[ 0.54303481]]
     
     >>> Xd = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
     ...             [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     >>> Yd = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
-    >>> myGPR = GPR( Xd, Yd, RatQuad([0.6,0.33,1.0]), anisotropy=False,
-    ...             explicit_basis=[0,1], transform='Probit' )
-    >>> myGPR.maximize_hyper_posterior( [False, True, False] )
+    >>> myGPR = GPR(Xd, Yd, RatQuad([0.6, 0.33, 1.0]), anisotropy=False,
+    ...             explicit_basis=[0, 1], transform='Probit')
+    >>> myGPR.maximize_hyper_posterior([False, True, False])
     >>> print myGPR( np.array([[0.10, 0.10], [0.50, 0.42]]) )
     [[ 0.21513894]
      [ 0.75675894]]
@@ -106,7 +106,7 @@ class GPR:
         
         # Independent variables
         if Xd.ndim == 1:
-            self.Xd = Xd.copy().reshape((-1,1))
+            self.Xd = Xd.copy().reshape((-1, 1))
         elif Xd.ndim == 2:
             self.Xd = Xd
         else:
@@ -114,22 +114,22 @@ class GPR:
         (self.Nd, self.Nx) = shape(Xd)
         if not anisotropy:
             self.aniso = ones(self.Nx)
-        elif anisotropy == True or anisotropy == 'auto':
+        elif anisotropy is True or anisotropy == 'auto':
             self.aniso = (Xd.max(0)-Xd.min(0))**2
         elif shape(anisotropy) == (self.Nx,):
             self.aniso = anisotropy
         else:
-            raise InputError("GPR argument anisotropy must be one of: False, "+
-                             "True, 'auto', or 1D array (same length as the "+
-                             "second dimension of Xd).", anisotropy)
+            raise InputError("GPR argument anisotropy must be one of: " +
+                             "False, True, 'auto', or 1D array (same length " +
+                             "as the second dimension of Xd).", anisotropy)
         
         # Dependent variable
         if Yd.shape[0] != self.Nd:
-            raise InputError("GPR argument Yd must have the same length as "+
+            raise InputError("GPR argument Yd must have the same length as " +
                              "the first dimension of Xd.", Yd)
-        self.Yd = Yd.copy().reshape((-1,1))
+        self.Yd = Yd.copy().reshape((-1, 1))
         if transform is None:
-            self.Yd = Yd.copy().reshape((-1,1))
+            self.Yd = Yd.copy().reshape((-1, 1))
             self.trans = None
         elif isinstance(transform, basestring):
             self.trans = eval(transform+'(self.Yd)')
@@ -138,7 +138,7 @@ class GPR:
             self.trans = transform
             self.Yd = self.trans(self.Yd)
         else:
-            raise InputError("GPR argument transform must be a BaseTransform "+
+            raise InputError("GPR argument transform must be BaseTransform " +
                              "class (string of name) or object.", transform)
         self.prior_mean = Yd_mean
         if self.prior_mean is not None:
@@ -146,12 +146,12 @@ class GPR:
             #       requirement to input a corresponding mean at the
             #       inference stage?
             if self.prior_mean.shape[0] != self.Nd:
-                raise InputError("GPR argument Yd_mean must have the same "+
+                raise InputError("GPR argument Yd_mean must have the same " +
                                  "length as first dimension of Xd.", Yd_mean)
             if self.trans is None:
-                self.Yd -= Yd_mean.reshape((-1,1))
+                self.Yd -= Yd_mean.reshape((-1, 1))
             else:
-                self.Yd -= self.trans(Yd_mean.reshape(-1,1))
+                self.Yd -= self.trans(Yd_mean.reshape(-1, 1))
         self.basis = explicit_basis
         if self.basis is not None:
             (self.Nth, self.Hd) = self._get_basis(Xd)
@@ -169,10 +169,9 @@ class GPR:
         try:
             self.LKdd = cho_factor(self.Kdd)
         except LinAlgError as e:
-            print ("GPR method __init__ failed to factor data kernel."+
-                   "This is most often an indication that the observed data, "+
-                   "Xd, has duplicates or that the noise kernel has too "+
-                   "small of weight.")
+            print ("GPR method __init__ failed to factor data kernel." +
+                   "This is often an indication that Xd has duplicates or " +
+                   "the noise kernel has too small of weight.")
             raise e
         self.invKdd_Yd = cho_solve(self.LKdd, self.Yd)
         if self.basis is not None:
@@ -192,15 +191,15 @@ class GPR:
             H = empty((N, Nth))
             j = 0
             if self.basis.count(0):
-                H[:,j] = 1.0
+                H[:, j] = 1.0
                 j += 1
             if self.basis.count(1):
-                H[:,j:j+self.Nx] = X
+                H[:, j:j+self.Nx] = X
                 j += self.Nx
             if self.basis.count(2):
                 for ix in range(self.Nx):
                     for jx in range(self.Nx):
-                        H[:,j] = X[:,ix]*X[:,jx]
+                        H[:, j] = X[:,ix]*X[:,jx]
                         j += 1
         # TODO: add a base class or abtract interface for the basis functions.
         #     http://dirtsimple.org/2004/12/python-interfaces-are-not-java.html
@@ -209,7 +208,7 @@ class GPR:
         #    self.Nth = H.shape[1]
         else:
             # TODO: check that there is more data than degrees of freedom.
-            raise InputError("GPR argument explicit_basis must be a list "+
+            raise InputError("GPR argument explicit_basis must be a list " +
                              "with: 0, 1, and/or 2.", self.basis)
         return (Nth, H)
     
@@ -222,10 +221,10 @@ class GPR:
         (Nx, Ny) = (X.shape[0], Y.shape[0])
         Rk2 = empty((Nx, Ny, self.Nx))
         for k in xrange(self.Nx):
-            Rk2[:,:,k] = ( tile(X[:,[k]]**2, (1, Ny))
-                          +tile(Y[:,[k]].T**2, (Nx, 1))
-                          -2.0*X[:,[k]].dot(Y[:,[k]].T) )
-            Rk2[:,:,k] /= self.aniso[k]
+            Rk2[:, :, k] = ( tile(X[:,[k]]**2, (1, Ny)) +
+                             tile(Y[:,[k]].T**2, (Nx, 1)) -
+                             2.0*X[:,[k]].dot(Y[:,[k]].T) )
+            Rk2[:, :, k] /= self.aniso[k]
         return Rk2
     
     
@@ -254,8 +253,8 @@ class GPR:
         try:
             LK = cho_factor(K)
         except LinAlgError as e:
-            print ("GPR method hyper_posterior failed to factor the "+
-                   "data kernel. This is most often an indication that the "+
+            print ("GPR method hyper_posterior failed to factor the " +
+                   "data kernel. This is most often an indication that the " +
                    "minimization routine is not converging.")
             print ('Current hyper-parameter values: ')
             print (repr(params))
@@ -270,7 +269,7 @@ class GPR:
         
         # TODO: provide a prior based on max & min values in the distance matrix
         lnP_neg = ( float(self.Nd)*HLOG2PI + sum(log(diag(LK[0]))) +
-                    0.5*self.Yd.T.dot(invK_Y)  )#+ sum(log(abs(params))) )
+                    0.5*self.Yd.T.dot(invK_Y) )#+ sum(log(abs(params))) )
         if self.basis is not None:
             lnP_neg -= ( float(self.Nth)*HLOG2PI - sum(log(diag(LSth[0]))) +
                          0.5*Th.T.dot(self.Hd.T.dot(betaTh)) )
@@ -312,17 +311,17 @@ class GPR:
         
         # Perform minimization
         myResult = minimize(self.hyper_posterior, all_hyper,
-                            args=(all_hyper,False), method='Nelder-Mead',
+                            args=(all_hyper, False), method='Nelder-Mead',
                             tol=1e-4, options={'maxiter':200, 'disp':True})
-# -- To use BFGS or CG, I will need to edit those routines to start with
-#    smaller initial steps (based on the arguments fed to the linesearch). --
-#        myResult = minimize(self.hyper_posterior, all_hyper,
-#                            args=(all_hyper,), method='BFGS', jac=True,
-#                            tol=1e-4, options={'maxiter':200, 'disp':True})
-#        myResult = minimize(self.hyper_posterior, all_hyper,
-#                            args=(all_hyper,), method='L-BFGS-B', jac=True,
-#                            bounds=[(0.0,None)]*Nhyper, tol=1e-4,
-#                            options={'maxiter':200, 'disp':True})
+        # -- To use BFGS or CG, one must edit those routines for
+        #    a smaller initial step (arguments fed to linesearch). --
+        # myResult = minimize(self.hyper_posterior, all_hyper,
+        #                     args=(all_hyper,), method='BFGS', jac=True,
+        #                     tol=1e-4, options={'maxiter':200, 'disp':True})
+        # myResult = minimize(self.hyper_posterior, all_hyper,
+        #                     args=(all_hyper,), method='L-BFGS-B', jac=True,
+        #                     bounds=[(0.0,None)]*Nhyper, tol=1e-4,
+        #                     options={'maxiter':200, 'disp':True})
         
         # copy hyper-parameter values back to kernel (remove mapping)
         self.kernel.map_hyper(all_hyper, unmap=True)
@@ -377,11 +376,11 @@ class GPR:
         
         # Independent variables
         if Xi.ndim == 1:
-            Xi = Xi.copy().reshape((-1,1))
+            Xi = Xi.copy().reshape((-1, 1))
         Ni = Xi.shape[0]
         if Xi.ndim != 2 or Xi.shape[1] != self.Nx:
-            raise InputError("GPR object argument Xi must be a 2D array (2nd "+
-                             "dimension length must match that of Xd.)", Xi)
+            raise InputError("GPR object argument Xi must be a 2D array " +
+                             "(2nd dimension must match that of Xd.)", Xi)
         
         # Mixed i-d kernel & inference of posterior mean
         R2id = self._calculate_radius2(Xi, self.Xd)
@@ -396,16 +395,16 @@ class GPR:
         # Dependent variable
         if self.prior_mean is not None and Yi_mean is None:
             # TODO: allow the option of Yi_mean='Defect'.
-            raise InputError("GPR object argument Yi_mean is required when "+
+            raise InputError("GPR object argument Yi_mean is required when " +
                              "Yd_mean was provided in __init__.")
         elif self.prior_mean is None and Yi_mean is not None:
-            raise InputError("GPR object argument Yi_mean must be ommitted "+
+            raise InputError("GPR object argument Yi_mean must be ommitted " +
                              "when Yd_mean was not provided in __init__.")
         if Yi_mean is not None:
             if Yi_mean.shape[0] != Ni:
-                raise InputError("GPR argument Yi_mean must have the same "+
+                raise InputError("GPR argument Yi_mean must have the same " +
                                  "length as first dimension of Xi.", Yi_mean)
-            Yi_mean= Yi_mean.copy().reshape((-1,1))
+            Yi_mean = Yi_mean.copy().reshape((-1, 1))
             if self.trans is None or not untransform:
                 post_mean += Yi_mean
             else:
@@ -419,7 +418,7 @@ class GPR:
             if self.basis is not None:
                 A = Hi - Kid.dot(self.invKdd_Hd)
                 post_covar += A.dot(self.Sth.dot(A.T))
-            post_var = maximum(0.0, diag(post_covar)).reshape((-1,1))
+            post_var = maximum(0.0, diag(post_covar)).reshape((-1, 1))
             post_std = sqrt(post_var)
         # -- option to return the full posterior covariance (would be needed
         #    to sample a processes from the posterior)? --
@@ -470,7 +469,7 @@ class GPR:
         Ns = Xs.size
         (Ys_post, Cov) = self.inference(Xs, Ys_mean, infer_std='covar',
                                         untransform=False)
-        Z = randn(Ns).reshape((Ns,1))
+        Z = randn(Ns).reshape((Ns, 1))
         Ys = Ys_post + Cov.dot(Z)
         if self.trans is not None:
             Ys = self.trans(Ys, inverse=True)
@@ -509,9 +508,9 @@ if __name__ == "__main__":
     
     # Example 1:
     # Simple case, 1D with three data points and one regression point
-    Xd1 = array([[0.1],[0.3],[0.6]])
-    Yd1 = array([[0.0],[1.0],[0.5]])
-    myGPR1 = GPR( Xd1, Yd1, Noise([0.1])+SquareExp([1.0,0.1]) )
+    Xd1 = array([[0.1], [0.3], [0.6]])
+    Yd1 = array([[0.0], [1.0], [0.5]])
+    myGPR1 = GPR( Xd1, Yd1, Noise([0.1]) + SquareExp([1.0, 0.1]) )
     xi1 = array([[0.2]])
     yi1 = myGPR1( xi1 )
     print 'Example 1:'
@@ -522,9 +521,9 @@ if __name__ == "__main__":
     Xd2 = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
                  [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
-    myGPR2 = GPR( Xd2, Yd2, RatQuad([0.6,0.33,1.0]), anisotropy=False,
-                 explicit_basis=[0,1], transform='Probit')
-    myGPR2.maximize_hyper_posterior( [False, True, False] )
+    myGPR2 = GPR(Xd2, Yd2, RatQuad([0.6, 0.33, 1.0]), anisotropy=False,
+                 explicit_basis=[0, 1], transform='Probit')
+    myGPR2.maximize_hyper_posterior([False, True, False])
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
     yi2 = myGPR2( xi2 )
     print 'Example 2:'
@@ -537,29 +536,29 @@ if __name__ == "__main__":
     (Yi1, Yi1std) = myGPR1(Xi1, infer_std=True)
     (Yi1, Yi1std) = (Yi1.reshape(-1), Yi1std.reshape(-1))
     
-    fig1 = plt.figure(figsize=(5,3), dpi=150)
+    fig1 = plt.figure(figsize=(5, 3), dpi=150)
     p1, = plt.plot(Xd1, Yd1, 'ko')
     p2, = plt.plot(Xi1, Yi1, 'b-', linewidth=2.0)
-    plt.fill_between(Xi1, Yi1-Yi1std, Yi1+Yi1std, alpha=0.25)    
+    plt.fill_between(Xi1, Yi1-Yi1std, Yi1+Yi1std, alpha=0.25)
     p3 = plt.Rectangle((0.0, 0.0), 1.0, 1.0, facecolor='blue', alpha=0.25)
     p4, = plt.plot(xi1, yi1, 'ro')
     fig1.subplots_adjust(left=0.15, right=0.95, bottom=0.15, top=0.9)
     plt.title('Example 1', fontsize=16)
     plt.xlabel('Independent Variable, X', fontsize=12)
     plt.ylabel('Dependent Variable, Y', fontsize=12)
-    plt.legend([p1,p2,p3,p4], ('Data', 'Inferred mean',
+    plt.legend([p1, p2, p3, p4], ('Data', 'Inferred mean',
                'Uncertainty (one std.)', 'Example regression point'),
                numpoints=1, loc='best', prop={'size':8})
 
     # fig. example 2
-    Ni = (30,30)
-    xi_1 = linspace(-0.2,1.2,Ni[0])
-    xi_2 = linspace(-0.2,1.0,Ni[1])
-    (Xi_1, Xi_2) = meshgrid(xi_1,xi_2, indexing='ij')
-    Xi2 = hstack([Xi_1.reshape((-1,1)), Xi_2.reshape((-1,1))])
+    Ni = (30, 30)
+    xi_1 = linspace(-0.2, 1.2, Ni[0])
+    xi_2 = linspace(-0.2, 1.0, Ni[1])
+    (Xi_1, Xi_2) = meshgrid(xi_1, xi_2, indexing='ij')
+    Xi2 = hstack([Xi_1.reshape((-1, 1)), Xi_2.reshape((-1, 1))])
     (Yi2, Yi2std) = myGPR2.inference(Xi2, infer_std=True)
     
-    fig = plt.figure(figsize=(7,5), dpi=150)
+    fig = plt.figure(figsize=(7, 5), dpi=150)
     ax = fig.gca(projection='3d')
     ax.plot_surface(Xi_1, Xi_2, Yi2.reshape(Ni), alpha=0.75,
                     linewidth=0.5, cmap=mpl.cm.jet, rstride=1, cstride=1)
@@ -567,11 +566,12 @@ if __name__ == "__main__":
                     linewidth=0.25, color='black', rstride=1, cstride=1)
     ax.plot_surface(Xi_1, Xi_2, reshape(Yi2-Yi2std[1], Ni), alpha=0.25,
                     linewidth=0.25, color='black', rstride=1, cstride=1)
-    ax.scatter(Xd2[:,0], Xd2[:,1],Yd2, c='black', s=35)
-    ax.set_zlim([0.0,1.0])
+    ax.scatter(Xd2[:, 0], Xd2[:, 1], Yd2, c='black', s=35)
+    ax.set_zlim([0.0, 1.0])
     ax.set_title('Example 2', fontsize=16)
     ax.set_xlabel('Independent Variable, X1', fontsize=12)
     ax.set_ylabel('Independent Variable, X2', fontsize=12)
     ax.set_zlabel('Dependent Variable, Y', fontsize=12)
 
     plt.show()
+    
