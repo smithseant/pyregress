@@ -53,7 +53,7 @@ class GPR:
     >>> Yd = array([[0.0], [1.0], [0.5]])
     >>> myGPR = GPR( Xd, Yd, Noise([0.1]) + SquareExp([1.0, 0.1]) )
     >>> print myGPR( np.array([[0.2]]) )
-    [[ 0.54303481]]
+    [[ 0.54624635]]
     
     >>> Xd = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
     ...             [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
@@ -510,7 +510,7 @@ if __name__ == "__main__":
     # Simple case, 1D with three data points and one regression point
     Xd1 = array([[0.1], [0.3], [0.6]])
     Yd1 = array([[0.0], [1.0], [0.5]])
-    myGPR1 = GPR( Xd1, Yd1, Noise([0.1]) + SquareExp([1.0, 0.1]) )
+    myGPR1 = GPR( Xd1, Yd1, Noise([0.1]) + SquareExp([1.0, 0.3]) )
     xi1 = array([[0.2]])
     yi1 = myGPR1( xi1 )
     print 'Example 1:'
@@ -532,7 +532,7 @@ if __name__ == "__main__":
     
     # Figures to support the examples
     # fig. example 1
-    Xi1 = linspace(0.0, 0.75)
+    Xi1 = linspace(0.0, 0.75, 200)
     (Yi1, Yi1std) = myGPR1(Xi1, infer_std=True)
     (Yi1, Yi1std) = (Yi1.reshape(-1), Yi1std.reshape(-1))
     
