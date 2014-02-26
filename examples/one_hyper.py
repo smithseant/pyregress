@@ -15,7 +15,8 @@ from pyregress import *
 Nt = Nd = 5*2**1
 Xt = Xd = 8.0*(random(Nd)).reshape((-1,1))
 #Xt = Xd = np.linspace(0.0, 8.0, Nt).reshape((-1,1))
-Yt_prior = Yd_prior = 5.0*(Xt/8.0 - 0.5)
+def prior_mean_function(inputs):
+    return 5.0*(inputs/8.0 - 0.5)
 
 #(myK, myHyper) = (Noise([1.0]), [True])
 #(myK, myHyper) = (OU([1.0, [1.0]]), [False, [True]])
@@ -30,11 +31,11 @@ myK.map_hyper(p_mapped)
 
 # Generate the testing data from the source GP
 sourceGP = GPR(Xt, np.zeros((Nt, 1)), myK, anisotropy=False)
-Yt = Yd = sourceGP.Kdd.dot(randn(Nt)).reshape((Nt, 1)) + Yt_prior
+Yt = Yd = sourceGP.Kdd.dot(randn(Nt)).reshape((Nt, 1)) + prior_mean_function(Xt)
 (Xt, Yt) = (Xd.reshape(Nt), Yd.reshape(Nt))
 
 # Setup the GPR object
-myGPR = GPR(Xd, Yd, myK, anisotropy=False, Yd_mean=Yd_prior)
+myGPR = GPR(Xd, Yd, myK, anisotropy=False, Yd_mean=prior_mean_function)
 
 # Posterior of the hyper-parameter
 hyper = np.linspace(0.2, 2.0, 100)
@@ -70,7 +71,8 @@ myK.map_hyper(p_mapped)
 Ni = 100
 Xi = np.linspace(0.0, 8.0, Ni).reshape((-1,1))
 Yi_prior = 5.0*(Xi/8.0 - 0.5)
-(post_mean, post_std) = myGPR.inference(Xi, Yi_mean=Yi_prior, infer_std=True)
+##(post_mean, post_std) = myGPR.inference(Xi, Yi_mean=Yi_prior, infer_std=True)
+(post_mean, post_std) = myGPR.inference(Xi, infer_std=True)
 Xi = Xi.reshape(-1)
 (post_mean, post_std) = (post_mean.reshape(-1), post_std.reshape(-1))
 

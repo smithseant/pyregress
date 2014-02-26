@@ -86,9 +86,11 @@ class GPR:
             scaling of the independent variables. For 'auto' or True, it uses
             range scaling. For False, no scaling. For an array with the same
             length as the second dimension of Xd, it uses manual scaling.
-        Yd_mean:  array-1D [or column-shaped 2D] (optional),
-            prior mean of the dependent variable at Xd. Must be the same
-            length as Yd. If omitted, uses a prior mean of zero.
+        Yd_mean:  a function (optional),
+            prior mean of the dependent variable at Xd.  Must take input
+            of data in form of Xd, and output in same shape as Yd.  If
+            omitted, uses a prior mean of zero.  Will be used in inference
+            if supplied for GPR object.
         explicit_basis:  list (optional),
             explicit basis functions are specified by any combination of the
             integers: 0, 1, 2 - each corresponding to its polynomial order.
@@ -140,18 +142,13 @@ class GPR:
         else:
             raise InputError("GPR argument transform must be BaseTransform " +
                              "class (string of name) or object.", transform)
-        self.prior_mean = Yd_mean
-        if self.prior_mean is not None:
-            # TODO: input a function rather than data so there is no
-            #       requirement to input a corresponding mean at the
-            #       inference stage?
-            if self.prior_mean.shape[0] != self.Nd:
-                raise InputError("GPR argument Yd_mean must have the same " +
-                                 "length as first dimension of Xd.", Yd_mean)
+        self.prior_mean_func = Yd_mean
+        if self.prior_mean_func is not None:
+            self.prior_mean = Yd_mean(Xd)
             if self.trans is None:
-                self.Yd -= Yd_mean.reshape((-1, 1))
+                self.Yd -= Yd_mean(Xd).reshape((-1, 1))
             else:
-                self.Yd -= self.trans(Yd_mean.reshape(-1, 1))
+                self.Yd -= self.trans(Yd_mean(Xd).reshape(-1, 1))
         self.basis = explicit_basis
         if self.basis is not None:
             (self.Nth, self.Hd) = self._get_basis(Xd)
@@ -339,7 +336,7 @@ class GPR:
         return (self, myResult.x)
     
     
-    def inference(self, Xi, Yi_mean=None, infer_std=False, untransform=True):
+    def inference(self, Xi, infer_std=False, untransform=True):
         """
         Make inferences (interpolation or regression) at specified locations.
         Limited to a single value for any hyper-parameters.
@@ -350,10 +347,6 @@ class GPR:
             independent variables - where to make inferences. First
             dimension is for multiple inferences, and second dimension must
             match the second dimension of the argurment Xd from __init__.
-        Yi_mean:  array-1D [or column-shaped 2D] (optional),
-            prior mean of inferences. It is required when the option
-            Yd_mean was used in __init__, and it must be the same length as
-            argument Yd_mean from __init__.
         infer_std:  bool (optional),
             if True, return the inferred standard deviation.
         untransform:  bool (optional),
@@ -372,6 +365,12 @@ class GPR:
         ------
         InputError:
             an exception is thrown for incompatible format of any inputs.
+            
+        
+        Note
+        -----
+        If prior_mean_func was specified for GPR class object, this function
+            will also be applied to Xi data.
         """
         
         # Independent variables
@@ -393,18 +392,8 @@ class GPR:
             post_mean += Hi.dot(self.Th)
         
         # Dependent variable
-        if self.prior_mean is not None and Yi_mean is None:
-            # TODO: allow the option of Yi_mean='Defect'.
-            raise InputError("GPR object argument Yi_mean is required when " +
-                             "Yd_mean was provided in __init__.")
-        elif self.prior_mean is None and Yi_mean is not None:
-            raise InputError("GPR object argument Yi_mean must be ommitted " +
-                             "when Yd_mean was not provided in __init__.")
-        if Yi_mean is not None:
-            if Yi_mean.shape[0] != Ni:
-                raise InputError("GPR argument Yi_mean must have the same " +
-                                 "length as first dimension of Xi.", Yi_mean)
-            Yi_mean = Yi_mean.copy().reshape((-1, 1))
+        if self.prior_mean_func is not None:
+            Yi_mean = self.prior_mean_func(Xi).reshape((-1,1))
             if self.trans is None or not untransform:
                 post_mean += Yi_mean
             else:
