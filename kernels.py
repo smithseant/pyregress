@@ -6,7 +6,7 @@ Docstring for the kernels module - needs to be written
 # @author: Sean T. Smith
 
 from abc import ABCMeta, abstractmethod
-from numpy import array, empty, zeros, diag, sum, prod, where
+from numpy import array, empty, zeros, diag, sum, prod, where, mean, concatenate
 from scipy import exp, log
 
 class Kernel:
@@ -32,6 +32,10 @@ class Kernel:
             values for the kernel parameters.
         """
         # TODO: throw an error if the number of parameters doesn't match.
+        if (Nparams != len(params)):
+            raise InputError("Length of parameter vector input into kernel" +
+                             "does not match specified number of parameters" +
+                             Nparams, "!=", len(params))
         self.Np = Nparams
         self.p = params
         self.Nhp = 0
@@ -60,6 +64,9 @@ class Kernel:
             kernel values - shape must match argument R.
         gradK: list of arrays (optional - depending on argument grad),
             partial of kernel with respect to each hyper parameter.
+        lPriors: array-2D (kernel dependent, only length params)
+            of prior and derivatives in order to calculate posterier 
+            instead of marginal likelihood
         """
         return
     
@@ -177,7 +184,8 @@ class Noise(Kernel):
             Kprime = empty((Rk2.shape[0], Rk2.shape[1], self.Nhp))
             if self.hp[0]:
                 Kprime[:,:,0] = 2.0*self.p[0]*K
-            return (w2*K, Kprime)
+            lPriors = array([[0.0],[0.0]])
+            return (w2*K, Kprime, lPriors)
 
 class OU(Kernel):
     r"""
@@ -216,7 +224,8 @@ class OU(Kernel):
                         Kprime[:,:,h] = where(Rl != 0.0,
                                      w2*Rk2[:,:,k]/(self.p[1][k]**3*Rl)*K, 0.0)
                         h += 1
-            return (w2*K, Kprime)
+            lPriors = array([[0.0, 1.0/mean(Rk2)],[0.0, 1.0/mean(Rk2)]])
+            return (w2*K, Kprime, lPriors)
 
 class GammaExp(Kernel):
     r"""
@@ -261,7 +270,9 @@ class GammaExp(Kernel):
             if self.hp[2]:
                 Kprime[:,:,h] = where(R2l2 != 0.0,
                                     -w2*R2l2**(0.5*self.p[2])*log(R2l2)*K, 0.0)
-            return (w2*K, Kprime)
+            lPriors = array([[0.0, 1.0/mean(Rk2), 0.0],
+                             [0.0, 1.0/mean(Rk2), 0.0]])
+            return (w2*K, Kprime, lPriors)
 
 class SquareExp(Kernel):
     r"""
@@ -298,7 +309,8 @@ class SquareExp(Kernel):
                     if self.hp[1][k]:
                         Kprime[:,:,h] = w2*Rk2[:,:,k]/self.p[1][k]**3*K
                         h += 1
-            return (w2*K, Kprime)
+            lPriors = array([[0.0, 1.0/mean(Rk2)],[0.0, 1.0/mean(Rk2)]])
+            return (w2*K, Kprime, lPriors)
 
 class RatQuad(Kernel):
     r"""
@@ -338,7 +350,9 @@ class RatQuad(Kernel):
                         h += 1
             if self.hp[2]:
                 Kprime[:,:,h] = w2*((tmp-1)/tmp - log(tmp))*tmp**(-self.p[2])
-            return (w2*K, Kprime)
+            lPriors = array([[0.0, 1.0/mean(Rk2), 0.0],
+                             [0.0, 1.0/mean(Rk2), 0.0]])
+            return (w2*K, Kprime, lPriors)
 
 # -- would like to add periodic, but it would require general handling of R --
 
@@ -390,13 +404,14 @@ class KernelSum(Kernel):
             return K
         else:
             (K, Kprime) = (0.0, empty((Rk2.shape[0], Rk2.shape[1], self.Nhp)))
+            lPriors = empty([2,0])
             h = 0
             for kern in self.terms:
-                (K_t, Kprime[:,:,h:h+kern.Nhp]) = kern(Rk2, grad)
+                (K_t, Kprime[:,:,h:h+kern.Nhp], lPriors_t) = kern(Rk2, grad)
                 K += K_t
                 h += kern.Nhp
-            return (K, Kprime)
-
+                lPriors = concatenate((lPriors, lPriors_t),axis=1)
+            return (K, Kprime, lPriors)
 
 class KernelProd(Kernel):
     """Modified Kernel class that holds the product of Kernel objects."""
@@ -436,15 +451,17 @@ class KernelProd(Kernel):
             self.terms[k].map_hyper(p_mapped[i:i+self.terms[k].Nhp], unmap)
             i += self.terms[k].Nhp
         return (self, p_mapped)
-    
+
     def __call__(self, Rk2, grad=False):
         if not grad:
             return prod([kern(Rk2, grad) for kern in self.terms])
         else:
             (K, Kprime) = (0.0, empty((Rk2.shape[0], Rk2.shape[1], self.Nhp)))
+            lPriors = empty([2,0])
             h = 0
             for kern in self.terms:
-                (K_t, Kprime[:,:,h:h+kern.Nhp]) = kern(Rk2, grad)
+                (K_t, Kprime[:,:,h:h+kern.Nhp], lPriors_t) = kern(Rk2, grad)
                 K *= K_t
                 h += kern.Nhp
-            return (K, Kprime)
+                lPriors = concatenate((lPriors, lPriors_t),axis=1)
+            return (K, Kprime, lPriors)

@@ -245,7 +245,7 @@ class GPR:
             gradient of lnP_neg with respect to each hyper-parameter.
         """
         p_mapped[:] = params
-        (K, Kprime) = self.kernel(self.R2dd, grad=True)
+        (K, Kprime, lPriors) = self.kernel(self.R2dd, grad=True)
         try:
             LK = cho_factor(K)
         except LinAlgError as e:
@@ -265,7 +265,7 @@ class GPR:
         
         # TODO: provide a prior based on max & min values in the distance matrix
         lnP_neg = ( float(self.Nd)*HLOG2PI + sum(log(diag(LK[0]))) +
-                    0.5*self.Yd.T.dot(invK_Y) )#+ sum(log(abs(params))) )
+                    0.5*self.Yd.T.dot(invK_Y) - log(sum(lPriors[0,:])))#+ sum(log(abs(params))) )
         if self.basis is not None:
             lnP_neg -= ( float(self.Nth)*HLOG2PI - sum(log(diag(LSth[0]))) +
                          0.5*Th.T.dot(self.Hd.T.dot(betaTh)) )
@@ -276,8 +276,8 @@ class GPR:
             lnP_grad = empty(self.kernel.Nhp)
             for j in range(self.kernel.Nhp):
                 lnP_grad[j] = 0.5*( trace(cho_solve(LK,Kprime[:,:,j])) -
-                                    invK_Y.T.dot(Kprime[:,:,j].dot(invK_Y)) +
-                                    2.0/params[j] )
+                                    invK_Y.T.dot(Kprime[:,:,j].dot(invK_Y)) 
+                                    + 2.0*lPriors[1,j] ) #+ 2.0/params[j] )
                 if self.basis is not None:
                     bKp = invK_H.T.dot(Kprime[:,:,j])
                     lnP_grad[j] -= ( 0.5*(trace(bKp.dot(invK_H).dot(Sth))) +
@@ -306,18 +306,18 @@ class GPR:
         self.kernel.map_hyper(all_hyper)
         
         # Perform minimization
-        myResult = minimize(self.hyper_posterior, all_hyper,
-                            args=(all_hyper, False), method='Nelder-Mead',
-                            tol=1e-4, options={'maxiter':200, 'disp':True})
+        #myResult = minimize(self.hyper_posterior, all_hyper,
+        #                    args=(all_hyper, False), method='Nelder-Mead',
+        #                    tol=1e-4, options={'maxiter':200, 'disp':True})
         # -- To use BFGS or CG, one must edit those routines for
         #    a smaller initial step (arguments fed to linesearch). --
         # myResult = minimize(self.hyper_posterior, all_hyper,
         #                     args=(all_hyper,), method='BFGS', jac=True,
         #                     tol=1e-4, options={'maxiter':200, 'disp':True})
-        # myResult = minimize(self.hyper_posterior, all_hyper,
-        #                     args=(all_hyper,), method='L-BFGS-B', jac=True,
-        #                     bounds=[(0.0,None)]*Nhyper, tol=1e-4,
-        #                     options={'maxiter':200, 'disp':True})
+        myResult = minimize(self.hyper_posterior, all_hyper,
+                             args=(all_hyper,), method='L-BFGS-B', jac=True,
+                             bounds=[(0.0,None)]*Nhyper, tol=1e-4,
+                             options={'maxiter':200, 'disp':True})
         
         # copy hyper-parameter values back to kernel (remove mapping)
         self.kernel.map_hyper(all_hyper, unmap=True)
@@ -440,9 +440,6 @@ class GPR:
             independent variables - where to sample. First dimension is for
             multiple inferences, and second dimension mustmatch the second
             dimension of the argurment Xd from __init__.
-        Ys_mean:  array-1D [or column-shaped 2D] (optional),
-            prior mean of samples. Must be the same length as argument
-            Yd_mean from __init__. If omitted, uses a prior mean of zero.
         
         Returns
         -------
@@ -494,6 +491,8 @@ if __name__ == "__main__":
     from kernels import Noise, SquareExp, RatQuad
     from transforms import Probit
     
+    plt.close('all')
+    
     # Example 1:
     # Simple case, 1D with three data points and one regression point
     Xd1 = array([[0.1], [0.3], [0.6]])
@@ -511,7 +510,8 @@ if __name__ == "__main__":
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
     myGPR2 = GPR(Xd2, Yd2, RatQuad([0.6, 0.33, 1.0]), anisotropy=False,
                  explicit_basis=[0, 1], transform='Probit')
-    myGPR2.maximize_hyper_posterior([False, True, False])
+    (myGRP2, param) = myGPR2.maximize_hyper_posterior([False, True, False])
+    print 'Optimized value of the hyper-parameters:', param    
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
     yi2 = myGPR2( xi2 )
     print 'Example 2:'

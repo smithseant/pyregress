@@ -71,7 +71,6 @@ myK.map_hyper(p_mapped)
 Ni = 100
 Xi = np.linspace(0.0, 8.0, Ni).reshape((-1,1))
 Yi_prior = 5.0*(Xi/8.0 - 0.5)
-##(post_mean, post_std) = myGPR.inference(Xi, Yi_mean=Yi_prior, infer_std=True)
 (post_mean, post_std) = myGPR.inference(Xi, infer_std=True)
 Xi = Xi.reshape(-1)
 (post_mean, post_std) = (post_mean.reshape(-1), post_std.reshape(-1))
