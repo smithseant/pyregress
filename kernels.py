@@ -6,8 +6,34 @@ Docstring for the kernels module - needs to be written
 # @author: Sean T. Smith
 
 from abc import ABCMeta, abstractmethod
-from numpy import array, empty, zeros, diag, sum, prod, where, mean, concatenate
-from scipy import exp, log
+from numpy import array, empty, zeros, diag, sum, prod, where, ones
+from scipy import exp, log, sqrt, pi
+
+
+"""
+Provided prior distributions
+"""
+class logNormal:
+    """Log Normal distribution class for length hyper-parameter priors."""
+    def __init__(self, mu, sigma):
+        #self.mu = sum(Rk2)/(Rk2 != 0).sum()
+        #self.sigma = sum((Rk2-self.mu)**2)/((Rk2 != 0).sum()-1.0)
+        self.mu = mu
+        self.sigma = sigma
+    
+    def __call__(self, x):
+        sigmaSqr2pi = self.sigma*sqrt(2.0*pi)
+        denom = 2.0*self.sigma**2
+        return 1.0/(x*sigmaSqr2pi)*exp(-(log(x)-self.mu)**2/denom)
+        
+        
+class constant:
+    """Constant class for when hyper-parameter is not being marginalized"""
+    def __init__(self):
+        pass
+    def __call__(self, x):
+        return 1.0
+
 
 class Kernel:
     """
@@ -43,6 +69,7 @@ class Kernel:
         for i in range(len(self.p)):
             if isinstance(self.p[i], list):
                 self.hp[i] = [False]*len(self.p[i])
+        self.Prior = []
     
     @abstractmethod
     def __call__(self, Rk2, grad=False):
@@ -64,9 +91,6 @@ class Kernel:
             kernel values - shape must match argument R.
         gradK: list of arrays (optional - depending on argument grad),
             partial of kernel with respect to each hyper parameter.
-        lPriors: array-2D (kernel dependent, only length params)
-            of prior and derivatives in order to calculate posterier 
-            instead of marginal likelihood
         """
         return
     
@@ -94,36 +118,77 @@ class Kernel:
             which of this kernel's parameters are hyper-parameters -
             bool, 'all', 'none', or list for manual selection.
         
+        Priors: list of functions defining hyper-parameter's 
+            prior distribution for calculating posterier instead of
+            marginal likelihood (set to 1 if not being marginalized)
+        
         Returns
         -------
         Nhyper: int,
             resulting number of hyper parameters.
         """
+        
+        print hyper_params
+        print self.p
+        raw_input()
+        
         if not hyper_params or hyper_params=='none':
             self.Nhp = 0
-        elif hyper_params==True or hyper_params=='all':
+            self.Prior = ['none']
+            print 'none'
+        elif False not in hyper_params: #or hyper_params=='all':
             self.Nhp = self.Np
             self.hp[:] = [True]*self.Np
+            self.Prior = hyper_params
+            print 'all'
             for i in range(len(self.p)):
                 if isinstance(self.p[i], list):
                     self.Nhp += len(self.p[i]) - 1
                     self.hp[i] = [True]*len(self.p[i])
+                    self.Prior[i] = [hyper_params[i]]*len(self.p[i])
         else:
             # TODO: throw an error if the number of parameters doesn't match.
             self.Nhp = hyper_params.count(True)
             self.hp[:] = hyper_params[:]
             for i in range(self.Np):
+                print 'loop ',i
+                print 'loop p ',self.p[i]
+                print 'loop hp ',hyper_params[i]
                 if isinstance(self.p[i], list):
+                    print 'list',i
                     if isinstance(hyper_params[i], list):
                         self.Nhp += hyper_params[i].count(True)
+                        self.Prior += [self.Prior[i]*hyper_params[i].count(True)] #LIKELY WRONG
+                        print 'list -', self.Prior
+                        raw_input()
                     elif hyper_params[i]==False or hyper_params[i]=='none':
                         self.hp[i] = [False]*len(self.p[i])
-                    elif hyper_params[i]==True:
-                        self.hp[i] = [True]*len(self.p[i])
-                        self.Nhp += len(self.p[i]) - 1
+                        self.Prior += ['none']*len(self.p[i])
+                        print 'false in list - ', self.Prior
+                        raw_input()
                     elif hyper_params[i]=='all':
                         self.hp[i] = [True]*len(self.p[i])
-                        self.Nhp += len(self.p[i])
+                        self.Nhp += len(self.p[i]) - 1
+                        self.Prior += [hyper_params[i]]*len(self.p[i])
+                        print 'all in list - ', self.Prior
+                        raw_input()
+                    elif hyper_params[i]!=False:
+                        self.hp[i] = [True]*len(self.p[i])
+                        self.Nhp += len(self.p[i]) 
+                        self.Prior += [hyper_params[i]]*len(self.p[i])
+                        print 'false in list - ', self.Prior
+                        raw_input()
+                else:
+                    if hyper_params[i] == False:
+                        self.Prior += ['none']
+                        print 'false -',self.Prior
+                    else:
+                        self.Prior += [hyper_params[i]]
+                        print 'true -',self.Prior
+
+        print 'done -', self.Prior
+        raw_input()
+
         return self.Nhp
     
     def map_hyper(self, p_mapped, unmap=False):
@@ -159,7 +224,41 @@ class Kernel:
                             self.p[i][j] = p_mapped[im]
                         im += 1
         return (self, p_mapped)
-
+        
+    def calc_logP(self, params, grad='False'):
+        """
+        Calculate log of prior distributions for hyper-parameters.
+        
+        Arguments
+        ---------
+        params: array-1D
+            array of hyper-parameter values.
+            
+        Returns
+        -------
+        logPrior: scalar value
+            summation of values of log prior probabilities evaluated at 
+            values provided by params
+            
+        PriorGrad: array-1D
+            array of gradients of log prior probabilities evaluated at 
+            values provided by params
+        """
+        
+        logPrior = 0.0
+        if (grad == 'True'):
+            PriorGrad = zeros(self.Nhp)
+            for f in self.Prior:
+                logPrior += log(f(params)) 
+        #TODO Make Prior functions return derivatives                
+                #PriorGrad[f] = f(params,grad='True')
+            return logPrior, PriorGrad
+        else:
+            for f in self.Prior:
+                logPrior += log(f(params))
+                print self.Prior
+                raw_input()
+            return logPrior
 
 class Noise(Kernel):
     r"""
@@ -184,8 +283,7 @@ class Noise(Kernel):
             Kprime = empty((Rk2.shape[0], Rk2.shape[1], self.Nhp))
             if self.hp[0]:
                 Kprime[:,:,0] = 2.0*self.p[0]*K
-            lPriors = array([[0.0],[0.0]])
-            return (w2*K, Kprime, lPriors)
+            return (w2*K, Kprime)
 
 class OU(Kernel):
     r"""
@@ -224,8 +322,7 @@ class OU(Kernel):
                         Kprime[:,:,h] = where(Rl != 0.0,
                                      w2*Rk2[:,:,k]/(self.p[1][k]**3*Rl)*K, 0.0)
                         h += 1
-            lPriors = array([[0.0, 1.0/mean(Rk2)],[0.0, 1.0/mean(Rk2)]])
-            return (w2*K, Kprime, lPriors)
+            return (w2*K, Kprime)
 
 class GammaExp(Kernel):
     r"""
@@ -270,9 +367,7 @@ class GammaExp(Kernel):
             if self.hp[2]:
                 Kprime[:,:,h] = where(R2l2 != 0.0,
                                     -w2*R2l2**(0.5*self.p[2])*log(R2l2)*K, 0.0)
-            lPriors = array([[0.0, 1.0/mean(Rk2), 0.0],
-                             [0.0, 1.0/mean(Rk2), 0.0]])
-            return (w2*K, Kprime, lPriors)
+            return (w2*K, Kprime)
 
 class SquareExp(Kernel):
     r"""
@@ -309,8 +404,7 @@ class SquareExp(Kernel):
                     if self.hp[1][k]:
                         Kprime[:,:,h] = w2*Rk2[:,:,k]/self.p[1][k]**3*K
                         h += 1
-            lPriors = array([[0.0, 1.0/mean(Rk2)],[0.0, 1.0/mean(Rk2)]])
-            return (w2*K, Kprime, lPriors)
+            return (w2*K, Kprime)
 
 class RatQuad(Kernel):
     r"""
@@ -350,12 +444,9 @@ class RatQuad(Kernel):
                         h += 1
             if self.hp[2]:
                 Kprime[:,:,h] = w2*((tmp-1)/tmp - log(tmp))*tmp**(-self.p[2])
-            lPriors = array([[0.0, 1.0/mean(Rk2), 0.0],
-                             [0.0, 1.0/mean(Rk2), 0.0]])
-            return (w2*K, Kprime, lPriors)
-
+            return (w2*K, Kprime)
+ 
 # -- would like to add periodic, but it would require general handling of R --
-
 
 class KernelSum(Kernel):
     """Modified Kernel class that holds the sum of Kernel objects."""
@@ -363,6 +454,9 @@ class KernelSum(Kernel):
         self.terms = [k1, k2]
         (self.Np, self.p) = (k1.Np + k2.Np, [k1.p, k2.p])
         (self.Nhp, self.hp) = (k1.Nhp + k1.Nhp, [k1.hp, k2.hp])
+        self.terms[0].Prior = []
+        self.terms[1].Prior = []
+
     
     def __add__(self, other, self_on_right=False):
         if isinstance(other, KernelSum):
@@ -385,7 +479,7 @@ class KernelSum(Kernel):
     def declare_hyper(self, hyper_params):
         # TODO: throw and error if length of hyper_params doesn't match terms.
         for k in range(len(self.terms)):
-            self.Nhp += self.terms[k].declare_hyper(hyper_params[k])
+            self.Nhp += self.terms[k].declare_hyper(hyper_params[k])  
         return self.Nhp
     
     def map_hyper(self, p_mapped, unmap=False):
@@ -404,14 +498,12 @@ class KernelSum(Kernel):
             return K
         else:
             (K, Kprime) = (0.0, empty((Rk2.shape[0], Rk2.shape[1], self.Nhp)))
-            lPriors = empty([2,0])
             h = 0
             for kern in self.terms:
-                (K_t, Kprime[:,:,h:h+kern.Nhp], lPriors_t) = kern(Rk2, grad)
+                (K_t, Kprime[:,:,h:h+kern.Nhp]) = kern(Rk2, grad)
                 K += K_t
                 h += kern.Nhp
-                lPriors = concatenate((lPriors, lPriors_t),axis=1)
-            return (K, Kprime, lPriors)
+            return (K, Kprime)
 
 class KernelProd(Kernel):
     """Modified Kernel class that holds the product of Kernel objects."""
@@ -419,6 +511,8 @@ class KernelProd(Kernel):
         self.terms = [k1, k2]
         (self.Np, self.p) = (k1.Np + k2.Np, [k1.p, k2.p])
         (self.Nhp, self.hp) = (k1.Nhp + k1.Nhp, [k1.hp, k2.hp])
+        self.terms[0].Prior = []
+        self.terms[1].Prior = []
     
     def __mul__(self, other, self_on_right=False):
         if isinstance(other, KernelProd):
@@ -441,7 +535,7 @@ class KernelProd(Kernel):
     def declare_hyper(self, hyper_params):
         # TODO: throw and error if length of hyper_params doesn't match terms.
         for k in range(len(self.terms)):
-            self.Nhp += self.terms[k].declare_hyper(hyper_params[k])
+             self.Nhp += self.terms[k].declare_hyper(hyper_params[k])
         return self.Nhp
     
     def map_hyper(self, p_mapped, unmap=False):
@@ -454,14 +548,15 @@ class KernelProd(Kernel):
 
     def __call__(self, Rk2, grad=False):
         if not grad:
-            return prod([kern(Rk2, grad) for kern in self.terms])
+            K = 0.0
+            for kern in self.terms:
+                K *= kern(Rk2, grad)
+            return K
         else:
             (K, Kprime) = (0.0, empty((Rk2.shape[0], Rk2.shape[1], self.Nhp)))
-            lPriors = empty([2,0])
             h = 0
             for kern in self.terms:
-                (K_t, Kprime[:,:,h:h+kern.Nhp], lPriors_t) = kern(Rk2, grad)
+                (K_t, Kprime[:,:,h:h+kern.Nhp]) = kern(Rk2, grad)
                 K *= K_t
                 h += kern.Nhp
-                lPriors = concatenate((lPriors, lPriors_t),axis=1)
-            return (K, Kprime, lPriors)
+            return (K, Kprime)

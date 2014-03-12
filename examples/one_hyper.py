@@ -10,6 +10,7 @@ import numpy as np
 from numpy.random import random, randn
 import matplotlib.pyplot as plt
 from pyregress import *
+plt.close('all')
 
 # Setup the source GP with any single hyper-parameter
 Nt = Nd = 5*2**1
@@ -21,11 +22,12 @@ def prior_mean(inputs):
 #(myK, myHyper) = (Noise([1.0]), [True])
 #(myK, myHyper) = (OU([1.0, [1.0]]), [False, [True]])
 #(myK, myHyper) = (GammaExp([1.0, 1.0, 2.0]), [False, True, False])
-(myK, myHyper) = (SquareExp([1.0, 1.0]), [False, True])
+(myK, myHyper, prior) = (SquareExp([1.0, 1.0]), [False, True], 
+                         [1.0,logNormal(1.0,.1)])
 #(myK, myHyper) = (RatQuad([1.0, 1.0, 1.0]), [False, False, True])
 
 # Setup hyper-parameters in the kernel and map to an array
-myK.declare_hyper(myHyper)
+myK.declare_hyper(myHyper, prior)
 p_mapped = np.empty(1)
 myK.map_hyper(p_mapped)
 

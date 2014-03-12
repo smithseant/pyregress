@@ -35,9 +35,8 @@ from numpy.random import randn
 from scipy import pi, log
 from scipy.linalg import cho_factor, cho_solve
 from scipy.optimize import minimize
-
-from kernels import Kernel
-from transforms import BaseTransform
+from pyregress import *
+from pyregress.kernels import Kernel
 
 HLOG2PI = 0.5*log(2.0*pi)
 
@@ -245,7 +244,20 @@ class GPR:
             gradient of lnP_neg with respect to each hyper-parameter.
         """
         p_mapped[:] = params
-        (K, Kprime, lPriors) = self.kernel(self.R2dd, grad=True)
+        (K, Kprime) = self.kernel(self.R2dd, grad=True)
+        logPrior = self.kernel.calc_logP(params)
+        print logPrior
+        raw_input()        
+        
+        #print self.kernel.Prior
+        #raw_input()    
+        #for f in self.kernel.Prior:
+        #    logPrior += log(f(params))
+            
+        #    print logPrior
+        #    raw_input()
+        #print sum(log(abs(self.kernel.Prior[:](params))))
+        
         try:
             LK = cho_factor(K)
         except LinAlgError as e:
@@ -264,8 +276,10 @@ class GPR:
             betaTh = invK_H.dot(Th)
         
         # TODO: provide a prior based on max & min values in the distance matrix
+     
         lnP_neg = ( float(self.Nd)*HLOG2PI + sum(log(diag(LK[0]))) +
-                    0.5*self.Yd.T.dot(invK_Y) - log(sum(lPriors[0,:])))#+ sum(log(abs(params))) )
+                    0.5*self.Yd.T.dot(invK_Y) )#- 
+                    #sum(log(self.kernel.Prior(params)))) #+ sum(log(abs(params))) )
         if self.basis is not None:
             lnP_neg -= ( float(self.Nth)*HLOG2PI - sum(log(diag(LSth[0]))) +
                          0.5*Th.T.dot(self.Hd.T.dot(betaTh)) )
@@ -277,7 +291,7 @@ class GPR:
             for j in range(self.kernel.Nhp):
                 lnP_grad[j] = 0.5*( trace(cho_solve(LK,Kprime[:,:,j])) -
                                     invK_Y.T.dot(Kprime[:,:,j].dot(invK_Y)) 
-                                    + 2.0*lPriors[1,j] ) #+ 2.0/params[j] )
+                                    )#+ 2.0*lPriors[1,j] ) #+ 2.0/params[j] )
                 if self.basis is not None:
                     bKp = invK_H.T.dot(Kprime[:,:,j])
                     lnP_grad[j] -= ( 0.5*(trace(bKp.dot(invK_H).dot(Sth))) +
@@ -292,9 +306,10 @@ class GPR:
         Arguments
         ---------
         hyper_params:  list [possibly nested] (optional),
-            list of bools where the nested structure corresponds to the
-            argument Cov from __init__, and each bool indicates which
-            kernel parameters are hyper-parameters.
+            list of bools and functions where the nested structure corresponds 
+            to the argument Cov from __init__, and each bool or function
+            indicates which kernel parameters are hyper-parameters and if they
+            are, what is their prior.
         """
         
         # Setup hyper-parameters & map values from a single array
@@ -488,8 +503,6 @@ if __name__ == "__main__":
     import matplotlib as mpl
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
-    from kernels import Noise, SquareExp, RatQuad
-    from transforms import Probit
     
     plt.close('all')
     
@@ -510,7 +523,7 @@ if __name__ == "__main__":
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
     myGPR2 = GPR(Xd2, Yd2, RatQuad([0.6, 0.33, 1.0]), anisotropy=False,
                  explicit_basis=[0, 1], transform='Probit')
-    (myGRP2, param) = myGPR2.maximize_hyper_posterior([False, True, False])
+    (myGRP2, param) = myGPR2.maximize_hyper_posterior([False, logNormal(.33,.1), False])
     print 'Optimized value of the hyper-parameters:', param    
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
     yi2 = myGPR2( xi2 )
