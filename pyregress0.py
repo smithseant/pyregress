@@ -243,21 +243,13 @@ class GPR:
         lnP_grad:  array-1D (optional - depending on argument grad),
             gradient of lnP_neg with respect to each hyper-parameter.
         """
+       
         p_mapped[:] = params
         (K, Kprime) = self.kernel(self.R2dd, grad=True)
-        logPrior = self.kernel.calc_logP(params)
+        logPrior = self.kernel.calc_logP(params)   
+        print params
         print logPrior
-        raw_input()        
-        
-        #print self.kernel.Prior
-        #raw_input()    
-        #for f in self.kernel.Prior:
-        #    logPrior += log(f(params))
             
-        #    print logPrior
-        #    raw_input()
-        #print sum(log(abs(self.kernel.Prior[:](params))))
-        
         try:
             LK = cho_factor(K)
         except LinAlgError as e:
@@ -310,7 +302,7 @@ class GPR:
             to the argument Cov from __init__, and each bool or function
             indicates which kernel parameters are hyper-parameters and if they
             are, what is their prior.
-        """
+        """       
         
         # Setup hyper-parameters & map values from a single array
         if hyper_params:
@@ -318,21 +310,27 @@ class GPR:
         else:
             Nhyper = self.kernel.Nhp
         all_hyper = empty(Nhyper)
-        self.kernel.map_hyper(all_hyper)
+        #j = 0
+        #for i in xrange(len(hyper_params)):
+        #    if hyper_params[i] != False:
+        #        all_hyper[j] = hyper_params[i].mu
+        #        j += 1
         
+        self.kernel.map_hyper(all_hyper)
+
         # Perform minimization
-        #myResult = minimize(self.hyper_posterior, all_hyper,
-        #                    args=(all_hyper, False), method='Nelder-Mead',
-        #                    tol=1e-4, options={'maxiter':200, 'disp':True})
+        myResult = minimize(self.hyper_posterior, all_hyper,
+                            args=(all_hyper, False), method='Nelder-Mead',
+                            tol=1e-4, options={'maxiter':200, 'disp':True})
         # -- To use BFGS or CG, one must edit those routines for
         #    a smaller initial step (arguments fed to linesearch). --
         # myResult = minimize(self.hyper_posterior, all_hyper,
         #                     args=(all_hyper,), method='BFGS', jac=True,
         #                     tol=1e-4, options={'maxiter':200, 'disp':True})
-        myResult = minimize(self.hyper_posterior, all_hyper,
-                             args=(all_hyper,), method='L-BFGS-B', jac=True,
-                             bounds=[(0.0,None)]*Nhyper, tol=1e-4,
-                             options={'maxiter':200, 'disp':True})
+        #myResult = minimize(self.hyper_posterior, all_hyper,
+        #                     args=(all_hyper,), method='L-BFGS-B', jac=True,
+        #                     bounds=[(0.0,None)]*Nhyper, tol=1e-4,
+        #                     options={'maxiter':200, 'disp':True})
         
         # copy hyper-parameter values back to kernel (remove mapping)
         self.kernel.map_hyper(all_hyper, unmap=True)

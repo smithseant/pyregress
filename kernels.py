@@ -30,7 +30,8 @@ class logNormal:
 class constant:
     """Constant class for when hyper-parameter is not being marginalized"""
     def __init__(self):
-        pass
+        self.mu = 1.0
+        self.sigma = 1.0
     def __call__(self, x):
         return 1.0
 
@@ -130,13 +131,12 @@ class Kernel:
         
         print hyper_params
         print self.p
-        raw_input()
         
         if not hyper_params or hyper_params=='none':
             self.Nhp = 0
-            self.Prior = ['none']
+            self.Prior = [constant()]
             print 'none'
-        elif False not in hyper_params: #or hyper_params=='all':
+        elif (False not in hyper_params) or (not isinstance(hyper_params,list) ): #or hyper_params=='all':
             self.Nhp = self.Np
             self.hp[:] = [True]*self.Np
             self.Prior = hyper_params
@@ -148,7 +148,7 @@ class Kernel:
                     self.Prior[i] = [hyper_params[i]]*len(self.p[i])
         else:
             # TODO: throw an error if the number of parameters doesn't match.
-            self.Nhp = hyper_params.count(True)
+            self.Nhp = len(hyper_params) - hyper_params.count(False)
             self.hp[:] = hyper_params[:]
             for i in range(self.Np):
                 print 'loop ',i
@@ -160,34 +160,29 @@ class Kernel:
                         self.Nhp += hyper_params[i].count(True)
                         self.Prior += [self.Prior[i]*hyper_params[i].count(True)] #LIKELY WRONG
                         print 'list -', self.Prior
-                        raw_input()
                     elif hyper_params[i]==False or hyper_params[i]=='none':
                         self.hp[i] = [False]*len(self.p[i])
-                        self.Prior += ['none']*len(self.p[i])
+                        self.Prior += [constant()]*len(self.p[i])
                         print 'false in list - ', self.Prior
-                        raw_input()
                     elif hyper_params[i]=='all':
                         self.hp[i] = [True]*len(self.p[i])
                         self.Nhp += len(self.p[i]) - 1
                         self.Prior += [hyper_params[i]]*len(self.p[i])
                         print 'all in list - ', self.Prior
-                        raw_input()
                     elif hyper_params[i]!=False:
                         self.hp[i] = [True]*len(self.p[i])
                         self.Nhp += len(self.p[i]) 
                         self.Prior += [hyper_params[i]]*len(self.p[i])
                         print 'false in list - ', self.Prior
-                        raw_input()
                 else:
                     if hyper_params[i] == False:
-                        self.Prior += ['none']
+                        self.Prior += [constant()]
                         print 'false -',self.Prior
                     else:
                         self.Prior += [hyper_params[i]]
                         print 'true -',self.Prior
 
         print 'done -', self.Prior
-        raw_input()
 
         return self.Nhp
     
@@ -244,7 +239,7 @@ class Kernel:
             array of gradients of log prior probabilities evaluated at 
             values provided by params
         """
-        
+
         logPrior = 0.0
         if (grad == 'True'):
             PriorGrad = zeros(self.Nhp)
@@ -256,8 +251,6 @@ class Kernel:
         else:
             for f in self.Prior:
                 logPrior += log(f(params))
-                print self.Prior
-                raw_input()
             return logPrior
 
 class Noise(Kernel):
