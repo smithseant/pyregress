@@ -246,10 +246,8 @@ class GPR:
        
         p_mapped[:] = params
         (K, Kprime) = self.kernel(self.R2dd, grad=True)
-        logPrior = self.kernel.calc_logP(params)   
-        print params
-        print logPrior
-            
+        (logPrior,d_Prior) = self.kernel.calc_logP(params,grad=True)             
+        
         try:
             LK = cho_factor(K)
         except LinAlgError as e:
@@ -270,12 +268,10 @@ class GPR:
         # TODO: provide a prior based on max & min values in the distance matrix
      
         lnP_neg = ( float(self.Nd)*HLOG2PI + sum(log(diag(LK[0]))) +
-                    0.5*self.Yd.T.dot(invK_Y) )#- 
-                    #sum(log(self.kernel.Prior(params)))) #+ sum(log(abs(params))) )
+                    0.5*self.Yd.T.dot(invK_Y)  - logPrior ) 
         if self.basis is not None:
             lnP_neg -= ( float(self.Nth)*HLOG2PI - sum(log(diag(LSth[0]))) +
                          0.5*Th.T.dot(self.Hd.T.dot(betaTh)) )
-        
         if not grad:
             return lnP_neg
         else:
@@ -283,7 +279,7 @@ class GPR:
             for j in range(self.kernel.Nhp):
                 lnP_grad[j] = 0.5*( trace(cho_solve(LK,Kprime[:,:,j])) -
                                     invK_Y.T.dot(Kprime[:,:,j].dot(invK_Y)) 
-                                    )#+ 2.0*lPriors[1,j] ) #+ 2.0/params[j] )
+                                    + 2.0*log(d_Prior[j]) ) #+ 2.0/params[j] )
                 if self.basis is not None:
                     bKp = invK_H.T.dot(Kprime[:,:,j])
                     lnP_grad[j] -= ( 0.5*(trace(bKp.dot(invK_H).dot(Sth))) +
@@ -303,34 +299,42 @@ class GPR:
             indicates which kernel parameters are hyper-parameters and if they
             are, what is their prior.
         """       
-        
+
+        #print hyper_params
+        #raw_input()
+
+        #for i in xrange(len(hyper_params)):
+        #    if isinstance(hyper_params[i],list):
+        #        for j in xrange(len(hyper_params[i])):
+        #            if hyper_params[i][j] == True:
+        #                hyper_params[i][j] = constant() 
+        #    if hyper_params[i] == True:
+        #        hyper_params[i] = constant()
+        #print hyper_params
+        #raw_input()
+
         # Setup hyper-parameters & map values from a single array
         if hyper_params:
             Nhyper = self.kernel.declare_hyper(hyper_params)
         else:
             Nhyper = self.kernel.Nhp
-        all_hyper = empty(Nhyper)
-        #j = 0
-        #for i in xrange(len(hyper_params)):
-        #    if hyper_params[i] != False:
-        #        all_hyper[j] = hyper_params[i].mu
-        #        j += 1
-        
+         
+        all_hyper = empty(Nhyper)        
         self.kernel.map_hyper(all_hyper)
 
         # Perform minimization
-        myResult = minimize(self.hyper_posterior, all_hyper,
-                            args=(all_hyper, False), method='Nelder-Mead',
-                            tol=1e-4, options={'maxiter':200, 'disp':True})
+        #myResult = minimize(self.hyper_posterior, all_hyper,
+        #                    args=(all_hyper, False), method='Nelder-Mead',
+        #                    tol=1e-4, options={'maxiter':200, 'disp':True})
         # -- To use BFGS or CG, one must edit those routines for
         #    a smaller initial step (arguments fed to linesearch). --
         # myResult = minimize(self.hyper_posterior, all_hyper,
         #                     args=(all_hyper,), method='BFGS', jac=True,
         #                     tol=1e-4, options={'maxiter':200, 'disp':True})
-        #myResult = minimize(self.hyper_posterior, all_hyper,
-        #                     args=(all_hyper,), method='L-BFGS-B', jac=True,
-        #                     bounds=[(0.0,None)]*Nhyper, tol=1e-4,
-        #                     options={'maxiter':200, 'disp':True})
+        myResult = minimize(self.hyper_posterior, all_hyper,
+                             args=(all_hyper,), method='L-BFGS-B', jac=True,
+                             bounds=[(0.0,None)]*Nhyper, tol=1e-4,
+                             options={'maxiter':200, 'disp':True})
         
         # copy hyper-parameter values back to kernel (remove mapping)
         self.kernel.map_hyper(all_hyper, unmap=True)
@@ -521,7 +525,7 @@ if __name__ == "__main__":
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
     myGPR2 = GPR(Xd2, Yd2, RatQuad([0.6, 0.33, 1.0]), anisotropy=False,
                  explicit_basis=[0, 1], transform='Probit')
-    (myGRP2, param) = myGPR2.maximize_hyper_posterior([False, logNormal(.33,.1), False])
+    (myGRP2, param) = myGPR2.maximize_hyper_posterior([False, logNormal(.3,.25), False])
     print 'Optimized value of the hyper-parameters:', param    
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
     yi2 = myGPR2( xi2 )
