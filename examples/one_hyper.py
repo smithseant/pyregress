@@ -22,7 +22,7 @@ def prior_mean(inputs):
 #(myK, myHyper) = (Noise([1.0]), [True])
 #(myK, myHyper) = (OU([1.0, [1.0]]), [False, [True]])
 #(myK, myHyper) = (GammaExp([1.0, 1.0, 2.0]), [False, True, False])
-(myK, myHyper) = (SquareExp([1.0, 1.0]), [False, logNormal(0.1,0.25)])
+(myK, myHyper) = (SquareExp([1.0, 1.0]), [False, logNormal(mean=0.1,std=0.25)])
 #(myK, myHyper) = (RatQuad([1.0, 1.0, 1.0]), [False, False, True])
 
 # Setup hyper-parameters in the kernel and map to an array

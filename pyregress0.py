@@ -279,7 +279,7 @@ class GPR:
             for j in range(self.kernel.Nhp):
                 lnP_grad[j] = 0.5*( trace(cho_solve(LK,Kprime[:,:,j])) -
                                     invK_Y.T.dot(Kprime[:,:,j].dot(invK_Y)) 
-                                    + 2.0*log(d_Prior[j]) ) #+ 2.0/params[j] )
+                                    - 2.0*d_Prior[j] ) #+ 2.0/params[j] )
                 if self.basis is not None:
                     bKp = invK_H.T.dot(Kprime[:,:,j])
                     lnP_grad[j] -= ( 0.5*(trace(bKp.dot(invK_H).dot(Sth))) +
@@ -312,6 +312,9 @@ class GPR:
         #        hyper_params[i] = constant()
         #print hyper_params
         #raw_input()
+
+       # if not hasattr(hyper_params,'mu'):
+       #     hyper_params(self.R2dd)
 
         # Setup hyper-parameters & map values from a single array
         if hyper_params:
@@ -525,7 +528,7 @@ if __name__ == "__main__":
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
     myGPR2 = GPR(Xd2, Yd2, RatQuad([0.6, 0.33, 1.0]), anisotropy=False,
                  explicit_basis=[0, 1], transform='Probit')
-    (myGRP2, param) = myGPR2.maximize_hyper_posterior([False, logNormal(.3,.25), False])
+    (myGRP2, param) = myGPR2.maximize_hyper_posterior([False, logNormal(mean=.3,std=.25), False])
     print 'Optimized value of the hyper-parameters:', param    
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
     yi2 = myGPR2( xi2 )

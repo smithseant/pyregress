@@ -19,7 +19,7 @@ Nt = Nd = 5*2**4
 Xt = Xd = 8.0*(random(2*Nd)).reshape((-1,2))
 
 myK = Noise([0.1])+SquareExp([1.0, [0.7, 1.1]])
-myHyper = [[False], [False, logNormal(0.2,0.25)]]
+myHyper = [[False], [False, logNormal(mean=0.2,std=0.25)]]
 
 # Setup hyper-parameters in the BaseKernels and map to a single array
 myK.declare_hyper(myHyper)
