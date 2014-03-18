@@ -6,21 +6,21 @@ Docstring for the kernels module - needs to be written
 # @author: Sean T. Smith
 
 from abc import ABCMeta, abstractmethod
-from numpy import array, empty, zeros, diag, sum, prod, where, ones, concatenate
+from numpy import array, empty, zeros, diag, sum, prod, where, ones, concatenate, divide
 from scipy import exp, log, sqrt, pi
 
 """
 Provided prior distributions
+    Currently include log-Normal, Jeffreys', and constant distributions.
+    Marginalized class also created to hold space of hyper-parameters that are 
+    not being explored.
 """
 class logNormal:
     """Log Normal distribution class for hyper-parameter priors."""
     def __init__(self, **args):
         if args.has_key( "mean" ) and args.has_key( "std" ):
             self.mu = log(args["mean"]**2/(args["std"]**2 + args["mean"]**2))
-            self.sigma = sqrt(log(1 + args["std"]**2/args["mean"]**2)) 
-        #self.mu = sum(Rk2)/(Rk2 != 0).sum()
-        #self.sigma = sum((Rk2-self.mu)**2)/((Rk2 != 0).sum()-1.0)
-        
+            self.sigma = sqrt(log(1 + args["std"]**2/args["mean"]**2))   
     
     def auto_fill(self,Rk2):
         mean = sum(Rk2)/(Rk2 != 0).sum()
@@ -29,10 +29,13 @@ class logNormal:
         self.sigma = sqrt(log(1 + std**2/mean**2))
         
     def __call__(self, x, derivative=False):
+        # TODO: if mean and std not defined, use auto_fill with Rk2      
+        #if not hasattr(self,'mu'):
+        #   self.auto_fill(self.Rk2)        
+        
         twosigsqr = 2.0*self.sigma**2
         #sigmaSqr2pi = self.sigma*sqrt(2.0*pi)
         #pdf = 1.0/(x*sigmaSqr2pi)*exp(-(log(x)-self.mu)**2/twosigsqr)
-        
         log_pdf = -log(self.sigma*x)-0.5*log(2.0*pi)-(log(x)-self.mu)**2/twosigsqr
         if derivative == False: 
             return log_pdf
@@ -48,15 +51,25 @@ class jeffreys:
     def __init__(self):
         pass
     def __call__(self, x, derivative=False):
-        log_pdf = log(1.0/x)
+        log_pdf = -log(x)
         if derivative == False:
             return log_pdf
         else:
-            log_dpdf = -1.0/x
-            return log_pdf, logdpdf
+            log_dpdf = divide(-1.0,x)
+            return log_pdf, log_dpdf
         
 class constant:
-    """Constant class for when hyper-parameter is not being marginalized"""
+    """Constant class for hyper-parameter"""
+    def __init__(self):
+        pass
+    def __call__(self, x, derivative=False):
+        if derivative == False:
+            return array([1.0])
+        else:
+            return array([1.0]),array([0.0])
+            
+class marginalized:
+    """Class for when hyper-parameter is being marginalized"""
     def __init__(self):
         pass
     def __call__(self, x, derivative=False):
@@ -157,12 +170,20 @@ class Kernel:
         -------
         Nhyper: int,
             resulting number of hyper parameters.
-        """       
-                
+        """      
+
+        for i in xrange(len(hyper_params)):
+            if isinstance(hyper_params[i],list):
+                for j in xrange(len(hyper_params[i])):
+                    if hyper_params[i][j] == True:
+                        hyper_params[i][j] = constant() 
+            if hyper_params[i] == True:
+                hyper_params[i] = constant()       
+        
         if not hyper_params or hyper_params=='none':
             self.Nhp = 0
-            self.Prior = [constant()]
-        elif (False not in hyper_params) and (not isinstance(hyper_params,list) ): #or hyper_params=='all':
+            self.Prior = [marginalized()]
+        elif (False not in hyper_params) and (not isinstance(hyper_params,list) ):
             self.Nhp = self.Np
             self.hp[:] = [True]*self.Np
             self.Prior = hyper_params
@@ -182,7 +203,7 @@ class Kernel:
                         self.Prior += hyper_params[i][:]
                     elif hyper_params[i]==False or hyper_params[i]=='none':
                         self.hp[i] = [False]*len(self.p[i])
-                        self.Prior += [constant()]*len(self.p[i])
+                        self.Prior += [marginalized()]*len(self.p[i])
                     elif hyper_params[i]=='all':
                         self.hp[i] = [True]*len(self.p[i])
                         self.Nhp += len(self.p[i]) - 1
@@ -193,7 +214,7 @@ class Kernel:
                         self.Prior += [hyper_params[i]]*len(self.p[i])
                 else:
                     if hyper_params[i] == False:
-                        self.Prior += [constant()]
+                        self.Prior += [marginalized()]
                     else:
                         self.Prior += [hyper_params[i]]
                         
