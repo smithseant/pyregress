@@ -21,7 +21,8 @@ Reading the code and development:
     s => sampled values,
     R2 => square distance (radius^2) in independent variable space,
     K => kernel values (covariance matrix),
-    p => parameters (hyper-parameters) of the kernel,
+    hp => parameters (hyper-parameters) of the kernel,
+    p => derivative (prime) of a variable,
     H => explicit basis functions evaluated at X,
     Th => Linear coefficients to the basis functions.
 """
@@ -224,7 +225,7 @@ class GPR:
         return Rk2
     
     
-    def hyper_posterior(self, params, p_mapped, grad=True):
+    def hyper_posterior(self, params, hp_mapped, grad=True):
         """
         Negative log of the hyper-parameter posterior & its gradient.
         
@@ -232,11 +233,11 @@ class GPR:
         ---------
         params:  array-1D,
             hyper parameters in an array for the minimization routine.
-        p_mapped:  array-1D,
+        hp_mapped:  array-1D,
             hyper parameter values that map to self.Kernel.
         grad:  bool or string (optional),
             when grad is True, must return lnP_grad,
-            when grad is 'Hess', must return lnP_hess.
+            when grad is 'Hess', must also return lnP_hess.
         
         Returns
         -------
@@ -247,14 +248,14 @@ class GPR:
         lnP_hess:  array-2D (optional - depending on argument grad),
             Hessian matrix (2nd derivatives) of lnP_neg.
         """
-        p_mapped[:] = params
+        hp_mapped[:] = params
         (Nd, Nhp) = (self.Nd, self.kernel.Nhp)
         if not grad:
             K = self.kernel(self.R2dd, grad=False)
         elif grad != 'Hess':
-            (K, Kprime) = self.kernel(self.R2dd, grad=True)
+            (K, Kp) = self.kernel(self.R2dd, grad=True)
         else:
-            (K, Kprime, Kpp) = self.kernel(self.R2dd, grad='Hess')
+            (K, Kp, Kpp) = self.kernel(self.R2dd, grad='Hess')
         try:
             LK = cho_factor(K)
         except LinAlgError as e:
@@ -269,13 +270,14 @@ class GPR:
                     0.5*self.Yd.T.dot(invK_Y) )#+ sum(log(abs(params))) )
         # TODO: provide a prior based on max & min values in the distance matrix
         if self.basis is not None:
+            Nth = self.Nth
             invK_H = cho_solve(LK, self.Hd)
             LSth = cho_factor(self.Hd.T.dot(invK_H))
             Sth = cho_solve(LSth, eye(self.Nth))
             Th = cho_solve(LSth, self.Hd.T.dot(invK_Y))
             betaTh = invK_H.dot(Th)
             lnP_neg -= ( float(self.Nth)*HLOG2PI - sum(log(diag(LSth[0]))) +
-                         0.5*Th.T.dot(self.Hd.T.dot(betaTh)) )
+                         0.5*Th.T.dot(self.Hd.T).dot(betaTh) )
         if not grad:
             return lnP_neg
         
@@ -284,31 +286,47 @@ class GPR:
         invK_aa = invK - invK_Y.dot(invK_Y.T)
         lnP_grad = empty(Nhp)
         for j in xrange(Nhp):
-            lnP_grad[j] = 0.5*sum(invK_aa.T * Kprime[:,:,j])# + 2.0/params[j]
+            lnP_grad[j] = 0.5*sum(invK_aa.T * Kp[:,:,j])# + 2.0/params[j]
         if self.basis is not None:
+            diff2 = betaTh.T - 2.0*invK_Y.T
             for j in xrange(Nhp):
-                bKp = invK_H.T.dot(Kprime[:,:,j])
-                lnP_grad[j] -= ( 0.5*(trace(bKp.dot(invK_H).dot(Sth))) +
-                                 Th.T.dot(bKp.dot(0.5*betaTh-invK_Y)) )
+                bKpb = invK_H.T.dot(Kp[:,:,j]).dot(invK_H)
+                lnP_grad[j] -= 0.5*( sum(bKpb.T*Sth) +
+                                     diff2.dot(Kp[:,:,j]).dot(betaTh) )
         if grad != 'Hess':
             return (lnP_neg, lnP_grad)
         
         # grad == 'Hess':
-        (invK_dirK, aa_dirK) = (empty(Nd, Nd, Nhp), empty(Nd, Nd, Nhp))
+        (invK_Kp, aa_Kp) = (empty(Nd, Nd, Nhp), empty(Nd, Nd, Nhp))
         for j in xrange(Nhp):
-            invK_dirK[:,:,j] = invK.dot(Kprime[:,:,j])
-            a_dirK = invK_Y.T.dot(Kprime[:,:,j])
-            aa_dirK[:,:,j] = invK_Y.dot(a_dirK)
+            invK_Kp[:,:,j] = invK.dot(Kp[:,:,j])
+            a_Kp = invK_Y.T.dot(Kp[:,:,j])
+            aa_Kp[:,:,j] = invK_Y.dot(a_Kp)
         lnP_hess = empty(Nhp, Nhp)
         for j in xrange(Nhp):
             for i in xrange(Nhp):
                 lnP_hess[i, j] = 0.5*sum( invK_aa.T*Kpp[:,:,i,j] +
-                                          invK_dirK[:,:,i].T*invK_dirK[:,:,j] +
-                                          aa_dirK[:,:,i].T*invK_dirK[:,:,j] )
+                                          invK_Kp[:,:,i].T*invK_Kp[:,:,j] +
+                                          aa_Kp[:,:,i].T*invK_Kp[:,:,j] )
         if self.basis is not None:
+            diff1 = betaTh.T - invK_Y.T
+            bSb_2invK = invK_H.dot(Sth).dot(invK_H.T) - 2.0*invK
+            (bKp, ThbKp) = (empty(Nth, Nd, Nhp), empty(Nd, Nhp))
+            (diff1Kpb, diff2Kp) = (empty(Nth, Nhp), empty(Nd, Nhp))
+            for j in xrange(Nhp):
+                bKp[:,:,j] = invK_H.T.dot(Kp[:,:,j])
+                ThbKp[:,j] = betaTh.T.dot(Kp[:,:,j])
+                diff1Kpb[:,j] = diff1.dot(Kp[:,:,j]).dot(invK_H)
+                diff2Kp[:,j] = diff2.dot(Kp[:,:,j])
             for j in xrange(Nhp):
                 for i in xrange(Nhp):
-                    lnP_hess[i, j] -= 3
+                    my_mess = ( invK_H.T.dot(Kpp[:,:,i,j]).dot(invK_H) +
+                                bKp[:,:,i].T.dot(bSb_2invK).dot(bKp[:,:,j]) )
+                    lnP_hess[i, j] -= 0.5 * ( sum(my_mess.T * Sth) +
+                              diff1.dot(Kpp[:,:,i,j]).dot(betaTh) -
+                              2.0*diff2Kp[:,i].dot(invK).dot(ThbKp[:,j].T) +
+                              2.0*diff1Kpb[:,i].dot(Sth).dot(diff1Kpb[:,j].T) )
+                    
         return (lnP_neg, lnP_grad, lnP_hess)
     
     
