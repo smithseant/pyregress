@@ -37,7 +37,7 @@ from scipy.linalg import cho_factor, cho_solve
 from scipy.optimize import minimize
 from pyregress import *
 from pyregress.kernels import Kernel
-from pyregress.features import derivative
+#from pyregress.features import derivative
 from pyregress.transforms import Probit
 
 HLOG2PI = 0.5*log(2.0*pi)
@@ -317,18 +317,18 @@ class GPR:
         self.kernel.map_hyper(all_hyper)
 
         # Perform minimization
-        myResult = minimize(self.hyper_posterior, all_hyper,
-                            args=(all_hyper, False), method='Nelder-Mead',
-                            tol=1e-4, options={'maxiter':200, 'disp':True})
+        #myResult = minimize(self.hyper_posterior, all_hyper,
+        #                    args=(all_hyper, False), method='Nelder-Mead',
+        #                    tol=1e-4, options={'maxiter':200, 'disp':True})
         # -- To use BFGS or CG, one must edit those routines for
         #    a smaller initial step (arguments fed to linesearch). --
         # myResult = minimize(self.hyper_posterior, all_hyper,
         #                     args=(all_hyper,), method='BFGS', jac=True,
         #                     tol=1e-4, options={'maxiter':200, 'disp':True})
-       # myResult = minimize(self.hyper_posterior, all_hyper,
-       #                      args=(all_hyper,), method='L-BFGS-B', jac=True,
-       #                      bounds=[(0.0,None)]*Nhyper, tol=1e-4,
-       #                      options={'maxiter':200, 'disp':True})
+        myResult = minimize(self.hyper_posterior, all_hyper,
+                             args=(all_hyper,), method='L-BFGS-B', jac=True,
+                             bounds=[(0.0,None)]*Nhyper, tol=1e-4,
+                             options={'maxiter':200, 'disp':True})
         
         # copy hyper-parameter values back to kernel (remove mapping)
         self.kernel.map_hyper(all_hyper, unmap=True)

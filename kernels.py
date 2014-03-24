@@ -369,7 +369,6 @@ class SquareExp(Kernel):
             elif isinstance(self.hp[1], list):
                 for k in xrange(len(self.hp[1])):
                     if self.hp[1][k]:
-                        print self.p
                         Kprime[:,:,h] = w2*Rk2[:,:,k]/self.p[1][k]**3*K
                         h += 1
             return (w2*K, Kprime)
