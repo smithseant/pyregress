@@ -37,6 +37,8 @@ from scipy.linalg import cho_factor, cho_solve
 from scipy.optimize import minimize
 from pyregress import *
 from pyregress.kernels import Kernel
+from pyregress.features import derivative
+from pyregress.transforms import Probit
 
 HLOG2PI = 0.5*log(2.0*pi)
 
@@ -65,7 +67,9 @@ class GPR:
      [ 0.75675894]]
     
     """
-    def __init__(self, Xd, Yd, Cov, anisotropy='auto',
+#    def __init__(self, Xd, Yd, Cov, anisotropy='auto',
+#                 Yd_mean=None, explicit_basis=None, transform=None):
+    def __init__(self, Xd, Yd, Cov, anisotropy='auto', derivatives=None,
                  Yd_mean=None, explicit_basis=None, transform=None):
         """
         Create a GPR object and prepare for inference.
@@ -85,6 +89,9 @@ class GPR:
             scaling of the independent variables. For 'auto' or True, it uses
             range scaling. For False, no scaling. For an array with the same
             length as the second dimension of Xd, it uses manual scaling.
+        derivatives: integer,
+            index of position in Xd and Yd arrays that derivative observations
+            begin.  All derivative observations must be at the end of list.
         Yd_mean:  a function (optional),
             prior mean of the dependent variable at Xd.  Must take input
             of data in form of Xd, and output in same shape as Yd.  If
@@ -103,7 +110,7 @@ class GPR:
         InputError:
             an exception is thrown for incompatible format of any inputs.
         """
-        self.__call__ = self.inference
+        self.__call__ = self.inference       
         
         # Independent variables
         if Xd.ndim == 1:
@@ -246,7 +253,7 @@ class GPR:
 
         p_mapped[:] = params
         (K, Kprime) = self.kernel(self.R2dd, grad=True)
-        (logPrior,d_logPrior) = self.kernel.calc_logP(params,grad=True)             
+        (logPrior,d_logPrior) = self.kernel.calc_logP(params,grad=True)
         
         try:
             LK = cho_factor(K)
@@ -310,18 +317,18 @@ class GPR:
         self.kernel.map_hyper(all_hyper)
 
         # Perform minimization
-        #myResult = minimize(self.hyper_posterior, all_hyper,
-        #                    args=(all_hyper, False), method='Nelder-Mead',
-        #                    tol=1e-4, options={'maxiter':200, 'disp':True})
+        myResult = minimize(self.hyper_posterior, all_hyper,
+                            args=(all_hyper, False), method='Nelder-Mead',
+                            tol=1e-4, options={'maxiter':200, 'disp':True})
         # -- To use BFGS or CG, one must edit those routines for
         #    a smaller initial step (arguments fed to linesearch). --
         # myResult = minimize(self.hyper_posterior, all_hyper,
         #                     args=(all_hyper,), method='BFGS', jac=True,
         #                     tol=1e-4, options={'maxiter':200, 'disp':True})
-        myResult = minimize(self.hyper_posterior, all_hyper,
-                             args=(all_hyper,), method='L-BFGS-B', jac=True,
-                             bounds=[(0.0,None)]*Nhyper, tol=1e-4,
-                             options={'maxiter':200, 'disp':True})
+       # myResult = minimize(self.hyper_posterior, all_hyper,
+       #                      args=(all_hyper,), method='L-BFGS-B', jac=True,
+       #                      bounds=[(0.0,None)]*Nhyper, tol=1e-4,
+       #                      options={'maxiter':200, 'disp':True})
         
         # copy hyper-parameter values back to kernel (remove mapping)
         self.kernel.map_hyper(all_hyper, unmap=True)
@@ -371,7 +378,7 @@ class GPR:
             
         
         Note
-        -----
+        ----- 
         If prior_mean was specified for GPR class object, this function
             will also be applied to Xi data.
         """
@@ -493,7 +500,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
     
-    plt.close('all')
+    plt.close('all') 
     
     # Example 1:
     # Simple case, 1D with three data points and one regression point

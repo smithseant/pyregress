@@ -78,7 +78,7 @@ class Logarithm(BaseTransform):
         return exp(z)
 
 class Probit(BaseTransform):
-    r"""
+    """
     Transform a variable on a finite suppot [0,1] to an infinite support
     (-\infty,\infty) using the probit transformation.
     .. math::
