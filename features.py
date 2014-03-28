@@ -5,14 +5,34 @@ Docstring for the features module
 Includes additional features for pyregress includeing prior distributions for
     hyper-parameters and a class for derivative inputs
 
-Provided prior distributions
+Provided prior distributions (log(P) and d_log(P))
     Currently include log-Normal, Jeffreys', and constant distributions.
     Marginalized class also created to hold space of hyper-parameters that are 
     not being explored.
 """
 
-from numpy import array, sum, divide, concatenate, squeeze
+from numpy import array, sum, divide, concatenate, squeeze, mean, amin, copy
 from scipy import log, sqrt, pi
+from scipy.special import gamma
+
+class shift_to_zero:
+    """shift data above zero and (optional) scale be mean value"""
+    def __init__(self):
+        self.shift = 0.
+        self.scale = 1.
+    
+    def __call__(self,original_data,scale=False):
+        data = copy(original_data)
+        if (data < 0.).any():
+            self.shift = amin(data)
+            data -= self.shift
+        if scale == True:
+            self.scale = mean(data)
+            data /= self.scale
+        return data
+
+    def reverse(self,data):
+        return (data*self.scale)+self.shift
 
 
 class derivative:
@@ -45,7 +65,8 @@ class derivative:
 """Prior hyper-parameter distributions"""
 
 class logNormal:
-    """Log Normal distribution class for hyper-parameter priors."""
+    """Log Normal distribution class for hyper-parameter priors.
+        To keep parameter positive"""
     def __init__(self, **args):
         if args.has_key( "mean" ) and args.has_key( "std" ):
             self.mu = log(args["mean"]**2/(args["std"]**2 + args["mean"]**2))
@@ -63,20 +84,16 @@ class logNormal:
         #   self.auto_fill(self.Rk2)        
         
         twosigsqr = 2.0*self.sigma**2
-        #sigmaSqr2pi = self.sigma*sqrt(2.0*pi)
-        #pdf = 1.0/(x*sigmaSqr2pi)*exp(-(log(x)-self.mu)**2/twosigsqr)
         log_pdf = -log(self.sigma*x)-0.5*log(2.0*pi)-(log(x)-self.mu)**2/twosigsqr
         if derivative == False: 
             return log_pdf
-        else:            
-            #t1 = exp(-(self.mu-log(x))**2/twosigsqr)
-            #t2 = -self.mu + self.sigma**2 + log(x)
-            #d_pdf = t1*t2/(sigmaSqr2pi * self.sigma**2 * x**2)  
+        else:             
             log_dpdf = (-self.mu + self.sigma**2 + log(x))/(self.sigma**2 * x)
             return log_pdf, log_dpdf
             
 class jeffreys:
-    """Jefferys' distribution class for hyper-parameter priors."""
+    """Jefferys' distribution class for hyper-parameter priors.
+        Non informative prior"""
     def __init__(self):
         pass
     def __call__(self, x, derivative=False):
@@ -106,3 +123,36 @@ class marginalized:
             return array([1.0])
         else:
             return array([1.0]),array([])
+            
+class Beta:
+    """Beta distribution class for hyper-parameter priors.
+        For parameters bounded by [0,1]"""
+    def __init__(self,a,b):
+        self.a = a
+        self.b = b
+        
+    def __call__(self,x,derivative=False):
+        a = self.a-1.
+        b = self.b-1.
+        log_pdf = a*log(x) + b*log(1.-x)
+        if derivative==False:
+            return log_pdf
+        else:
+            log_dpdf = a/x + b/(x-1.)
+            return log_pdf, log_dpdf
+            
+class Gamma:
+    """Gamma distribution class for hyper-parameter priors"""
+    def __init__(self,k,theta):
+        self.k = k
+        self.theta = theta
+        self.demonenator = k*log(theta) +  log(gamma(k))
+        
+    def __call__(self,x,derivative=False):
+        k = self.k - 1.
+        log_pdf = k*log(x) -x/self.theta - self.demonenator
+        if derivative==False:
+            return log_pdf
+        else:
+            log_dpdf = k/x - 1./self.theta
+            return log_pdf, log_dpdf

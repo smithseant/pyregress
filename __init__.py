@@ -4,7 +4,7 @@ __author__ = 'Sean .T. Smith'
 from pyregress.pyregress0 import GPR
 from pyregress.kernels import Kernel, Noise, OU, GammaExp, SquareExp, RatQuad
 from pyregress.transforms import BaseTransform, Logarithm, Probit, ProbitBeta, Logit
-from pyregress.features import logNormal, constant, jeffreys, marginalized
+from pyregress.features import logNormal, constant, jeffreys, marginalized, Beta, Gamma
 
 #from pyregress.pyregress0 import *
 #from pyregress.kernels import *
@@ -13,4 +13,4 @@ from pyregress.features import logNormal, constant, jeffreys, marginalized
 
 __all__ = ["GPR", "Kernel", "Noise", "OU", "GammaExp", "SquareExp", "RatQuad",
            "BaseTransform", "Logarithm", "Probit", "ProbitBeta", "Logit",
-           "constant", "logNormal", "jeffreys", "marginalized"]
+           "constant", "logNormal", "jeffreys", "marginalized", "Beta", "Gamma"]
