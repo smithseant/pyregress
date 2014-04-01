@@ -6,7 +6,7 @@ Docstring for the kernels module - needs to be written
 # @author: Sean T. Smith
 
 from abc import ABCMeta, abstractmethod
-from numpy import array, empty, zeros, diag, sum, prod, where
+from numpy import array, empty, zeros, diag, eye, sum, prod, where
 from scipy import exp, log
 
 class Kernel:
@@ -20,7 +20,7 @@ class Kernel:
     """
     __metaclass__ = ABCMeta
     
-    def __init__(self, Nparams, params):
+    def __init__(self, Nparams, params, param_bounds):
         """
         Create a Kernel object.
         
@@ -28,10 +28,13 @@ class Kernel:
         ---------
         Nparams: int,
             number of kernel parameters for this specific kernel.
-        params: list of floats or arrays,
-            values for the kernel parameters.
+        params: dict,
+            names and values (might be a list) of the kernel parameters.
+        param_bounds: dict,
+            each parameter's domain in the form of a tuple (min, max).
+            For unbounded use the value of None for min and/or max.
         """
-        # TODO: throw an error if the number of parameters doesn't match.
+        # TODO: throw an error if the parameters doesn't match.
         self.Np = Nparams
         self.p = params
         self.Nhp = 0
@@ -41,25 +44,28 @@ class Kernel:
                 self.hp[i] = [False]*len(self.p[i])
     
     @abstractmethod
-    def __call__(self, Rk2, grad=False):
+    def __call__(self, Rk, grad=False, **options):
         """
         Calculate and return kernel values given the radius array.
         
         Arguments
         ---------
-        self: Kernel,
-            kernel parameters (self.p) and hyper-parameter labels (self.hp).
-        Rk2: array-3D,
-            directional square distance matrix (radius squared).
+        Rk: array-3D,
+            directional radius matrix (difference between points).
         grad: bool (optional),
             when grad is not False, must return gradK.
+        options: any additional options (opt_name=opt_value),
+            specific options for specific kernels, otherwise ignored.
         
         Returns
         -------
         K: array-2D,
             kernel values - shape must match argument R.
-        gradK: list of arrays (optional - depending on argument grad),
-            partial of kernel with respect to each hyper parameter.
+        grad: array-3D (optional - depending on argument grad),
+            partial of kernel (first two dimensions) with respect to each
+            hyper parameter (third dimension).
+        Hess: array-4D (optional - depending on argument grad),
+            second derivative for all combinations of two hyper parameters.
         """
         return
     
@@ -158,195 +164,212 @@ class Noise(Kernel):
     r"""
     White noise kernel object.
     ..math::
-        K_{i,j}(R) = w^2*\delta_{i,j}*\delta_D(R_{i,j}),
-    where the parameter list includes only the weight, params = [w].
+        K(R, data; w) = w^2 * I, or a zero matrix based on the data,
+    with the weight parameter, w, and a flag indicating inclusion or not.
     White noise is discontinuous.
     """
     def __init__(self, params):
         super(Noise, self).__init__(1, params)
-    def __call__(self, Rk2, grad=False):
-        w2 = self.p[0]**2
-        if Rk2.shape[0] == Rk2.shape[1]:
-            R2diag = sum(Rk2.diagonal(), 0)
-            K = diag( array([1.0*b for b in R2diag == 0.0]) )
+    def __call__(self, Rk, grad=False, **options):
+        w2 = self.p['w']**2
+        if options.has_key['data'] and options['data']==True:
+            K0 = eye(Rk.shape[0], Rk.shape[1])
         else:
-            K = zeros(Rk2.shape[:2])
+            K0 = zeros(Rk.shape[:2])
         if not grad:
-            return w2*K
-        else:
-            Kprime = empty((Rk2.shape[0], Rk2.shape[1], self.Nhp))
-            if self.hp[0]:
-                Kprime[:,:,0] = 2.0*self.p[0]*K
-            return (w2*K, Kprime)
-
-class OU(Kernel):
-    r"""
-    Ornstein-Uhlenbeck kernel object.
-    .. math::
-        K(R) = w^2*\exp( -R/l ),
-    where the parameter list is params = [w, l].
-    Ornstein-Uhlenbeck is continuous, but not smooth.
-    """
-    def __init__(self, params):
-        super(OU, self).__init__(2, params)
-    def __call__(self, Rk2, grad=False):
-        if not isinstance(self.p[1], list):
-            R2l2 = sum(Rk2,2)/self.p[1]**2
-        else:
-            R2l2 = zeros(Rk2.shape[:2])
-            for k in xrange(Rk2.shape[2]):
-                R2l2 += Rk2[:,:,k]/self.p[1][k]**2
-        w2 = self.p[0]**2
-        Rl = R2l2**0.5
-        K = exp(-Rl)
-        if not grad:
-            return w2*K
-        else:
-            Kprime = empty((Rk2.shape[0], Rk2.shape[1], self.Nhp))
-            h = 0
-            if self.hp[0]:
-                Kprime[:,:,h] = 2.0*self.p[0]*K
-                h += 1
-            if self.hp[1] and not isinstance(self.hp[1], list):
-                Kprime[:,:,h] = w2*Rl/self.p[1]*K
-                h += 1
-            elif isinstance(self.hp[1], list):
-                for k in xrange(len(self.hp[1])):
-                    if self.hp[1][k]:
-                        Kprime[:,:,h] = where(Rl != 0.0,
-                                     w2*Rk2[:,:,k]/(self.p[1][k]**3*Rl)*K, 0.0)
-                        h += 1
-            return (w2*K, Kprime)
-
-class GammaExp(Kernel):
-    r"""
-    Gamma-exponential kernel object.
-    .. math::
-        K(R) = w^2*\exp( -(R/l)^{\gamma} ),
-    where the parameter list is params = [w, l, gamma].
-    Gamma-exponential is continuous, and when gamma=2 it is smooth.
-    """
-    def __init__(self, params):
-        """Docstring under __init__"""
-        super(GammaExp, self).__init__(3, params)
-    def __call__(self, Rk2, grad=False):
-        if not isinstance(self.p[1], list):
-            R2l2 = sum(Rk2,2)/(self.p[1]**2)
-        else:
-            R2l2 = zeros(Rk2.shape[:2])
-            for k in xrange(Rk2.shape[2]):
-                R2l2 += Rk2[:,:,k]/(self.p[1][k]**2)
-        w2 = self.p[0]**2
-        K = exp(-R2l2**(0.5*self.p[2]))
-        if not grad:
-            return w2*K
-        else:
-            Kprime = empty((Rk2.shape[0], Rk2.shape[1], self.Nhp))
-            h = 0
-            if self.hp[0]:
-                Kprime[:,:,h] = 2.0*self.p[0]*K
-                h += 1
-            if self.hp[1] and not isinstance(self.hp[1], list):
-                tmp = w2*R2l2**(0.5*self.p[2])
-                Kprime[:,:,h] = self.p[2]*tmp/self.p[1]*K
-                h += 1
-            elif isinstance(self.hp[1], list):
-                for k in xrange(len(self.hp[1])):
-                    if self.hp[1][k]:
-                        tmp = Rk2[:,:,k]/self.p[1][k]**2
-                        tmp *= R2l2**(0.5*self.p[2] - 1)
-                        Kprime[:,:,h] = where(R2l2 != 0.0,
-                                          w2*self.p[2]/self.p[1][k]*tmp*K, 0.0)
-                        h += 1
-            if self.hp[2]:
-                Kprime[:,:,h] = where(R2l2 != 0.0,
-                                    -w2*R2l2**(0.5*self.p[2])*log(R2l2)*K, 0.0)
-            return (w2*K, Kprime)
+            # K = w2*K0
+            return w2*K0
+        Kprime = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
+        if self.hp['w']:
+            # dK/dw:
+            Kprime[:,:,0] = 2.0*self.p['w']*K0
+        if grad != 'Hess':
+            return (w2*K0, Kprime)
+        Khess = empty((Rk.shape[0], Rk.shape[1], self.Np, self.Np))
+        if self.hp['w']:
+            # d^2K/dw^2:
+            Khess[:,:,0,0] = 2.0*K0
+        return (w2*K0, Kprime, Khess)
 
 class SquareExp(Kernel):
     r"""
     Squared-exponential kernel object.
     .. math::
-        K(R) = w^2*\exp( -1/2 *(R/l)^2 ),
-    where the parameter list is params = [w, l].
+        K(R; w, l) = w^2*\exp( -1/2 *(R/l)^2 ),
+    whith the parameters of weight, w, and length, l. For multiple
+    dimensions, the length can be a single value applied to all directions
+    or it can be a list with a separate value in each direction.
     Squared-exponential is continuous and infinitely differentiable.
     """
     def __init__(self, params):
-        super(SquareExp, self).__init__(2, params)
-    def __call__(self, Rk2, grad=False):
-        if not isinstance(self.p[1], list):
-            R2l2 = sum(Rk2,2)/(self.p[1]**2)
+        p_bounds = {'w':(0.0, None), 'l':(0.0, None)}
+        super(SquareExp, self).__init__(2, params, p_bounds)
+    def __call__(self, Rk, grad=False, **options):
+        if not isinstance(self.p['l'], list):
+            R2l2 = (sum(Rk,2)/self.p['w'])**2
+        else:
+            R2l2 = zeros(Rk.shape[:2])
+            for k in xrange(Rk.shape[2]):
+                R2l2 += (Rk[:,:,k]/self.p['l'][k])**2
+        w2 = self.p['w']**2
+        K0 = exp(-0.5*R2l2)
+        if not grad:
+            # K = w2*K0
+            return w2*K0
+        
+        
+        
+        Kprime = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
+        h = 0
+        if self.hp['w']:
+            # dK/dw:
+            Kprime[:,:,h] = 2.0*self.p['w']*K0
+            h += 1
+        if self.hp['l'] and not isinstance(self.hp['l'], list):
+            # dK/dl:
+            Kprime[:,:,h] = w2*R2l2/self.p['l']*K0
+            h += 1
+        elif isinstance(self.hp['l'], list):
+            for i in xrange(len(self.hp['l'])):
+                if self.hp['l'][i]:
+                    Kprime[:,:,h] = w2*Rk[:,:,i]**2/self.p['l'][i]**3*K0  # dK/dl_i
+                    h += 1
+        if grad != 'Hess':
+            return (w2*K0, Kprime)
+        Khess = empty((Rk.shape[0], Rk.shape[1], self.Np, self.Np))
+        h = 0
+        if self.hp['w']:
+            # d^2K/dw^2:
+            Khess[:,:,h,h] = 
+            h += 1
+        if self.hp['l'] and not isinstance(self.hp['l'], list):
+            # d^2K/dl^2:
+            Khess[:,:,h,h] = 
+            if self.hp['w']:
+                # d2K/dwdl:
+                Khess[:,:,h,0] = Khess[:,:,0,h] = 
+            h += 1
+        elif isinstance(self.hp['l'], list):
+            for i in xrange(len(self.hp['l'])):
+                if self.hp['l'][i]:
+                    # d^2K/dl_i^2:
+                    Khess[:,:,h,h] =
+                    k = 0
+                    if self.hp['w']:
+                        # d^2K/dwdl_i:
+                        Khess[:,:,h,k] = Khess[:,:,k,h] = 
+                        k += 1
+                    for j in xrange(i):
+                        if self.hp['l'][j]:
+                            # d^2K/dl_idl_j:
+                            Khess[:,:,h,k] = Khess[:,:,k,h] = 
+                            k += 1
+                    h += 1
+        return (w2*K0, Kprime, Khess)
+        
+        
+        Kprime = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
+
+class GammaExp(Kernel):
+    r"""
+    Gamma-exponential kernel object.
+    .. math::
+        K(R; w, l, gamma) = w^2*\exp( -(R/l)^{\gamma} ),
+    with the parameters of weight, w, length, l, and power norm, gamma.
+    For multiple dimensions, the length can be a single value applied to
+    all directions or a list with a separate value in each direction.
+    Gamma-exponential is continuous, and when gamma=2 it is smooth.
+    """
+    def __init__(self, params):
+        p_bounds = {'w':(0.0, None), 'l':(0.0, None), 'gamma':(0.0, 2.0)}
+        super(GammaExp, self).__init__(3, params, p_bounds)
+    def __call__(self, Rk2, grad=False, **options):
+        if not isinstance(self.p['l'], list):
+            R2l2 = sum(Rk2,2)/(self.p['l']**2)
         else:
             R2l2 = zeros(Rk2.shape[:2])
             for k in xrange(Rk2.shape[2]):
-                R2l2 += Rk2[:,:,k]/(self.p[1][k]**2)
-        w2 = self.p[0]**2
-        K = exp(-0.5*R2l2)
+                R2l2 += Rk2[:,:,k]/(self.p['l'][k]**2)
+        w2 = self.p['w']**2
+        K0 = exp(-R2l2**(0.5*self.p['gamma']))
         if not grad:
-            return w2*K
+            return w2*K0
         else:
             Kprime = empty((Rk2.shape[0], Rk2.shape[1], self.Nhp))
             h = 0
             if self.hp[0]:
-                Kprime[:,:,h] = 2.0*self.p[0]*K
+                Kprime[:,:,h] = 2.0*self.p['w']*K0
                 h += 1
             if self.hp[1] and not isinstance(self.hp[1], list):
-                Kprime[:,:,h] = w2*R2l2/self.p[1]*K
+                tmp = w2*R2l2**(0.5*self.p['gamma'])
+                Kprime[:,:,h] = self.p['gamma']*tmp/self.p['l']*K0
                 h += 1
             elif isinstance(self.hp[1], list):
                 for k in xrange(len(self.hp[1])):
                     if self.hp[1][k]:
-                        Kprime[:,:,h] = w2*Rk2[:,:,k]/self.p[1][k]**3*K
+                        tmp = Rk2[:,:,k]/self.p['l'][k]**2
+                        tmp *= R2l2**(0.5*self.p['gamma'] - 1)
+                        Kprime[:,:,h] = where(R2l2 != 0.0,
+                                w2*self.p['gamma']/self.p['l'][k]*tmp*K0, 0.0)
                         h += 1
-            return (w2*K, Kprime)
+            if self.hp[2]:
+                Kprime[:,:,h] = where(R2l2 != 0.0,
+                            -w2*R2l2**(0.5*self.p['gamma'])*log(R2l2)*K0, 0.0)
+            return (w2*K0, Kprime)
 
 class RatQuad(Kernel):
     r"""
     Rational-quadratic kernel object.
     .. math::
-        K(R) = w^2*( 1 + \frac{R^2}{2*\alpha*l^2} )^{-\alpha},
-    where the parameter list is params = [w, l, alpha].
-    Rational quadratic is SE over a gamma distribution of length scales.
+        K(R; w, l, alpha) = w^2*( 1 + \frac{R^2}{2*\alpha*l^2} )^{-\alpha},
+    with the parameters of weight, w, length, l, and length-variance
+    parameter, alpha. The length can be a single value applied to all
+    directions or a list with a separate value in each direction.
+    Rational quadratic is SE over a gamma distribution of length scales
+    with a mean of alpha*l^2 and variance of alpha*l^4.
     """
     def __init__(self, params):
-        super(RatQuad, self).__init__(3, params)
-    def __call__(self, Rk2, grad=False):
-        if not isinstance(self.p[1], list):
-            R2l2 = sum(Rk2,2)/self.p[1]**2
+        p_bounds = {'w':(0.0, None), 'l':(0.0, None), 'alpha':(0.0, None)}
+        super(RatQuad, self).__init__(3, params, p_bounds)
+    def __call__(self, Rk2, grad=False, **options):
+        if not isinstance(self.p['l'], list):
+            R2l2 = sum(Rk2,2)/self.p['l']**2
         else:
             R2l2 = zeros(Rk2.shape[:2])
             for k in xrange(Rk2.shape[2]):
-                R2l2 += Rk2[:,:,k]/self.p[1][k]**2
-        w2 = self.p[0]**2
-        tmp = 1.0 + R2l2/(2.0*self.p[2])
-        K = tmp**(-self.p[2])
+                R2l2 += Rk2[:,:,k]/self.p['l'][k]**2
+        w2 = self.p['w']**2
+        tmp = 1.0 + R2l2/(2.0*self.p['alpha'])
+        K0 = tmp**(-self.p['alpha'])
         if not grad:
-            return w2*K
+            return w2*K0
         else:
             Kprime = empty((Rk2.shape[0], Rk2.shape[1], self.Nhp))
             h = 0
             if self.hp[0]:
-                Kprime[:,:,h] = 2.0*self.p[0]*K
+                Kprime[:,:,h] = 2.0*self.p['w']*K0
                 h += 1
             if self.hp[1] and not isinstance(self.hp[1], list):
-                Kprime[:,:,h] = w2*R2l2*K/(self.p[1]*tmp)
+                Kprime[:,:,h] = w2*R2l2*K0/(self.p['l']*tmp)
                 h += 1
             elif isinstance(self.hp[1], list):
                 for k in xrange(len(self.hp[1])):
                     if self.hp[1][k]:
-                        Kprime[:,:,h] = w2*Rk2[:,:,k]*K/(self.p[1][k]**3*tmp)
+                        Kprime[:,:,h] = w2*Rk2[:,:,k]*K0/(self.p['l'][k]**3*tmp)
                         h += 1
             if self.hp[2]:
-                Kprime[:,:,h] = w2*((tmp-1)/tmp - log(tmp))*tmp**(-self.p[2])
-            return (w2*K, Kprime)
+                Kprime[:,:,h] = w2*((tmp-1)/tmp - log(tmp))*tmp**(-self.p['alpha'])
+            return (w2*K0, Kprime)
 
-# -- would like to add periodic, but it would require general handling of R --
+# -- would like to add periodic, but it would require general handling of Rs --
 
 
 class KernelSum(Kernel):
     """Modified Kernel class that holds the sum of Kernel objects."""
     def __init__(self, k1, k2):
         self.terms = [k1, k2]
+        # Can we get away with not creating self.p or self.hp here, i.e.
+        # do we only reference the parameters at the individual-kernal level?
         (self.Np, self.p) = (k1.Np + k2.Np, [k1.p, k2.p])
         (self.Nhp, self.hp) = (k1.Nhp + k1.Nhp, [k1.hp, k2.hp])
     
@@ -382,7 +405,7 @@ class KernelSum(Kernel):
             i += self.terms[k].Nhp
         return (self, p_mapped)
     
-    def __call__(self, Rk2, grad=False):
+    def __call__(self, Rk2, grad=False, **options):
         if not grad:
             K = zeros(Rk2.shape[:2])
             for kern in self.terms:
@@ -437,7 +460,7 @@ class KernelProd(Kernel):
             i += self.terms[k].Nhp
         return (self, p_mapped)
     
-    def __call__(self, Rk2, grad=False):
+    def __call__(self, Rk2, grad=False, **options):
         if not grad:
             return prod([kern(Rk2, grad) for kern in self.terms])
         else:

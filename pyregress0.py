@@ -66,7 +66,6 @@ class GPR:
     >>> print myGPR( np.array([[0.10, 0.10], [0.50, 0.42]]) )
     [[ 0.21513894]
      [ 0.75675894]]
-    
     """
     def __init__(self, Xd, Yd, Cov, anisotropy='auto',
                  Yd_mean=None, explicit_basis=None, transform=None):
@@ -218,9 +217,10 @@ class GPR:
         (Nx, Ny) = (X.shape[0], Y.shape[0])
         Rk2 = empty((Nx, Ny, self.Nx))
         for k in xrange(self.Nx):
+            #Rk2[:, :, k] = (tile(X[:,k], (1, Ny)) - tile(Y[:,k], (Nx, 1)))**2
             Rk2[:, :, k] = ( tile(X[:,[k]]**2, (1, Ny)) +
                              tile(Y[:,[k]].T**2, (Nx, 1)) -
-                             2.0*X[:,[k]].dot(Y[:,[k]].T) )
+                             2.0*X[:,[k]].dot(Y[:,[k]].T) )  # why are there brackets around k?
             Rk2[:, :, k] /= self.aniso[k]
         return Rk2
     
