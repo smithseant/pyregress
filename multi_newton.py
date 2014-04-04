@@ -1,79 +1,79 @@
 # -*- coding: utf-8 -*-
 """
 Multi-Dimensional Newton Solve
-    multi_Dimensional_Newton(guess, params, f, df, d2f, **args) 
+    multi_Dimensional_Newton(f, guess, args, options) 
     
-    Inputs:
-        guess  - initial guess (vector) \n
-        params - additional inputs to function (tuple) \n
-        f      - function being minimized (function),
-                 must return (f(guess,params),df(guess,params),
-                 d2f(guess,params))
-        tol    - minimum change in parameter space (scalar, optional) \n
-        maxit  - maximum number of iterations (int, optional) \n
+  Inputs:
+    f : function being minimized (function), \
+        must return (f(guess,params), \
+        df(guess,params), d2f(guess,params)) \n
+    guess : initial guess (array) \n
+    args : additional inputs to function (tuple) \n
+    tol : minimum change in parameter space (scalar, optional)  \n
+    maxit : maximum number of iterations (int, optional) \n
+    positive : try to force parameters to maintain positive values      
         
-    Outputs:
-        x     - minimized function input values (vector) \n
-        hist  - time history of minimization (vector, optional)
+  Outputs:
+    history : time history of minimization (vector, optional) \n
 """
 
-from numpy import concatenate, abs, dot, shape
+from numpy import concatenate, abs, dot, min
 from scipy.linalg import inv, solve
 from scipy.linalg import cho_factor, cho_solve
+from scipy.optimize import line_search
 
-def multi_Dimensional_Newton(guess, params, func, **args):
+def multi_Dimensional_Newton(func, guess, args, options=None):
 
-    def convergence_crit(x, dx,iteration,**args):
+    def convergence_crit(x, dx, iteration, options=None):
         test1 = test2 = True
         # is minimum step size met?  
-        if args.has_key( "tol" ): 
-            test1 = (abs(dx) > args["tol"]).any()
+        if options.has_key('tol'): 
+            test1 = (abs(dx) > options['tol']).any()
         else:
             test1 = (abs(dx) > 1e6 )
         # it maximum number of iterations met
-        if args.has_key("maxiter"):
-            test2 = iteration < args["maxiter"]
+        if options.has_key('maxiter'):
+            test2 = iteration < options['maxiter']
         else:
             test2 = iteration < 200
             
         # trial test to keep parameters positive
-        percent = 1.
-        while (x < 0.).any():
-            percent += percent/2.
-            dx *= (percent - 1.)
-            x -= dx
+        if options.has_key('positive'):
+            if (x < 0.).any():
+                change = (x/abs(dx)).min()
+                x += dx*change*1.01
             
-        return test1 & test2 
+        return test1 & test2             
 
     # 1) Initiate 
-    x = guess.copy()
+    x = args
     dx = x.copy()
+    history = args.copy()
     iteration = 0
         
     # 2) Test for convergence
-    while convergence_crit(x, dx,iteration,**args):
+    while convergence_crit(x, dx, iteration, options):
                         
         # 3) Compute step direction
-        (f,df,d2f) = func(x)
-        dx = solve(-d2f,df)
+        (f,df,d2f) = func(guess,x)
+        dx = solve(-d2f, df)
         #dx = -inv(d2f).dot(df)        
         #A = cho_factor(d2f)
         #dx = cho_solve(A,-df)
         
-        
-        # 4) Update Estimate
+        # 4) Update Estimate       
         x += dx
         iteration += 1
-        guess = concatenate((guess,x))
+        history = concatenate((history, x))
+        #Copies values into guess, eventaully elemenate now that pmapped handeled
+        guess[:] = x
         
     print 'Number of iterations - ',iteration
     print 'Minimized parameters - ',x
     print 'Final function value - ',f
-    if args.has_key("history"):
-        guess = guess.reshape(-1,2)
-        return x,guess
-    else:
-        return x
+    if options.has_key('history'):
+        history = history.reshape(-1,2)
+        return history
     
 if __name__ == "__main__":
 
@@ -85,7 +85,7 @@ if __name__ == "__main__":
 
     #Test Function
     #---------------------------------------------------
-    def Rosenbrock_func(x):
+    def Rosenbrock_func(extra,x):
         if len(x) == 2:
             f = (1.-x[0])**2 + 100.*(x[1]-x[0]**2)**2
 
@@ -117,19 +117,18 @@ if __name__ == "__main__":
             diagonal[-1] = 200
             diagonal[1:-1] = 202 + 1200*x[1:-1]**2 - 400*x[2:]
             H = H + diag(diagonal)
-            
+                
         return (f, df, H)
 
-    #---------------------------------------------------
-            
+    #---------------------------------------------------        
     #guess = array([.5,-.2])   
-    guess = array([1.3,0.7,0.8,1.9,1.2])
-    params = array([])
+    guess = array([1.3,0.7,0.8,1.9,1.2,2.])
         
     if len(guess) == 2:
 
-        (update,hist) = multi_Dimensional_Newton(guess, params, \
-                         Rosenbrock_func, tol=1e-6, maxiter=200, history=True)        
+        hist = multi_Dimensional_Newton(Rosenbrock_func, guess, \
+                          args=guess, options={'tol':1e-6, 'maxiter':200, \
+                         'positive':True, 'history':True})        
         
         fig = plt.figure()
         ax = fig.gca(projection='3d')
@@ -149,5 +148,6 @@ if __name__ == "__main__":
         plt.show()
         
     else:
-        update = multi_Dimensional_Newton(guess, params, \
-             Rosenbrock_func, tol=1e-6, maxiter=200)
+        multi_Dimensional_Newton(Rosenbrock_func, guess, \
+                        args=guess, options={'tol':1e-6, 'maxiter':600 })#, \
+                        #'positive':True})
