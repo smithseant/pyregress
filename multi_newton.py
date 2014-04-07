@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 Multi-Dimensional Newton Solve
-    multi_Dimensional_Newton(f, guess, args, options) 
+    multi_Dimensional_Newton(function, guess, args, options={}) 
     
   Inputs:
-    f : function being minimized (function), \
+    function : function being minimized (function), \
         must return (f(guess,params), \
         df(guess,params), d2f(guess,params)) \n
     guess : initial guess (array) \n
@@ -20,22 +20,20 @@ Multi-Dimensional Newton Solve
 from numpy import concatenate, abs, dot, min
 from scipy.linalg import inv, solve
 from scipy.linalg import cho_factor, cho_solve
-#from scipy.optimize import line_search
+from scipy.optimize import line_search
 
-def multi_Dimensional_Newton(func, guess, args, options=None):
+def multi_Dimensional_Newton(function, guess, args, options=None):
 
     def convergence_crit(x, dx, iteration, options=None):
         test1 = test2 = True
         # is minimum step size met?  
         if options.has_key('tol'): 
             test1 = (abs(dx) > options['tol']).any()
-        else:
-            test1 = (abs(dx) > 1e6 )
+        else: test1 = (abs(dx) > 1e6 )
         # it maximum number of iterations met
         if options.has_key('maxiter'):
             test2 = iteration < options['maxiter']
-        else:
-            test2 = iteration < 200
+        else: test2 = iteration < 200
             
         # trial test to keep parameters positive
         if options.has_key('positive'):
@@ -45,29 +43,38 @@ def multi_Dimensional_Newton(func, guess, args, options=None):
             
         return test1 & test2      
         
-    def line_search(func,x,dx,alpha=1.0,c1=0.1,c2=0.2):
+    def line_search1(func,x,dx,guess,alpha=1.0,c1=0.1,c2=0.9):
         
-        # Wolfe conditions
+        # Strong Wolfe conditions
         # 1) sufficient decrease
-        #    f(x+alpha*dx) =< f(x) + c1*alpha*df(x).T*dx
+        #    f(x+alpha*dx) <= f(x) + c1*alpha*df(x).T*dx
         #    c1 - (0,1)
         def sufficent_decrease():
-            return (func(1.,x+alpha*dx)[0] >= c1*alpha*dot(func(1.,x)[1],dx))
+            return (func(x+alpha*dx)[0] <= func(x)[0] + \
+                c1*alpha*dot(func(x)[1],dx))
         
         # 2) curvature condition
-        #    |df(x + alpha*dx)*dx| => c2*|(f(x)dx|
+        #    |df(x + alpha*dx)*dx| <= c2*|(f(x)dx|
         #    c2 - (c1,1)
         def curvature_cond():
-            return (abs(dot(func(1.,x+alpha*dx)[1],dx)) >= c2*abs(dot(func(1.,x)[1],dx)))
+            return (abs(dot(func(x+alpha*dx)[1],dx)) <= \
+                    c2*abs(dot(func(x)[1],dx)))
 
-        
-        while not ( sufficent_decrease() & curvature_cond() ):      
+        iters = 0
+        while not ( sufficent_decrease() & curvature_cond() ):
+            if iters > 5:
+                alpha = 1.
+                break
+            #TODO replace with better method of chosing new alpha
+            # backtraking line search
             alpha *= 0.75
+            iters += 1
             
-        print 'alpha out ',alpha
+        #print 'alpha ',alpha
         return alpha
         
-    # 1) Initiate 
+    # 1) Initiate
+    func = lambda x : function(x, guess)
     x = args
     dx = x.copy()
     history = args.copy()
@@ -77,14 +84,21 @@ def multi_Dimensional_Newton(func, guess, args, options=None):
     while convergence_crit(x, dx, iteration, options):
                         
         # 3) Compute step direction
-        (f,df,d2f) = func(guess,x)
+        (f,df,d2f) = func(x)
         dx = solve(-d2f, df)
         #dx = -inv(d2f).dot(df)        
         #A = cho_factor(d2f)
         #dx = cho_solve(A,-df)
         
         # Line search
-        alpha = line_search(func, x, dx)
+        #alpha = line_search1(func, x, dx, guess)
+        
+        ff = lambda x : func(x)[0]
+        dff = lambda x : func(x)[1]
+        alpha = line_search(ff,dff,x,dx,gfk=df,old_fval=f)
+        alpha=alpha[0]
+        print alpha
+       # raw_input()
         
         # 4) Update estimate       
         x += alpha*dx
@@ -111,7 +125,8 @@ if __name__ == "__main__":
 
     #Test Function
     #---------------------------------------------------
-    def Rosenbrock_func(extra,x):
+    def Rosenbrock_func(x,*args):
+        
         if len(x) == 2:
             f = (1.-x[0])**2 + 100.*(x[1]-x[0]**2)**2
 
@@ -147,8 +162,8 @@ if __name__ == "__main__":
         return (f, df, H)
 
     #---------------------------------------------------        
-    guess = array([.5,-.2])   
-    #guess = array([1.3,0.7,0.8,1.9,1.2,2.])
+    #guess = array([.5,-.2])   
+    guess = array([1.3,0.7,0.8,1.9,1.2,2.])
         
     if len(guess) == 2:
 
@@ -159,12 +174,12 @@ if __name__ == "__main__":
         fig = plt.figure()
         ax = fig.gca(projection='3d')
             
-        plt.plot(hist[:,0],hist[:,1],Rosenbrock_func(1.,hist.T)[0],'b-*')
+        plt.plot(hist[:,0],hist[:,1],Rosenbrock_func(hist.T)[0],'b-*')
             
         x_space = linspace(amin(hist[:,0]),amax(hist[:,0]))
         y_space = linspace(amin(hist[:,1]),amax(hist[:,1]))
         X,Y = meshgrid(x_space,y_space)
-        Z = Rosenbrock_func(1.,array([X,Y]))[0]
+        Z = Rosenbrock_func(array([X,Y]))[0]
         surf = ax.plot_surface(X,Y,Z,rstride=2,\
                 cstride=2,cmap=cm.cool, \
                 linewidth=0, antialiased=False)
