@@ -8,7 +8,7 @@ Multi-Dimensional Newton Solve
         must return (f(guess,params), \
         df(guess,params), d2f(guess,params)) \n
     guess : initial guess (array) \n
-    args : additional inputs to function (tuple) \n
+    args : currently same as guess, eventually guess will be eliminated \n
     tol : minimum change in parameter space (scalar, optional)  \n
     maxit : maximum number of iterations (int, optional) \n
     positive : try to force parameters to maintain positive values      
@@ -20,7 +20,7 @@ Multi-Dimensional Newton Solve
 from numpy import concatenate, abs, dot, min
 from scipy.linalg import inv, solve
 from scipy.linalg import cho_factor, cho_solve
-from scipy.optimize import line_search
+#from scipy.optimize import line_search
 
 def multi_Dimensional_Newton(func, guess, args, options=None):
 
@@ -43,8 +43,30 @@ def multi_Dimensional_Newton(func, guess, args, options=None):
                 change = (x/abs(dx)).min()
                 x += dx*change*1.01
             
-        return test1 & test2             
+        return test1 & test2      
+        
+    def line_search(func,x,dx,alpha=1.0,c1=0.1,c2=0.2):
+        
+        # Wolfe conditions
+        # 1) sufficient decrease
+        #    f(x+alpha*dx) =< f(x) + c1*alpha*df(x).T*dx
+        #    c1 - (0,1)
+        def sufficent_decrease():
+            return (func(1.,x+alpha*dx)[0] >= c1*alpha*dot(func(1.,x)[1],dx))
+        
+        # 2) curvature condition
+        #    |df(x + alpha*dx)*dx| => c2*|(f(x)dx|
+        #    c2 - (c1,1)
+        def curvature_cond():
+            return (abs(dot(func(1.,x+alpha*dx)[1],dx)) >= c2*abs(dot(func(1.,x)[1],dx)))
 
+        
+        while not ( sufficent_decrease() & curvature_cond() ):      
+            alpha *= 0.75
+            
+        print 'alpha out ',alpha
+        return alpha
+        
     # 1) Initiate 
     x = args
     dx = x.copy()
@@ -61,8 +83,11 @@ def multi_Dimensional_Newton(func, guess, args, options=None):
         #A = cho_factor(d2f)
         #dx = cho_solve(A,-df)
         
-        # 4) Update Estimate       
-        x += dx
+        # Line search
+        alpha = line_search(func, x, dx)
+        
+        # 4) Update estimate       
+        x += alpha*dx
         iteration += 1
         history = concatenate((history, x))
         #Copies values into guess, eventaully elemenate now that pmapped handeled
@@ -82,6 +107,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from numpy import amax, amin, linspace, meshgrid, array
     from numpy import zeros_like, asarray, diag
+    plt.close('all')
 
     #Test Function
     #---------------------------------------------------
@@ -121,24 +147,24 @@ if __name__ == "__main__":
         return (f, df, H)
 
     #---------------------------------------------------        
-    #guess = array([.5,-.2])   
-    guess = array([1.3,0.7,0.8,1.9,1.2,2.])
+    guess = array([.5,-.2])   
+    #guess = array([1.3,0.7,0.8,1.9,1.2,2.])
         
     if len(guess) == 2:
 
         hist = multi_Dimensional_Newton(Rosenbrock_func, guess, \
                           args=guess, options={'tol':1e-6, 'maxiter':200, \
-                         'positive':True, 'history':True})        
+                          'history':True})        
         
         fig = plt.figure()
         ax = fig.gca(projection='3d')
             
-        plt.plot(hist[:,0],hist[:,1],Rosenbrock_func(hist.T)[0],'b-*')
+        plt.plot(hist[:,0],hist[:,1],Rosenbrock_func(1.,hist.T)[0],'b-*')
             
         x_space = linspace(amin(hist[:,0]),amax(hist[:,0]))
         y_space = linspace(amin(hist[:,1]),amax(hist[:,1]))
         X,Y = meshgrid(x_space,y_space)
-        Z = Rosenbrock_func(array([X,Y]))[0]
+        Z = Rosenbrock_func(1.,array([X,Y]))[0]
         surf = ax.plot_surface(X,Y,Z,rstride=2,\
                 cstride=2,cmap=cm.cool, \
                 linewidth=0, antialiased=False)
