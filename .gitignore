@@ -1,1 +1,13 @@
-*.pyc
+#ignore all files except the following list
+*
+!.gitignore
+!kernels.py
+!transforms.py
+!pyregess0.py
+!_init_.py
+!features.py
+!examples/one_hyper.py
+!examples/two_hyper.py
+!examples/two_profile.py
+!examples/verification_test.py
+!multi_newton.py

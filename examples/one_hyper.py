@@ -10,6 +10,7 @@ import numpy as np
 from numpy.random import random, randn
 import matplotlib.pyplot as plt
 from pyregress import *
+plt.close('all')
 
 # Setup the source GP with any single hyper-parameter
 Nt = Nd = 5*2**1
@@ -21,7 +22,8 @@ def prior_mean(inputs):
 #(myK, myHyper) = (Noise([1.0]), [True])
 #(myK, myHyper) = (OU([1.0, [1.0]]), [False, [True]])
 #(myK, myHyper) = (GammaExp([1.0, 1.0, 2.0]), [False, True, False])
-(myK, myHyper) = (SquareExp([1.0, 1.0]), [False, True])
+#(myK, myHyper) = (SquareExp([1.0, 1.0]), [False, LogNormal(mean=0.1,std=0.25)])
+(myK, myHyper) = (SquareExp([1.0, 1.0]), [False, Jeffreys()])
 #(myK, myHyper) = (RatQuad([1.0, 1.0, 1.0]), [False, False, True])
 
 # Setup hyper-parameters in the kernel and map to an array
@@ -60,7 +62,7 @@ print ' '
 # but I don't trust it anymore.
 
 # Maximize the hyper-parameter posterior
-p_mapped[0] = 0.9
+p_mapped[0] = hyper[len(hyper)/2]
 myK.map_hyper(p_mapped, unmap=True)
 (myGPR, param) = myGPR.maximize_hyper_posterior()
 print 'Optimized value of the hyper-parameter:', param
@@ -71,7 +73,6 @@ myK.map_hyper(p_mapped)
 Ni = 100
 Xi = np.linspace(0.0, 8.0, Ni).reshape((-1,1))
 Yi_prior = 5.0*(Xi/8.0 - 0.5)
-##(post_mean, post_std) = myGPR.inference(Xi, Yi_mean=Yi_prior, infer_std=True)
 (post_mean, post_std) = myGPR.inference(Xi, infer_std=True)
 Xi = Xi.reshape(-1)
 (post_mean, post_std) = (post_mean.reshape(-1), post_std.reshape(-1))

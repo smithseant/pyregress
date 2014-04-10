@@ -12,13 +12,15 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from pyregress import *
+plt.close('all')
 
 # Setup the source sGP with exactly two hyper-parameters
 Nt = Nd = 5*2**4
 Xt = Xd = 8.0*(random(2*Nd)).reshape((-1,2))
 
 myK = Noise([0.1])+SquareExp([1.0, [0.7, 1.1]])
-myHyper = [[False], [False, True]]
+myHyper = [[False], [False, LogNormal(mean=0.2,std=0.25)]]
+#myHyper = [[False], [False, Jeffreys()]]
 
 # Setup hyper-parameters in the BaseKernels and map to a single array
 myK.declare_hyper(myHyper)

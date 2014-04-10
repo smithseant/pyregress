@@ -5,7 +5,6 @@ Docstring for the pyregress module - needs work.
 For basic useage see the documentation in the GPR class.
 This docstring covers more advanced topics.
 Performance:
-  Start with the option: check_finite=False in cho_factor & cho_solve.
   Calculation time will greatly depend on which Blas/Lapack libs are used.
   Most default python/numpy/scipy packages are based on unoptimized libs
   (including linux repositories and downloaded executables).
@@ -31,7 +30,7 @@ Reading the code and development:
 
 #from termcolor import colored  # may not work on windows
 from numpy import (array, empty, ones, eye, shape, tile,
-                   maximum, diag, sum, sqrt)
+                   maximum, diag, trace, sum, sqrt)
 from numpy.linalg.linalg import LinAlgError
 from numpy.random import randn
 from scipy import pi, log
@@ -249,7 +248,7 @@ class GPR:
         """
         hp_mapped[:] = params
         (Nd, Nhp) = (self.Nd, self.kernel.Nhp)
-        if not grad:
+        if not grad:  # may want to add the call to kernel._ln_priors here
             K = self.kernel(self.Rdd, grad=False)
         elif grad != 'Hess':
             (K, Kp) = self.kernel(self.Rdd, grad=True)
@@ -336,10 +335,11 @@ class GPR:
         Arguments
         ---------
         hyper_params:  list [possibly nested] (optional),
-            list of bools where the nested structure corresponds to the
-            argument Cov from __init__, and each bool indicates which
-            kernel parameters are hyper-parameters.
-        """
+            list of bools and functions where the nested structure corresponds 
+            to the argument Cov from __init__, and each bool or function
+            indicates which kernel parameters are hyper-parameters and if they
+            are, what is their prior.
+        """             
         
         # Setup hyper-parameters & map values from a single array
         if hyper_params:
@@ -350,18 +350,25 @@ class GPR:
         self.kernel.map_hyper(all_hyper)
         
         # Perform minimization
-        myResult = minimize(self.hyper_posterior, all_hyper,
-                            args=(all_hyper, False), method='Nelder-Mead',
-                            tol=1e-4, options={'maxiter':200, 'disp':True})
+        #myResult = minimize(self.hyper_posterior, all_hyper,
+        #                    args=(all_hyper, False), method='Nelder-Mead',
+        #                    tol=1e-4, options={'maxiter':200, 'disp':True})
         # -- To use BFGS or CG, one must edit those routines for
         #    a smaller initial step (arguments fed to linesearch). --
         # myResult = minimize(self.hyper_posterior, all_hyper,
         #                     args=(all_hyper,), method='BFGS', jac=True,
         #                     tol=1e-4, options={'maxiter':200, 'disp':True})
-        # myResult = minimize(self.hyper_posterior, all_hyper,
-        #                     args=(all_hyper,), method='L-BFGS-B', jac=True,
-        #                     bounds=[(0.0,None)]*Nhyper, tol=1e-4,
-        #                     options={'maxiter':200, 'disp':True})
+        myResult = minimize(self.hyper_posterior, all_hyper,
+                             args=(all_hyper,), method='L-BFGS-B', jac=True,
+                             bounds=[(0.0,None)]*Nhyper, tol=1e-4,
+                             options={'maxiter':200, 'disp':True})
+        
+        #------------------------------------   
+        # Work in progress                                               
+        #multi_Dimensional_Newton(self.hyper_posterior, all_hyper, args=all_hyper, 
+        #                        options={'tol':1e-4, 'maxit':200, 'positive':True})
+        #myResult[:]=all_hyper
+        #------------------------------------                                                  
         
         # copy hyper-parameter values back to kernel (remove mapping)
         self.kernel.map_hyper(all_hyper, unmap=True)
@@ -554,7 +561,9 @@ if __name__ == "__main__":
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
     myGPR2 = GPR(Xd2, Yd2, RatQuad([0.6, 0.33, 1.0]), anisotropy=False,
                  explicit_basis=[0, 1], transform='Probit')
-    myGPR2.maximize_hyper_posterior([False, True, False])
+    #(myGRP2, param) = myGPR2.maximize_hyper_posterior([False, LogNormal(mean=0.3,std=0.25), False])
+    (myGRP2, param) = myGPR2.maximize_hyper_posterior([False, Gamma(1.,2.), False])
+    print 'Optimized value of the hyper-parameters:', param    
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
     yi2 = myGPR2( xi2 )
     print 'Example 2:'
