@@ -19,7 +19,7 @@ Reading the code and development:
     d => data values (observations),
     i => inferred values,
     s => sampled values,
-    R2 => square distance (radius^2) in independent variable space,
+    R => distance (radius) in independent variable space,
     K => kernel values (covariance matrix),
     hp => parameters (hyper-parameters) of the kernel,
     p => derivative (prime) of a variable,
@@ -31,7 +31,7 @@ Reading the code and development:
 
 #from termcolor import colored  # may not work on windows
 from numpy import (array, empty, ones, eye, shape, tile,
-                   maximum, diag, trace, sum, sqrt)
+                   maximum, diag, sum, sqrt)
 from numpy.linalg.linalg import LinAlgError
 from numpy.random import randn
 from scipy import pi, log
@@ -150,7 +150,7 @@ class GPR:
                 self.Yd -= self.trans(self.prior_mean(Xd).reshape(-1, 1))
         self.basis = explicit_basis
         if self.basis is not None:
-            (self.Nth, self.Hd) = self._get_basis(Xd)
+            (self.Nth, self.Hd) = self._basis(Xd)
         
         # Kernel (prior covariance)
         self.kernel = Cov
@@ -158,10 +158,10 @@ class GPR:
             raise InputError("GPR argument Cov must be a Kernel object.", Cov)
         
         # Do as many calculations as possible in preparation for the inference
-        self.R2dd = self._calculate_radius2(self.Xd, self.Xd)
+        self.Rdd = self._radius(self.Xd, self.Xd)
         # -- the following is repeated in maximize_hyper_posterior,
         #    create a separate function? --
-        self.Kdd = self.kernel(self.R2dd)
+        self.Kdd = self.kernel(self.Rdd)
         try:
             self.LKdd = cho_factor(self.Kdd)
         except LinAlgError as e:
@@ -178,7 +178,7 @@ class GPR:
             self.invKdd_HdTh = cho_solve(self.LKdd, self.Hd.dot(self.Th))
     
     
-    def _get_basis(self, X):
+    def _basis(self, X):
         """Calculate the basis functions given independent variables."""
         if ( isinstance(self.basis, list) and
              sum(self.basis.count(i) for i in [0, 1, 2]) > 0 ):
@@ -209,20 +209,19 @@ class GPR:
         return (Nth, H)
     
     
-    def _calculate_radius2(self, X, Y):
-        """Calculate the squared distance matrix (radius)."""
+    def _radius(self, X, Y):
+        """Calculate the distance matrix (radius)."""
         # Previously used: cdist(X, Y, 'seuclidean',V=self.aniso),
         # which required: from scipy.spatial.distance import cdist.
-        # Consider providing a fortran module function.
         (Nx, Ny) = (X.shape[0], Y.shape[0])
-        Rk2 = empty((Nx, Ny, self.Nx))
+        Rk = empty((Nx, Ny, self.Nx))
         for k in xrange(self.Nx):
             #Rk2[:, :, k] = (tile(X[:,k], (1, Ny)) - tile(Y[:,k], (Nx, 1)))**2
-            Rk2[:, :, k] = ( tile(X[:,[k]]**2, (1, Ny)) +
+            Rk[:, :, k] = ( tile(X[:,[k]]**2, (1, Ny)) +
                              tile(Y[:,[k]].T**2, (Nx, 1)) -
                              2.0*X[:,[k]].dot(Y[:,[k]].T) )  # why are there brackets around k?
-            Rk2[:, :, k] /= self.aniso[k]
-        return Rk2
+            Rk[:, :, k] /= self.aniso[k]
+        return Rk
     
     
     def hyper_posterior(self, params, hp_mapped, grad=True):
@@ -251,11 +250,11 @@ class GPR:
         hp_mapped[:] = params
         (Nd, Nhp) = (self.Nd, self.kernel.Nhp)
         if not grad:
-            K = self.kernel(self.R2dd, grad=False)
+            K = self.kernel(self.Rdd, grad=False)
         elif grad != 'Hess':
-            (K, Kp) = self.kernel(self.R2dd, grad=True)
+            (K, Kp) = self.kernel(self.Rdd, grad=True)
         else:
-            (K, Kp, Kpp) = self.kernel(self.R2dd, grad='Hess')
+            (K, Kp, Kpp) = self.kernel(self.Rdd, grad='Hess')
         try:
             LK = cho_factor(K)
         except LinAlgError as e:
@@ -368,7 +367,7 @@ class GPR:
         self.kernel.map_hyper(all_hyper, unmap=True)
         
         # Do as many calculations as possible in preparation for the inference
-        self.Kdd = self.kernel(self.R2dd)
+        self.Kdd = self.kernel(self.Rdd)
         self.LKdd = cho_factor(self.Kdd)
         self.invKdd_Yd = cho_solve(self.LKdd, self.Yd)
         if self.basis is not None:
@@ -428,13 +427,13 @@ class GPR:
                              "(2nd dimension must match that of Xd.)", Xi)
         
         # Mixed i-d kernel & inference of posterior mean
-        R2id = self._calculate_radius2(Xi, self.Xd)
-        Kid = self.kernel(R2id)
+        Rid = self._calculate_radius2(Xi, self.Xd)
+        Kid = self.kernel(Rid)
         if self.basis is None:
             post_mean = Kid.dot(self.invKdd_Yd)
         else:
             post_mean = Kid.dot(self.invKdd_Yd-self.invKdd_HdTh)
-            (Nth, Hi) = self._get_basis(Xi)
+            (Nth, Hi) = self._basis(Xi)
             post_mean += Hi.dot(self.Th)
         
         # Dependent variable
@@ -447,8 +446,8 @@ class GPR:
         
         # Inference of posterior covariance
         if infer_std:
-            R2ii = self._calculate_radius2(Xi, Xi)
-            Kii = self.kernel(R2ii)
+            Rii = self._calculate_radius2(Xi, Xi)
+            Kii = self.kernel(Rii)
             post_covar = Kii-Kid.dot(cho_solve(self.LKdd, Kid.T))
             if self.basis is not None:
                 A = Hi - Kid.dot(self.invKdd_Hd)
