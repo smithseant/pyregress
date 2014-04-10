@@ -10,6 +10,8 @@ from numbers import Number
 from numpy import array, empty, zeros, ones, eye, sum, prod, ix_, expand_dims, concatenate, tile
 from scipy import exp, log
 
+from hyper_params import HyperPrior, Constant
+
 # TODO: Add periodic, but it would require general handling of multiple Rs.
 
 class Kernel:
@@ -45,8 +47,8 @@ class Kernel:
                 self.p[key] = val
                 self.Np += 1
             elif isinstance(val, HyperPrior):
-				if val == True:
-					val = Constant()  # can we change the iterator mid-stream?
+                if val == True:
+                    val = Constant()  # can we change the iterator mid-stream?
                 self.p[key] = val.guess
                 self.Np += 1
                 self.hp[key] = val
@@ -59,8 +61,8 @@ class Kernel:
                     if isinstance(val[i], Number):
                         self.p[key][i] = val[i]
                     elif isinstance(val[i], HyperPrior):
-						if val == True:
-							val = Constant()  # can we change the iterator mid-stream?
+                        if val == True:
+                            val = Constant()  # can we change the iterator mid-stream?
                         self.p[key][i] = val[i].guess
                         self.hp[key][i] = val[i]
                         self.hp_iterable += [i]
@@ -170,6 +172,119 @@ class Kernel:
             second derivative for all combinations of two hyper parameters.
         """
         return
+
+
+class KernelSum(Kernel):
+    """Modified Kernel class that holds the sum of Kernel objects."""
+    def __init__(self, k1, k2):
+        self.terms = [k1, k2]
+        (self.Np, self.Nhp) = (k1.Np + k2.Np, k1.Nhp + k1.Nhp)
+    
+    def __add__(self, other, self_on_right=False):
+        if isinstance(other, KernelSum):
+            self.terms += other.terms
+        elif isinstance(other, Kernel):
+            self.terms += [other]
+        else:
+            # TODO: throw an error!
+            pass
+        self.Np += other.Np
+        self.Nhp += other.Nhp
+        return self
+    
+    def map_hyper(self, p_mapped, unmap=False):
+        # TODO: throw and error if the length of p_mapped is not Nhyper.
+        h = 0
+        for kern in self.terms:
+            kern.map_hyper(p_mapped[h:h+kern.Nhp], unmap)
+            h += kern.Nhp
+        return (self, p_mapped)
+    
+    def __call__(self, Rk, grad=False, **options):
+        if not grad:
+            K = zeros(Rk.shape[:2])
+            for kern in self.terms:
+                K += kern(Rk)
+            return K
+        elif grad != 'Hess':
+            K = zeros(Rk.shape[:2])
+            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
+            h = 0
+            for kern in self.terms:
+                (K_t, Kgrad[:,:,h:h+kern.Nhp]) = kern(Rk, grad)
+                K += K_t
+                h += kern.Nhp
+            return (K, Kgrad)
+        else:
+            K = zeros(Rk.shape[:2])
+            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
+            Khess = zeros((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
+            for kern in self.terms:
+                hn = h + kern.Nhp
+                (Kt, Kgrad[:,:,h:hn], Khess[:,:,h:hn,h:hn]) = kern(Rk, grad)
+                K += Kt
+                h  = hn
+            return (K, Kgrad, Khess)
+
+class KernelProd(Kernel):
+    """Modified Kernel class that holds the product of Kernel objects."""
+    def __init__(self, k1, k2):
+        self.terms = [k1, k2]
+        (self.Np, self.Nhp) = (k1.Np + k2.Np, k1.Nhp + k1.Nhp)
+    
+    def __mul__(self, other, self_on_right=False):
+        if isinstance(other, KernelProd):
+            self.terms += other.terms
+        elif isinstance(other, Kernel):
+            self.terms += [other]
+        else:
+            # TODO: throw an error!
+            pass
+        self.Np += other.Np
+        self.Nhp += other.Nhp
+        return self
+    
+    def map_hyper(self, p_mapped, unmap=False):
+        # TODO: throw and error if the length of p_mapped is not Nhyper.
+        h = 0
+        for kern in self.terms:
+            kern.map_hyper(p_mapped[h:h+kern.Nhp], unmap)
+            h += kern.Nhp
+        return (self, p_mapped)
+    
+    def __call__(self, Rk, grad=False, **options):
+        if not grad:
+            return prod([kern(Rk, grad) for kern in self.terms])
+        elif grad != 'Hess':
+            K = zeros(Rk.shape[:2])
+            Kgrad = ones((Rk.shape[0], Rk.shape[1], self.Nhp))
+            h = 0
+            for kern in self.terms:
+                (Kt, Kgt) = kern(Rk, grad)
+                K *= Kt
+                irange = range(h, h+kern.Nhp)
+                iother = range(0, h) + range(h+kern.Nhp, self.Nhp)
+                Kgrad[:,:,irange] *= Kgt
+                Kgrad[:,:,iother] *= tile(Kt, (1, 1, len(iother)))
+                h += kern.Nhp
+            return (K, Kgrad)
+        else:
+            K = zeros(Rk.shape[:2])
+            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
+            Khess = zeros((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
+            for kern in self.terms:
+                (Kt, Kgt, Kht) = kern(Rk, grad)
+                K *= Kt
+                irange = range(h, h+kern.Nhp)
+                iother = range(0, h) + range(h+kern.Nhp, self.Nhp)
+                Kgrad[:,:,irange] *= Kgt
+                Kgrad[:,:,iother] *= tile(Kt, (1, 1, len(iother)))
+                Khess[:,:,ix_(irange,irange)] *= Kht
+                Khess[:,:,ix_(irange,iother)] *= tile(Kgt, (1,1,1,len(iother)))
+                Khess[:,:,ix_(iother,irange)] *= tile(expand_dims(Kgt,2), (1,1,len(iother),1))
+                Khess[:,:,ix_(iother,iother)] *= tile(Kt, (1,1,len(iother),len(iother)))
+                h += kern.Nhp
+            return (K, Kgrad, Khess)
 
 
 class Noise(Kernel):
