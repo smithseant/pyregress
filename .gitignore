@@ -5,7 +5,7 @@
 !transforms.py
 !pyregess0.py
 !_init_.py
-!features.py
+!hyper_params.py
 !examples/one_hyper.py
 !examples/two_hyper.py
 !examples/two_profile.py

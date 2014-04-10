@@ -18,9 +18,10 @@ Reading the code and development:
     d => data values (observations),
     i => inferred values,
     s => sampled values,
-    R2 => square distance (radius^2) in independent variable space,
+    R => distance (radius) in independent variable space,
     K => kernel values (covariance matrix),
-    p => parameters (hyper-parameters) of the kernel,
+    hp => parameters (hyper-parameters) of the kernel,
+    p => derivative (prime) of a variable,
     H => explicit basis functions evaluated at X,
     Th => Linear coefficients to the basis functions.
 """
@@ -35,13 +36,9 @@ from numpy.random import randn
 from scipy import pi, log
 from scipy.linalg import cho_factor, cho_solve
 from scipy.optimize import minimize
-from pyregress import *
-from pyregress.kernels import Kernel
-#from pyregress.features import derivative
-from pyregress.transforms import BaseTransform
-from pyregress.transforms import Probit, Logarithm
-from pyregress.features import *
-from pyregress.multi_newton import multi_Dimensional_Newton
+
+from kernels import Kernel
+from transforms import BaseTransform
 
 HLOG2PI = 0.5*log(2.0*pi)
 
@@ -68,11 +65,8 @@ class GPR:
     >>> print myGPR( np.array([[0.10, 0.10], [0.50, 0.42]]) )
     [[ 0.21513894]
      [ 0.75675894]]
-    
     """
-#    def __init__(self, Xd, Yd, Cov, anisotropy='auto',
-#                 Yd_mean=None, explicit_basis=None, transform=None):
-    def __init__(self, Xd, Yd, Cov, anisotropy='auto', derivatives=None,
+    def __init__(self, Xd, Yd, Cov, anisotropy='auto',
                  Yd_mean=None, explicit_basis=None, transform=None):
         """
         Create a GPR object and prepare for inference.
@@ -92,9 +86,6 @@ class GPR:
             scaling of the independent variables. For 'auto' or True, it uses
             range scaling. For False, no scaling. For an array with the same
             length as the second dimension of Xd, it uses manual scaling.
-        derivatives: integer,
-            index of position in Xd and Yd arrays that derivative observations
-            begin.  All derivative observations must be at the end of list.
         Yd_mean:  a function (optional),
             prior mean of the dependent variable at Xd.  Must take input
             of data in form of Xd, and output in same shape as Yd.  If
@@ -113,11 +104,11 @@ class GPR:
         InputError:
             an exception is thrown for incompatible format of any inputs.
         """
-        self.__call__ = self.inference       
+        self.__call__ = self.inference
         
         # Independent variables
         if Xd.ndim == 1:
-            self.Xd = Xd.copy().reshape((-1, 1))
+            self.Xd = Xd.reshape((-1, 1))
         elif Xd.ndim == 2:
             self.Xd = Xd
         else:
@@ -138,9 +129,8 @@ class GPR:
         if Yd.shape[0] != self.Nd:
             raise InputError("GPR argument Yd must have the same length as " +
                              "the first dimension of Xd.", Yd)
-        self.Yd = Yd.copy().reshape((-1, 1))
+        self.Yd = Yd.reshape((-1, 1))
         if transform is None:
-            self.Yd = Yd.copy().reshape((-1, 1))
             self.trans = None
         elif isinstance(transform, basestring):
             self.trans = eval(transform+'(self.Yd)')
@@ -154,12 +144,12 @@ class GPR:
         self.prior_mean = Yd_mean
         if self.prior_mean is not None:
             if self.trans is None:
-                self.Yd -= Yd_mean(Xd).reshape((-1, 1))
+                self.Yd -= self.prior_mean(Xd).reshape((-1, 1))
             else:
-                self.Yd -= self.trans(Yd_mean(Xd).reshape(-1, 1))
+                self.Yd -= self.trans(self.prior_mean(Xd).reshape(-1, 1))
         self.basis = explicit_basis
         if self.basis is not None:
-            (self.Nth, self.Hd) = self._get_basis(Xd)
+            (self.Nth, self.Hd) = self._basis(Xd)
         
         # Kernel (prior covariance)
         self.kernel = Cov
@@ -167,10 +157,10 @@ class GPR:
             raise InputError("GPR argument Cov must be a Kernel object.", Cov)
         
         # Do as many calculations as possible in preparation for the inference
-        self.R2dd = self._calculate_radius2(self.Xd, self.Xd)
+        self.Rdd = self._radius(self.Xd, self.Xd)
         # -- the following is repeated in maximize_hyper_posterior,
         #    create a separate function? --
-        self.Kdd = self.kernel(self.R2dd)
+        self.Kdd = self.kernel(self.Rdd)
         try:
             self.LKdd = cho_factor(self.Kdd)
         except LinAlgError as e:
@@ -187,7 +177,7 @@ class GPR:
             self.invKdd_HdTh = cho_solve(self.LKdd, self.Hd.dot(self.Th))
     
     
-    def _get_basis(self, X):
+    def _basis(self, X):
         """Calculate the basis functions given independent variables."""
         if ( isinstance(self.basis, list) and
              sum(self.basis.count(i) for i in [0, 1, 2]) > 0 ):
@@ -218,22 +208,22 @@ class GPR:
         return (Nth, H)
     
     
-    def _calculate_radius2(self, X, Y):
-        """Calculate the squared distance matrix (radius)."""
+    def _radius(self, X, Y):
+        """Calculate the distance matrix (radius)."""
         # Previously used: cdist(X, Y, 'seuclidean',V=self.aniso),
         # which required: from scipy.spatial.distance import cdist.
-        # Consider providing a fortran module function.
         (Nx, Ny) = (X.shape[0], Y.shape[0])
-        Rk2 = empty((Nx, Ny, self.Nx))
+        Rk = empty((Nx, Ny, self.Nx))
         for k in xrange(self.Nx):
-            Rk2[:, :, k] = ( tile(X[:,[k]]**2, (1, Ny)) +
+            #Rk2[:, :, k] = (tile(X[:,k], (1, Ny)) - tile(Y[:,k], (Nx, 1)))**2
+            Rk[:, :, k] = ( tile(X[:,[k]]**2, (1, Ny)) +
                              tile(Y[:,[k]].T**2, (Nx, 1)) -
-                             2.0*X[:,[k]].dot(Y[:,[k]].T) )
-            Rk2[:, :, k] /= self.aniso[k]
-        return Rk2
+                             2.0*X[:,[k]].dot(Y[:,[k]].T) )  # why are there brackets around k?
+            Rk[:, :, k] /= self.aniso[k]
+        return Rk
     
     
-    def hyper_posterior(self, params, p_mapped, grad=True):
+    def hyper_posterior(self, params, hp_mapped, grad=True):
         """
         Negative log of the hyper-parameter posterior & its gradient.
         
@@ -241,10 +231,11 @@ class GPR:
         ---------
         params:  array-1D,
             hyper parameters in an array for the minimization routine.
-        p_mapped:  array-1D,
+        hp_mapped:  array-1D,
             hyper parameter values that map to self.Kernel.
-        grad:  bool (optional),
-            when grad is not False, must return lnP_grad.
+        grad:  bool or string (optional),
+            when grad is True, must return lnP_grad,
+            when grad is 'Hess', must also return lnP_hess.
         
         Returns
         -------
@@ -252,12 +243,17 @@ class GPR:
             negative log of the hyper-parameter posterior.
         lnP_grad:  array-1D (optional - depending on argument grad),
             gradient of lnP_neg with respect to each hyper-parameter.
+        lnP_hess:  array-2D (optional - depending on argument grad),
+            Hessian matrix (2nd derivatives) of lnP_neg.
         """
-        
-        p_mapped[:] = params
-        (K, Kprime) = self.kernel(self.R2dd, grad=True)
-        (logPrior,d_logPrior) = self.kernel._ln_priors(params,grad=True)
-        
+        hp_mapped[:] = params
+        (Nd, Nhp) = (self.Nd, self.kernel.Nhp)
+        if not grad:  # may want to add the call to kernel._ln_priors here
+            K = self.kernel(self.Rdd, grad=False)
+        elif grad != 'Hess':
+            (K, Kp) = self.kernel(self.Rdd, grad=True)
+        else:
+            (K, Kp, Kpp) = self.kernel(self.Rdd, grad='Hess')
         try:
             LK = cho_factor(K)
         except LinAlgError as e:
@@ -268,33 +264,68 @@ class GPR:
             print (repr(params))
             raise e
         invK_Y = cho_solve(LK, self.Yd)
+        lnP_neg = ( float(self.Nd)*HLOG2PI + sum(log(diag(LK[0]))) +
+                    0.5*self.Yd.T.dot(invK_Y) )#+ sum(log(abs(params))) )
+        # TODO: provide a prior based on max & min values in the distance matrix
         if self.basis is not None:
+            Nth = self.Nth
             invK_H = cho_solve(LK, self.Hd)
             LSth = cho_factor(self.Hd.T.dot(invK_H))
             Sth = cho_solve(LSth, eye(self.Nth))
             Th = cho_solve(LSth, self.Hd.T.dot(invK_Y))
             betaTh = invK_H.dot(Th)
-        
-        # TODO: provide a prior based on max & min values in the distance matrix
-     
-        lnP_neg = ( float(self.Nd)*HLOG2PI + sum(log(diag(LK[0]))) +
-                    0.5*self.Yd.T.dot(invK_Y)  - logPrior ) 
-        if self.basis is not None:
             lnP_neg -= ( float(self.Nth)*HLOG2PI - sum(log(diag(LSth[0]))) +
-                         0.5*Th.T.dot(self.Hd.T.dot(betaTh)) )
+                         0.5*Th.T.dot(self.Hd.T).dot(betaTh) )
         if not grad:
             return lnP_neg
-        else:
-            lnP_grad = empty(self.kernel.Nhp)
-            for j in range(self.kernel.Nhp):
-                lnP_grad[j] = 0.5*( trace(cho_solve(LK,Kprime[:,:,j])) -
-                                    invK_Y.T.dot(Kprime[:,:,j].dot(invK_Y)) 
-                                    - 2.0*d_logPrior[j] )
-                if self.basis is not None:
-                    bKp = invK_H.T.dot(Kprime[:,:,j])
-                    lnP_grad[j] -= ( 0.5*(trace(bKp.dot(invK_H).dot(Sth))) +
-                                     Th.T.dot(bKp.dot(0.5*betaTh-invK_Y)) )
+        
+        # grad == True or 'Hess':
+        invK = cho_solve(LK, eye(Nhp))
+        invK_aa = invK - invK_Y.dot(invK_Y.T)
+        lnP_grad = empty(Nhp)
+        for j in xrange(Nhp):
+            lnP_grad[j] = 0.5*sum(invK_aa.T * Kp[:,:,j])# + 2.0/params[j]
+        if self.basis is not None:
+            diff2 = betaTh.T - 2.0*invK_Y.T
+            for j in xrange(Nhp):
+                bKpb = invK_H.T.dot(Kp[:,:,j]).dot(invK_H)
+                lnP_grad[j] -= 0.5*( sum(bKpb.T*Sth) +
+                                     diff2.dot(Kp[:,:,j]).dot(betaTh) )
+        if grad != 'Hess':
             return (lnP_neg, lnP_grad)
+        
+        # grad == 'Hess':
+        (invK_Kp, aa_Kp) = (empty(Nd, Nd, Nhp), empty(Nd, Nd, Nhp))
+        for j in xrange(Nhp):
+            invK_Kp[:,:,j] = invK.dot(Kp[:,:,j])
+            a_Kp = invK_Y.T.dot(Kp[:,:,j])
+            aa_Kp[:,:,j] = invK_Y.dot(a_Kp)
+        lnP_hess = empty(Nhp, Nhp)
+        for j in xrange(Nhp):
+            for i in xrange(Nhp):
+                lnP_hess[i, j] = 0.5*sum( invK_aa.T*Kpp[:,:,i,j] +
+                                          invK_Kp[:,:,i].T*invK_Kp[:,:,j] +
+                                          aa_Kp[:,:,i].T*invK_Kp[:,:,j] )
+        if self.basis is not None:
+            diff1 = betaTh.T - invK_Y.T
+            bSb_2invK = invK_H.dot(Sth).dot(invK_H.T) - 2.0*invK
+            (bKp, ThbKp) = (empty(Nth, Nd, Nhp), empty(Nd, Nhp))
+            (diff1Kpb, diff2Kp) = (empty(Nth, Nhp), empty(Nd, Nhp))
+            for j in xrange(Nhp):
+                bKp[:,:,j] = invK_H.T.dot(Kp[:,:,j])
+                ThbKp[:,j] = betaTh.T.dot(Kp[:,:,j])
+                diff1Kpb[:,j] = diff1.dot(Kp[:,:,j]).dot(invK_H)
+                diff2Kp[:,j] = diff2.dot(Kp[:,:,j])
+            for j in xrange(Nhp):
+                for i in xrange(Nhp):
+                    my_mess = ( invK_H.T.dot(Kpp[:,:,i,j]).dot(invK_H) +
+                                bKp[:,:,i].T.dot(bSb_2invK).dot(bKp[:,:,j]) )
+                    lnP_hess[i, j] -= 0.5 * ( sum(my_mess.T * Sth) +
+                              diff1.dot(Kpp[:,:,i,j]).dot(betaTh) -
+                              2.0*diff2Kp[:,i].dot(invK).dot(ThbKp[:,j].T) +
+                              2.0*diff1Kpb[:,i].dot(Sth).dot(diff1Kpb[:,j].T) )
+                    
+        return (lnP_neg, lnP_grad, lnP_hess)
     
     
     def maximize_hyper_posterior(self, hyper_params=None):
@@ -315,10 +346,9 @@ class GPR:
             Nhyper = self.kernel.declare_hyper(hyper_params)
         else:
             Nhyper = self.kernel.Nhp
-         
-        all_hyper = empty(Nhyper)        
+        all_hyper = empty(Nhyper)
         self.kernel.map_hyper(all_hyper)
-
+        
         # Perform minimization
         #myResult = minimize(self.hyper_posterior, all_hyper,
         #                    args=(all_hyper, False), method='Nelder-Mead',
@@ -344,7 +374,7 @@ class GPR:
         self.kernel.map_hyper(all_hyper, unmap=True)
         
         # Do as many calculations as possible in preparation for the inference
-        self.Kdd = self.kernel(self.R2dd)
+        self.Kdd = self.kernel(self.Rdd)
         self.LKdd = cho_factor(self.Kdd)
         self.invKdd_Yd = cho_solve(self.LKdd, self.Yd)
         if self.basis is not None:
@@ -367,8 +397,9 @@ class GPR:
             independent variables - where to make inferences. First
             dimension is for multiple inferences, and second dimension must
             match the second dimension of the argurment Xd from __init__.
-        infer_std:  bool (optional),
-            if True, return the inferred standard deviation.
+        infer_std:  bool or 'covar' (optional),
+            if True, return the inferred standard deviation;
+            if 'covar', return the full posterior covariance matrix.
         untransform:  bool (optional),
             if True, any inverse transformation is applied.
         
@@ -385,30 +416,31 @@ class GPR:
         ------
         InputError:
             an exception is thrown for incompatible format of any inputs.
-            
         
         Note
-        ----- 
+        ----
         If prior_mean was specified for GPR class object, this function
             will also be applied to Xi data.
         """
         
+        # TODO: calculation of the posterior mean of gradient and Hessian.
+        
         # Independent variables
         if Xi.ndim == 1:
-            Xi = Xi.copy().reshape((-1, 1))
-        Ni = Xi.shape[0]
+            Xi = Xi.reshape((-1, 1))
+        #Ni = Xi.shape[0]
         if Xi.ndim != 2 or Xi.shape[1] != self.Nx:
             raise InputError("GPR object argument Xi must be a 2D array " +
                              "(2nd dimension must match that of Xd.)", Xi)
         
         # Mixed i-d kernel & inference of posterior mean
-        R2id = self._calculate_radius2(Xi, self.Xd)
-        Kid = self.kernel(R2id)
+        Rid = self._calculate_radius2(Xi, self.Xd)
+        Kid = self.kernel(Rid)
         if self.basis is None:
             post_mean = Kid.dot(self.invKdd_Yd)
         else:
             post_mean = Kid.dot(self.invKdd_Yd-self.invKdd_HdTh)
-            (Nth, Hi) = self._get_basis(Xi)
+            (Nth, Hi) = self._basis(Xi)
             post_mean += Hi.dot(self.Th)
         
         # Dependent variable
@@ -421,16 +453,14 @@ class GPR:
         
         # Inference of posterior covariance
         if infer_std:
-            R2ii = self._calculate_radius2(Xi, Xi)
-            Kii = self.kernel(R2ii)
+            Rii = self._calculate_radius2(Xi, Xi)
+            Kii = self.kernel(Rii)
             post_covar = Kii-Kid.dot(cho_solve(self.LKdd, Kid.T))
             if self.basis is not None:
                 A = Hi - Kid.dot(self.invKdd_Hd)
                 post_covar += A.dot(self.Sth.dot(A.T))
             post_var = maximum(0.0, diag(post_covar)).reshape((-1, 1))
             post_std = sqrt(post_var)
-        # -- option to return the full posterior covariance (would be needed
-        #    to sample a processes from the posterior)? --
         
         # Inverse transformation of the dependent variable
         if self.trans is not None and untransform:
@@ -509,8 +539,10 @@ if __name__ == "__main__":
     import matplotlib as mpl
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
+    from kernels import Noise, SquareExp, RatQuad
+    from transforms import Probit
     
-    plt.close('all') 
+    # TODO: Examples that provide verification!
     
     # Example 1:
     # Simple case, 1D with three data points and one regression point

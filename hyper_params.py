@@ -132,16 +132,6 @@ class Constant(HyperPrior):
         else: 
             return array([1.0]),array([0.0]),array([0.0])
             
-class Marginalized(HyperPrior):
-    """Class for when hyper-parameter is being marginalized"""
-    def __call__(self, x, df=False):
-        if df == False:
-            return array([1.0])
-        if df == True:
-            return array([1.0]),array([])
-        else:
-            return array([1.0]),array([]),array([])
-            
 class Beta(HyperPrior):
     """Beta distribution class for hyper-parameter priors.
         For parameters bounded by [0,1]"""
