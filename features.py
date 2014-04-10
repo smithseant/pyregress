@@ -67,19 +67,19 @@ class derivative:
 class HyperPrior:
     """Base class for hyper-parameter prior distriubution classes"""
     def __init__(self, guess=1.):
-        self._guess = guess
+        self.guess = guess
     
     def __call__(self):
         pass
     
 
-class logNormal(HyperPrior):
+class LogNormal(HyperPrior):
     """Log Normal distribution class for hyper-parameter priors.
         To keep parameter positive"""
     def __init__(self, guess=1., **args):
-        self._guess = guess
+        self.guess = guess
         if args.has_key( "mean" ) and args.has_key( "std" ):
-            self._mu = log(args["mean"]**2/ \
+            self._mu = log(args["mean"]**2/ 
                         (args["std"]**2 + args["mean"]**2))
             self._sigma = sqrt(log(1 + args["std"]**2/args["mean"]**2))   
     
@@ -89,79 +89,96 @@ class logNormal(HyperPrior):
         self._mu = log(mean**2/(std**2 + mean**2))
         self._sigma = sqrt(log(1 + std**2/mean**2))
         
-    def __call__(self, x, derivative=False):
+    def __call__(self, x, grad=False):
         # TODO: if mean and std not defined, use auto_fill with Rk2      
         #if not hasattr(self,'mu'):
         #   self.auto_fill(self.Rk2)        
         
         twosigsqr = 2.0*self._sigma**2
-        log_pdf = -log(self._sigma*x)-0.5*log(2.0*pi)- \
-                    (log(x)-self._mu)**2/twosigsqr
-        if derivative == False: 
-            return log_pdf
+        logpdf = (-log(self._sigma*x)-0.5*log(2.0*pi)- 
+                    (log(x)-self._mu)**2/twosigsqr)
+        if grad == False: 
+            return logpdf
+        d_logpdf = (-self._mu + self._sigma**2 + 
+                    log(x))/(self._sigma**2 * x)
+        if grad == True:
+            return logpdf, d_logpdf
         else:             
-            log_dpdf = (-self._mu + self._sigma**2 + \
-                        log(x))/(self._sigma**2 * x)
-            return log_pdf, log_dpdf
+            d2_logpdf = ((self._mu - self._sigma**2 -log(x)+1.) 
+                        /(self._sigma*x)**2)
+            return logpdf, d_logpdf, d2_logpdf
             
-class jeffreys(HyperPrior):
+class Jeffreys(HyperPrior):
     """Jefferys' distribution class for hyper-parameter priors.
         Non informative prior"""
-    def __call__(self, x, derivative=False):
-        log_pdf = -log(x)
-        if derivative == False:
-            return log_pdf
+    def __call__(self, x, df=False):
+        logpdf = -log(x)
+        if df == False:
+            return logpdf
+        d_logpdf = divide(-1.0,x)
+        if df == True:
+            return logpdf, d_logpdf
         else:
-            log_dpdf = divide(-1.0,x)
-            return log_pdf, log_dpdf
+            d2_logpdf = divide(1.0,x**2)
+            return logpdf, d_logpdf, d2_logpdf
         
-class constant(HyperPrior):
+class Constant(HyperPrior):
     """Constant class for hyper-parameter"""
-    def __call__(self, x, derivative=False):
-        if derivative == False:
+    def __call__(self, x, df=False):
+        if df == False:
             return array([1.0])
-        else:
+        if df == True:
             return array([1.0]),array([0.0])
+        else: 
+            return array([1.0]),array([0.0]),array([0.0])
             
-class marginalized(HyperPrior):
+class Marginalized(HyperPrior):
     """Class for when hyper-parameter is being marginalized"""
-    def __call__(self, x, derivative=False):
-        if derivative == False:
+    def __call__(self, x, df=False):
+        if df == False:
             return array([1.0])
-        else:
+        if df == True:
             return array([1.0]),array([])
+        else:
+            return array([1.0]),array([]),array([])
             
 class Beta(HyperPrior):
     """Beta distribution class for hyper-parameter priors.
         For parameters bounded by [0,1]"""
     def __init__(self, a, b, guess=1.):
-        self._guess = guess
+        self.guess = guess
         self._a = a
         self._b = b
         
-    def __call__(self, x, derivative=False):
+    def __call__(self, x, df=False):
         a = self._a-1.
         b = self._b-1.
-        log_pdf = a*log(x) + b*log(1.-x)
-        if derivative==False:
-            return log_pdf
+        logpdf = a*log(x) + b*log(1.-x)
+        if df==False:
+            return logpdf
+        d_logpdf = a/x + b/(x-1.)
+        if df==True:
+            return logpdf, d_logpdf
         else:
-            log_dpdf = a/x + b/(x-1.)
-            return log_pdf, log_dpdf
+            d2_logpdf = -a/x**2 -b/(x-1.)**2
+            return logpdf, d_logpdf,d2_logpdf
             
 class Gamma(HyperPrior):
     """Gamma distribution class for hyper-parameter priors"""
     def __init__(self, k, theta, guess=1.):
-        self._guess = guess
+        self.guess = guess
         self._k = k
         self._theta = theta
         self._demonenator = k*log(theta) +  log(gamma(k))
         
-    def __call__(self, x, derivative=False):
+    def __call__(self, x, df=False):
         k = self._k - 1.
-        log_pdf = k*log(x) -x/self._theta - self._demonenator
-        if derivative==False:
-            return log_pdf
+        logpdf = k*log(x) -x/self._theta - self._demonenator
+        if df==False:
+            return logpdf
+        d_logpdf = k/x - 1./self._theta
+        if df==True:
+            return logpdf, d_logpdf
         else:
-            log_dpdf = k/x - 1./self._theta
-            return log_pdf, log_dpdf
+            d2_logpdf = -k/x**2
+            return logpdf, d_logpdf, d2_logpdf

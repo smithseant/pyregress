@@ -38,7 +38,10 @@ from scipy.optimize import minimize
 from pyregress import *
 from pyregress.kernels import Kernel
 #from pyregress.features import derivative
-from pyregress.transforms import Probit
+from pyregress.transforms import BaseTransform
+from pyregress.transforms import Probit, Logarithm
+from pyregress.features import *
+from pyregress.multi_newton import multi_Dimensional_Newton
 
 HLOG2PI = 0.5*log(2.0*pi)
 
@@ -250,10 +253,10 @@ class GPR:
         lnP_grad:  array-1D (optional - depending on argument grad),
             gradient of lnP_neg with respect to each hyper-parameter.
         """
-
+        
         p_mapped[:] = params
         (K, Kprime) = self.kernel(self.R2dd, grad=True)
-        (logPrior,d_logPrior) = self.kernel.calc_logP(params,grad=True)
+        (logPrior,d_logPrior) = self.kernel._ln_priors(params,grad=True)
         
         try:
             LK = cho_factor(K)
@@ -305,8 +308,8 @@ class GPR:
             to the argument Cov from __init__, and each bool or function
             indicates which kernel parameters are hyper-parameters and if they
             are, what is their prior.
-        """       
-
+        """             
+        
         # Setup hyper-parameters & map values from a single array
         if hyper_params:
             Nhyper = self.kernel.declare_hyper(hyper_params)
@@ -329,6 +332,13 @@ class GPR:
                              args=(all_hyper,), method='L-BFGS-B', jac=True,
                              bounds=[(0.0,None)]*Nhyper, tol=1e-4,
                              options={'maxiter':200, 'disp':True})
+        
+        #------------------------------------   
+        # Work in progress                                               
+        #multi_Dimensional_Newton(self.hyper_posterior, all_hyper, args=all_hyper, 
+        #                        options={'tol':1e-4, 'maxit':200, 'positive':True})
+        #myResult[:]=all_hyper
+        #------------------------------------                                                  
         
         # copy hyper-parameter values back to kernel (remove mapping)
         self.kernel.map_hyper(all_hyper, unmap=True)
@@ -519,8 +529,8 @@ if __name__ == "__main__":
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
     myGPR2 = GPR(Xd2, Yd2, RatQuad([0.6, 0.33, 1.0]), anisotropy=False,
                  explicit_basis=[0, 1], transform='Probit')
-    #(myGRP2, param) = myGPR2.maximize_hyper_posterior([False, logNormal(mean=0.3,std=0.25), False])
-    (myGRP2, param) = myGPR2.maximize_hyper_posterior([False, jeffreys(), False])
+    #(myGRP2, param) = myGPR2.maximize_hyper_posterior([False, LogNormal(mean=0.3,std=0.25), False])
+    (myGRP2, param) = myGPR2.maximize_hyper_posterior([False, Gamma(1.,2.), False])
     print 'Optimized value of the hyper-parameters:', param    
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
     yi2 = myGPR2( xi2 )

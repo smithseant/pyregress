@@ -102,19 +102,19 @@ class Kernel:
         -------
         Nhyper: int,
             resulting number of hyper parameters.
-        """      
+        """
 
         for i in xrange(len(hyper_params)):
             if isinstance(hyper_params[i],list):
                 for j in xrange(len(hyper_params[i])):
                     if hyper_params[i][j] == True:
-                        hyper_params[i][j] = constant() 
+                        hyper_params[i][j] = Constant() 
             if hyper_params[i] == True:
-                hyper_params[i] = constant()       
+                hyper_params[i] = Constant()       
         
         if not hyper_params or hyper_params=='none':
             self.Nhp = 0
-            self.Prior = [marginalized()]
+            self.Prior = [Marginalized()]
         elif (False not in hyper_params) and (not isinstance(hyper_params,list) ):
             self.Nhp = self.Np
             self.hp[:] = [True]*self.Np
@@ -135,7 +135,7 @@ class Kernel:
                         self.Prior += hyper_params[i][:]
                     elif hyper_params[i]==False or hyper_params[i]=='none':
                         self.hp[i] = [False]*len(self.p[i])
-                        self.Prior += [marginalized()]*len(self.p[i])
+                        self.Prior += [Marginalized()]*len(self.p[i])
                     elif hyper_params[i]=='all':
                         self.hp[i] = [True]*len(self.p[i])
                         self.Nhp += len(self.p[i]) - 1
@@ -146,7 +146,7 @@ class Kernel:
                         self.Prior += [hyper_params[i]]*len(self.p[i])
                 else:
                     if hyper_params[i] == False:
-                        self.Prior += [marginalized()]
+                        self.Prior += [Marginalized()]
                     else:
                         self.Prior += [hyper_params[i]]
                         
@@ -187,7 +187,7 @@ class Kernel:
                         im += 1
         return (self, p_mapped)
         
-    def calc_logP(self, params, grad=False):
+    def _ln_priors(self, params, grad=False):
         """
         Calculate log of prior distributions for hyper-parameters.
         
@@ -237,7 +237,7 @@ class Noise(Kernel):
     def __init__(self, params):
         super(Noise, self).__init__(1, params)
     def __call__(self, Rk2, grad=False):
-        w2 = self.p[0]**2
+        w2 = self.p[0]**2      
         if Rk2.shape[0] == Rk2.shape[1]:
             R2diag = sum(Rk2.diagonal(), 0)
             K = diag( array([1.0*b for b in R2diag == 0.0]) )
@@ -472,16 +472,16 @@ class KernelSum(Kernel):
                 h += kern.Nhp
             return (K, Kprime)
             
-    def calc_logP(self, params, grad=False):
+    def _ln_priors(self, params, grad=False):
         logPrior = 0.0
         if grad == False:
-            for k in xrange(len(self.terms)):
-                logPrior += self.terms[k].calc_logP(params)
+            for kern in self.terms:
+                logPrior += kern._ln_priors(params)
             return logPrior
         else:
             d_logPrior = array([]) 
-            for k in xrange(len(self.terms)):
-                (logP,d_logP) = self.terms[k].calc_logP(params,True)
+            for kern in self.terms:
+                (logP,d_logP) = kern._ln_priors(params,True)
                 logPrior += logP
                 d_logPrior = concatenate((d_logPrior,d_logP),axis=1)
             return logPrior, d_logPrior
@@ -542,16 +542,16 @@ class KernelProd(Kernel):
                 h += kern.Nhp
             return (K, Kprime)
             
-    def calc_logP(self, params, grad=False):
+    def _ln_priors(self, params, grad=False):
         logPrior = 0.0
         if grad == False:
-            for k in xrange(len(self.terms)):
-                logPrior += self.terms[k].calc_logP(params)
+            for kern in self.terms:
+                logPrior += kern._ln_priors(params)
             return logPrior
         else:
             d_logPrior = array([]) 
-            for k in xrange(len(self.terms)):
-                (logP,d_logP) = self.terms[k].calc_logP(params,True)
+            for kern in self.terms:
+                (logP,d_logP) = kern._ln_priors(params,True)
                 logPrior += logP
                 d_logPrior = concatenate((d_logPrior,d_logP),axis=1)
             return logPrior, d_logPrior

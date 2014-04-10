@@ -17,7 +17,7 @@ Multi-Dimensional Newton Solve
     history : time history of minimization (vector, optional) \n
 """
 
-from numpy import concatenate, abs, dot, min
+from numpy import concatenate, abs, dot
 from scipy.linalg import inv, solve
 from scipy.linalg import cho_factor, cho_solve
 from scipy.optimize import line_search
@@ -35,43 +35,17 @@ def multi_Dimensional_Newton(function, guess, args, options=None):
             test2 = iteration < options['maxiter']
         else: test2 = iteration < 200
             
-        # trial test to keep parameters positive
-        if options.has_key('positive'):
-            if (x < 0.).any():
-                change = (x/abs(dx)).min()
-                x += dx*change*1.01
-            
+        # trial test to keep parameters within bounds
+        if options.has_key('bounds'):
+            low,high = options['bounds']
+            if (x <= float(low)).any():
+                change = ((x-low)/abs(dx)).min()
+                x += dx*change*1.001
+            if (x > float(high)).any():
+                change = ((x-high)/abs(dx)).max() 
+                x -= dx*change*1.001
+                
         return test1 & test2      
-        
-    def line_search1(func,x,dx,guess,alpha=1.0,c1=0.1,c2=0.9):
-        
-        # Strong Wolfe conditions
-        # 1) sufficient decrease
-        #    f(x+alpha*dx) <= f(x) + c1*alpha*df(x).T*dx
-        #    c1 - (0,1)
-        def sufficent_decrease():
-            return (func(x+alpha*dx)[0] <= func(x)[0] + \
-                c1*alpha*dot(func(x)[1],dx))
-        
-        # 2) curvature condition
-        #    |df(x + alpha*dx)*dx| <= c2*|(f(x)dx|
-        #    c2 - (c1,1)
-        def curvature_cond():
-            return (abs(dot(func(x+alpha*dx)[1],dx)) <= \
-                    c2*abs(dot(func(x)[1],dx)))
-
-        iters = 0
-        while not ( sufficent_decrease() & curvature_cond() ):
-            if iters > 5:
-                alpha = 1.
-                break
-            #TODO replace with better method of chosing new alpha
-            # backtraking line search
-            alpha *= 0.75
-            iters += 1
-            
-        #print 'alpha ',alpha
-        return alpha
         
     # 1) Initiate
     func = lambda x : function(x, guess)
@@ -90,17 +64,13 @@ def multi_Dimensional_Newton(function, guess, args, options=None):
         #A = cho_factor(d2f)
         #dx = cho_solve(A,-df)
         
-        # Line search
-        #alpha = line_search1(func, x, dx, guess)
-        
+        # 4) Line search        
         ff = lambda x : func(x)[0]
         dff = lambda x : func(x)[1]
         alpha = line_search(ff,dff,x,dx,gfk=df,old_fval=f)
         alpha=alpha[0]
-        print alpha
-       # raw_input()
         
-        # 4) Update estimate       
+        # 5) Update estimate       
         x += alpha*dx
         iteration += 1
         history = concatenate((history, x))
@@ -190,5 +160,5 @@ if __name__ == "__main__":
         
     else:
         multi_Dimensional_Newton(Rosenbrock_func, guess, \
-                        args=guess, options={'tol':1e-6, 'maxiter':600 })#, \
-                        #'positive':True})
+                        args=guess, options={'tol':1e-6, 'maxiter':600, \
+                        'bounds':('-inf','inf')})
