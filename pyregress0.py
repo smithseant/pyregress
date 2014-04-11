@@ -38,7 +38,7 @@ from scipy.linalg import cho_factor, cho_solve
 from scipy.optimize import minimize
 
 from kernels import Kernel
-from transforms import BaseTransform
+from transforms import BaseTransform, Probit
 
 HLOG2PI = 0.5*log(2.0*pi)
 
@@ -440,7 +440,7 @@ class GPR:
                              "(2nd dimension must match that of Xd.)", Xi)
         
         # Mixed i-d kernel & inference of posterior mean
-        Rid = self._calculate_radius2(Xi, self.Xd)
+        Rid = self._radius(Xi, self.Xd)
         Kid = self.kernel(Rid)
         if self.basis is None:
             post_mean = Kid.dot(self.invKdd_Yd)
@@ -459,7 +459,7 @@ class GPR:
         
         # Inference of posterior covariance
         if infer_std:
-            Rii = self._calculate_radius2(Xi, Xi)
+            Rii = self._radius(Xi, Xi)
             Kii = self.kernel(Rii, data=data)
             post_covar = Kii-Kid.dot(cho_solve(self.LKdd, Kid.T))
             if self.basis is not None:
@@ -565,9 +565,7 @@ if __name__ == "__main__":
     Xd2 = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
                  [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
-    #myGPR2 = GPR(Xd2, Yd2, RatQuad([0.6, 0.33, 1.0]), anisotropy=False,
-    #             explicit_basis=[0, 1], transform='Probit')
-    myGPR2 = GPR(Xd2, Yd2, RatQuad(w=0.6, l=0.33, alpha=1.0), anisotropy=False,
+    myGPR2 = GPR(Xd2, Yd2, RatQuad(w=0.6,l=0.33,alpha=1.0), anisotropy=False,
                  explicit_basis=[0, 1], transform='Probit')
     #(myGRP2, param) = myGPR2.maximize_hyper_posterior([False, LogNormal(mean=0.3,std=0.25), False])
     #(myGRP2, param) = myGPR2.maximize_hyper_posterior([False, Gamma(1.,2.), False])

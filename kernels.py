@@ -337,7 +337,7 @@ class SquareExp(Kernel):
     def __call__(self, Rk, grad=False, **kwargs):
         (w, l) = (self.p['w'], self.p['l'])
         if not isinstance(l, list):
-            R2l2 = (sum(Rk,2)/w)**2
+            R2l2 = (sum(Rk,2)/l)**2
         else:
             R2l2 = zeros(Rk.shape[:2])
             for k in xrange(Rk.shape[2]):
