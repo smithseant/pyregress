@@ -148,7 +148,7 @@ class Kernel:
             return (lnprior, dlnprior, d2lnprior)
 
     @abstractmethod
-    def __call__(self, Rk, grad=False, **options):
+    def __call__(self, Rk, grad=False, **kwargs):
         """
         Calculate and return kernel values given the radius array.
         
@@ -159,7 +159,7 @@ class Kernel:
         grad: bool (optional),
             when grad is True also return Kgrad, and when grad is 'Hess'
             also return Khess.
-        options: any additional options (opt_name=opt_value),
+        kwargs: any additional options (opt_name=opt_value),
             specific options for specific kernels, otherwise ignored.
         
         Returns
@@ -201,18 +201,18 @@ class KernelSum(Kernel):
             h += kern.Nhp
         return (self, p_mapped)
     
-    def __call__(self, Rk, grad=False, **options):
+    def __call__(self, Rk, grad=False, **kwargs):
         if not grad:
             K = zeros(Rk.shape[:2])
             for kern in self.terms:
-                K += kern(Rk)
+                K += kern(Rk, **kwargs)
             return K
         elif grad != 'Hess':
             K = zeros(Rk.shape[:2])
             Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
             h = 0
             for kern in self.terms:
-                (K_t, Kgrad[:,:,h:h+kern.Nhp]) = kern(Rk, grad)
+                (K_t, Kgrad[:,:,h:h+kern.Nhp]) = kern(Rk, grad, **kwargs)
                 K += K_t
                 h += kern.Nhp
             return (K, Kgrad)
@@ -222,7 +222,7 @@ class KernelSum(Kernel):
             Khess = zeros((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
             for kern in self.terms:
                 hn = h + kern.Nhp
-                (Kt, Kgrad[:,:,h:hn], Khess[:,:,h:hn,h:hn]) = kern(Rk, grad)
+                (Kt, Kgrad[:,:,h:hn], Khess[:,:,h:hn,h:hn]) = kern(Rk, grad, **kwargs)
                 K += Kt
                 h  = hn
             return (K, Kgrad, Khess)
@@ -253,15 +253,15 @@ class KernelProd(Kernel):
             h += kern.Nhp
         return (self, p_mapped)
     
-    def __call__(self, Rk, grad=False, **options):
+    def __call__(self, Rk, grad=False, **kwargs):
         if not grad:
-            return prod([kern(Rk, grad) for kern in self.terms])
+            return prod([kern(Rk, **kwargs) for kern in self.terms])
         elif grad != 'Hess':
             K = zeros(Rk.shape[:2])
             Kgrad = ones((Rk.shape[0], Rk.shape[1], self.Nhp))
             h = 0
             for kern in self.terms:
-                (Kt, Kgt) = kern(Rk, grad)
+                (Kt, Kgt) = kern(Rk, grad, **kwargs)
                 K *= Kt
                 irange = range(h, h+kern.Nhp)
                 iother = range(0, h) + range(h+kern.Nhp, self.Nhp)
@@ -274,7 +274,7 @@ class KernelProd(Kernel):
             Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
             Khess = zeros((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
             for kern in self.terms:
-                (Kt, Kgt, Kht) = kern(Rk, grad)
+                (Kt, Kgt, Kht) = kern(Rk, grad, **kwargs)
                 K *= Kt
                 irange = range(h, h+kern.Nhp)
                 iother = range(0, h) + range(h+kern.Nhp, self.Nhp)
@@ -296,13 +296,14 @@ class Noise(Kernel):
     with the weight parameter, w, and a flag indicating inclusion or not.
     White noise is discontinuous.
     """
-    def __init__(self, params):
-        super(Noise, self).__init__(1, params)
-    def __call__(self, Rk, grad=False, **options):
+    def __init__(self, **params):
+        p_bounds = {'w':(0.0, None)}
+        super(Noise, self).__init__(params, p_bounds)
+    def __call__(self, Rk, grad=False, **kwargs):
         w = self.p['w']
         w2 = w**2
-        if options.has_key['data'] and options['data']==True:
-            K0 = eye(Rk.shape[0], Rk.shape[1])
+        if kwargs.has_key('data') and kwargs['data']==True:
+                K0 = eye(Rk.shape[0], Rk.shape[1])
         else:
             K0 = zeros(Rk.shape[:2])
         if not grad:
@@ -330,10 +331,10 @@ class SquareExp(Kernel):
     or it can be a list with a separate value in each direction.
     Squared-exponential is continuous and infinitely differentiable.
     """
-    def __init__(self, params):
+    def __init__(self, **params):
         p_bounds = {'w':(0.0, None), 'l':(0.0, None)}
-        super(SquareExp, self).__init__(2, params, p_bounds)
-    def __call__(self, Rk, grad=False, **options):
+        super(SquareExp, self).__init__(params, p_bounds)
+    def __call__(self, Rk, grad=False, **kwargs):
         (w, l) = (self.p['w'], self.p['l'])
         if not isinstance(l, list):
             R2l2 = (sum(Rk,2)/w)**2
@@ -400,10 +401,10 @@ class GammaExp(Kernel):
     all directions or a list with a separate value in each direction.
     Gamma-exponential is continuous, and when gamma=2 it is smooth.
     """
-    def __init__(self, params):
+    def __init__(self, **params):
         p_bounds = {'w':(0.0, None), 'l':(0.0, None), 'gamma':(0.0, 2.0)}
-        super(GammaExp, self).__init__(3, params, p_bounds)
-    def __call__(self, Rk, grad=False, **options):
+        super(GammaExp, self).__init__(params, p_bounds)
+    def __call__(self, Rk, grad=False, **kwargs):
         (w, l, g) = (self.p['w'], self.p['l'], self.p['gamma'])
         if not isinstance(l, list):
             Rglg = (sum(Rk,2)/l)**g
@@ -492,10 +493,10 @@ class RatQuad(Kernel):
     Rational quadratic is SE over a gamma distribution of length scales
     with a mean of alpha*l^2 and variance of alpha*l^4.
     """
-    def __init__(self, params):
+    def __init__(self, **params):
         p_bounds = {'w':(0.0, None), 'l':(0.0, None), 'alpha':(0.0, None)}
-        super(RatQuad, self).__init__(3, params, p_bounds)
-    def __call__(self, Rk, grad=False, **options):
+        super(RatQuad, self).__init__(params, p_bounds)
+    def __call__(self, Rk, grad=False, **kwargs):
         (w, l, a) = (self.p['w'], self.p['l'], self.p['alpha'])
         if not isinstance(l, list):
             R2l2 = (sum(Rk,2)/l)**2

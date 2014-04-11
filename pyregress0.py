@@ -160,7 +160,7 @@ class GPR:
         self.Rdd = self._radius(self.Xd, self.Xd)
         # -- the following is repeated in maximize_hyper_posterior,
         #    create a separate function? --
-        self.Kdd = self.kernel(self.Rdd)
+        self.Kdd = self.kernel(self.Rdd, data=True)
         try:
             self.LKdd = cho_factor(self.Kdd)
         except LinAlgError as e:
@@ -249,13 +249,13 @@ class GPR:
         hp_mapped[:] = params
         (Nd, Nhp) = (self.Nd, self.kernel.Nhp)
         if not grad:  # may want to add the call to kernel._ln_priors here
-            K = self.kernel(self.Rdd, grad=False)
+            K = self.kernel(self.Rdd, grad=False, data=True)
             lnprior = self.kernel._ln_priors(params)
         elif grad != 'Hess':
-            (K, Kp) = self.kernel(self.Rdd, grad=True)
+            (K, Kp) = self.kernel(self.Rdd, grad=True, data=True)
             (lnprior, dlnprior) = self.kernel._ln_priors(params, grad=True)
         else:
-            (K, Kp, Kpp) = self.kernel(self.Rdd, grad='Hess')
+            (K, Kp, Kpp) = self.kernel(self.Rdd, grad='Hess', data=True)
             (lnprior, dlnprior, d2lnprior) = \
                         self.kernel._ln_priors(params, grad='Hess')
         try:
@@ -380,7 +380,7 @@ class GPR:
         self.kernel.map_hyper(all_hyper, unmap=True)
         
         # Do as many calculations as possible in preparation for the inference
-        self.Kdd = self.kernel(self.Rdd)
+        self.Kdd = self.kernel(self.Rdd, data=True)
         self.LKdd = cho_factor(self.Kdd)
         self.invKdd_Yd = cho_solve(self.LKdd, self.Yd)
         if self.basis is not None:
@@ -392,7 +392,7 @@ class GPR:
         return (self, myResult.x)
     
     
-    def inference(self, Xi, infer_std=False, untransform=True):
+    def inference(self, Xi, infer_std=False, untransform=True, data=False):
         """
         Make inferences (interpolation or regression) at specified locations.
         Limited to a single value for any hyper-parameters.
@@ -460,7 +460,7 @@ class GPR:
         # Inference of posterior covariance
         if infer_std:
             Rii = self._calculate_radius2(Xi, Xi)
-            Kii = self.kernel(Rii)
+            Kii = self.kernel(Rii, data=data)
             post_covar = Kii-Kid.dot(cho_solve(self.LKdd, Kid.T))
             if self.basis is not None:
                 A = Hi - Kid.dot(self.invKdd_Hd)
@@ -487,7 +487,7 @@ class GPR:
             return (post_mean, post_std)
     
     
-    def sample(self, Xs):
+    def sample(self, Xs, data=True):
         """
         Sample the Gassian process at specified locations.
         
@@ -510,7 +510,7 @@ class GPR:
         """
         Ns = Xs.size
         (Ys_post, Cov) = self.inference(Xs, infer_std='covar',
-                                        untransform=False)
+                                        untransform=False, data=data)
         Z = randn(Ns).reshape((Ns, 1))
         Ys = Ys_post + Cov.dot(Z)
         if self.trans is not None:
@@ -546,7 +546,6 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
     from kernels import Noise, SquareExp, RatQuad
-    from transforms import Probit
     
     # TODO: Examples that provide verification!
     
@@ -554,7 +553,8 @@ if __name__ == "__main__":
     # Simple case, 1D with three data points and one regression point
     Xd1 = array([[0.1], [0.3], [0.6]])
     Yd1 = array([[0.0], [1.0], [0.5]])
-    myGPR1 = GPR( Xd1, Yd1, Noise([0.1]) + SquareExp([1.0, 0.3]) )
+    #myGPR1 = GPR( Xd1, Yd1, Noise([0.1]) + SquareExp([1.0, 0.3]) )
+    myGPR1 = GPR( Xd1, Yd1, Noise(w=0.1) + SquareExp(w=1.0,l=0.3) )
     xi1 = array([[0.2]])
     yi1 = myGPR1( xi1 )
     print 'Example 1:'
@@ -565,11 +565,13 @@ if __name__ == "__main__":
     Xd2 = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
                  [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
-    myGPR2 = GPR(Xd2, Yd2, RatQuad([0.6, 0.33, 1.0]), anisotropy=False,
+    #myGPR2 = GPR(Xd2, Yd2, RatQuad([0.6, 0.33, 1.0]), anisotropy=False,
+    #             explicit_basis=[0, 1], transform='Probit')
+    myGPR2 = GPR(Xd2, Yd2, RatQuad(w=0.6, l=0.33, alpha=1.0), anisotropy=False,
                  explicit_basis=[0, 1], transform='Probit')
     #(myGRP2, param) = myGPR2.maximize_hyper_posterior([False, LogNormal(mean=0.3,std=0.25), False])
-    (myGRP2, param) = myGPR2.maximize_hyper_posterior([False, Gamma(1.,2.), False])
-    print 'Optimized value of the hyper-parameters:', param    
+    #(myGRP2, param) = myGPR2.maximize_hyper_posterior([False, Gamma(1.,2.), False])
+    #print 'Optimized value of the hyper-parameters:', param    
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
     yi2 = myGPR2( xi2 )
     print 'Example 2:'
