@@ -6,12 +6,12 @@ Docstring for the kernels module - needs to be written
 # @author: Sean T. Smith
 
 from abc import ABCMeta, abstractmethod
-from collections import OderedDict as odict
+from collections import OrderedDict as odict
 from numbers import Number
-from numpy import array, empty, zeros, ones, eye, sum, prod, ix_, expand_dims, concatenate, tile
+from numpy import empty, zeros, ones, eye, sum, prod, ix_, expand_dims, tile
 from scipy import exp, log
 
-from hyper_params import HyperPrior, Constant
+from hyper_params import HyperPrior
 
 # TODO: Add periodic, but it would require general handling of multiple Rs.
 
@@ -110,40 +110,42 @@ class Kernel:
         params: array-1D
             array of hyper-parameter values.
         grad: bool (optional),
-            when grad is True also return d_logpdf, and when grad is 'Hess'
-            also return d2_logpdf.
+            when grad is True also return dlnprior, and when grad is 'Hess'
+            also return d2lnpdf.
             
         Returns
         -------
-        logPrior: scalar value
+        lnprior: scalar value
             summation of values of log prior probabilities evaluated at 
             values provided by params
-            
-        PriorGrad: array-1D
+        dlnprior: array-1D
             array of gradients of log prior probabilities evaluated at 
             values provided by params
+        d2lnprior: array-2D
+            matrix where diagonal is 2nd derivatives of log prior probabilities
+            evaluated at values provided by params
         """
-        ln_prior = 0.0
+        lnprior = 0.0
         if not grad:
             for (f_prior, i) in zip(self.hp, xrange(self.Nhp)):
-                ln_prior += f_prior(params[i])
-            return ln_prior
+                lnprior += f_prior(params[i])
+            return lnprior
         elif grad == True:
-            PriorGrad = empty(self.Nhp)
+            dlnprior = empty(self.Nhp)
             for (f_prior, i) in zip(self.hp, xrange(self.Nhp)):
                 (lnp, dlnp) = f_prior(params[i], grad)
-                ln_prior += lnp
-                PriorGrad[i] = dlnp
-            return (ln_prior, PriorGrad)
+                lnprior += lnp
+                dlnprior[i] = dlnp
+            return (lnprior, dlnprior)
         elif grad == 'Hess':
-            PriorGrad = empty(self.Nhp)
-            PriorHess = zeros(self.Nhp, self.Nhp)
+            dlnprior = empty(self.Nhp)
+            d2lnprior = zeros(self.Nhp, self.Nhp)
             for (f_prior, i) in zip(self.hp, xrange(self.Nhp)):
                 (lnp, dlnp, d2lnp) = f_prior(params[i], grad)
-                ln_prior += lnp
-                PriorGrad[i] = dlnp
-                PriorHess[i, i] = d2lnp
-            return (ln_prior, PriorGrad, PriorHess)
+                lnprior += lnp
+                dlnprior[i] = dlnp
+                d2lnprior[i, i] = d2lnp
+            return (lnprior, dlnprior, d2lnprior)
 
     @abstractmethod
     def __call__(self, Rk, grad=False, **options):

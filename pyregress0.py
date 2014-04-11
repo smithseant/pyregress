@@ -250,10 +250,14 @@ class GPR:
         (Nd, Nhp) = (self.Nd, self.kernel.Nhp)
         if not grad:  # may want to add the call to kernel._ln_priors here
             K = self.kernel(self.Rdd, grad=False)
+            lnprior = self.kernel._ln_priors(params)
         elif grad != 'Hess':
             (K, Kp) = self.kernel(self.Rdd, grad=True)
+            (lnprior, dlnprior) = self.kernel._ln_priors(params, grad=True)
         else:
             (K, Kp, Kpp) = self.kernel(self.Rdd, grad='Hess')
+            (lnprior, dlnprior, d2lnprior) = \
+                        self.kernel._ln_priors(params, grad='Hess')
         try:
             LK = cho_factor(K)
         except LinAlgError as e:
@@ -264,9 +268,10 @@ class GPR:
             print (repr(params))
             raise e
         invK_Y = cho_solve(LK, self.Yd)
+        ()
         lnP_neg = ( float(self.Nd)*HLOG2PI + sum(log(diag(LK[0]))) +
-                    0.5*self.Yd.T.dot(invK_Y) )#+ sum(log(abs(params))) )
-        # TODO: provide a prior based on max & min values in the distance matrix
+                    0.5*self.Yd.T.dot(invK_Y) - lnprior)
+                    
         if self.basis is not None:
             Nth = self.Nth
             invK_H = cho_solve(LK, self.Hd)
@@ -284,7 +289,7 @@ class GPR:
         invK_aa = invK - invK_Y.dot(invK_Y.T)
         lnP_grad = empty(Nhp)
         for j in xrange(Nhp):
-            lnP_grad[j] = 0.5*sum(invK_aa.T * Kp[:,:,j])# + 2.0/params[j]
+            lnP_grad[j] = 0.5*sum(invK_aa.T * Kp[:,:,j] - 2.0*dlnprior[j])
         if self.basis is not None:
             diff2 = betaTh.T - 2.0*invK_Y.T
             for j in xrange(Nhp):
@@ -305,7 +310,8 @@ class GPR:
             for i in xrange(Nhp):
                 lnP_hess[i, j] = 0.5*sum( invK_aa.T*Kpp[:,:,i,j] +
                                           invK_Kp[:,:,i].T*invK_Kp[:,:,j] +
-                                          aa_Kp[:,:,i].T*invK_Kp[:,:,j] )
+                                          aa_Kp[:,:,i].T*invK_Kp[:,:,j] -
+                                          d2lnprior[i,j])
         if self.basis is not None:
             diff1 = betaTh.T - invK_Y.T
             bSb_2invK = invK_H.dot(Sth).dot(invK_H.T) - 2.0*invK
