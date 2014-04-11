@@ -6,6 +6,7 @@ Docstring for the kernels module - needs to be written
 # @author: Sean T. Smith
 
 from abc import ABCMeta, abstractmethod
+from collections import OderedDict as odict
 from numbers import Number
 from numpy import array, empty, zeros, ones, eye, sum, prod, ix_, expand_dims, concatenate, tile
 from scipy import exp, log
@@ -40,33 +41,28 @@ class Kernel:
             tuple (min, max). When unbounded, use None for min and/or max.
         """
         # TODO: throw an error if the parameters don't match the spec.
-        (self.p, self.Np) = ({}, 0)
-        (self.hp, self.Nhp, self.hp_iterable) = ({}, 0, [])
-        for (key, val) in params.iteritems():
+        self.Np = len(params_spec)
+        self.Nhp = len([i for i in params if isinstance(i, HyperPrior)])
+        if params.has_key('l') and isinstance(params['l'], list):
+            self.Np += len(params['l']) - 1
+            self.Nhp += len([i for i in params['l']
+                             if isinstance(i, HyperPrior)])
+        self.p = odict([(key, None) for key in params_spec.keys()])
+        (self.hp, self.hp_id) = ([], [])
+        for (key, val) in params.items():
             if isinstance(val, Number):
                 self.p[key] = val
-                self.Np += 1
             elif isinstance(val, HyperPrior):
-                if val == True:
-                    val = Constant()  # can we change the iterator mid-stream?
-                self.p[key] = val.guess
-                self.Np += 1
-                self.hp[key] = val
-                self.hp_iterable += [key]
+                self.hp += [val]
+                self.hp_id += [key]
             elif isinstance(val, list):
                 self.p[key] = [None]*len(val)
-                self.Np += len(val)
-                self.hp[key] = [None]*len(val)
                 for i in range(len(val)):
                     if isinstance(val[i], Number):
                         self.p[key][i] = val[i]
                     elif isinstance(val[i], HyperPrior):
-                        if val == True:
-                            val = Constant()  # can we change the iterator mid-stream?
-                        self.p[key][i] = val[i].guess
-                        self.hp[key][i] = val[i]
-                        self.hp_iterable += [i]
-            self.Nhp = len(self.hp_iterable)
+                        self.hp += [val[i]]
+                        self.hp_id += [i]
     
     def __add__(self, other):
         """Overload '+' so Kernel objects can be added."""
@@ -86,26 +82,24 @@ class Kernel:
             # Combine with the existing KernelProd object.
             return other.__mul__(self, self_on_right=True)
     
-    def map_hyper(self, p_mapped, unmap=False):
-        """
-        Replace hyper-parameter values with pointers to a 1D array.
-        
-        Arguments
-        ---------
-        p_mapped: array-1D,
-            array to which the hyper-parameters will point.
-        unmap: bool (optional),
-            if true, hyper-parameter pointers will be replaced by values.
-        """
-        # TODO: throw an error if the number of hyper-parameters doesn't match.
-        for (hp, i) in zip(self.hp_iterable, range(self.Nhp)):
-            if not isinstance(hp, int):
-                p_mapped[i] = self.p[hp]
-                self.p[hp] = p_mapped[i:i+1]
-            else:
-                p_mapped[i] = self.p['l'][hp]
-                self.p['l'][hp] = p_mapped[i:i+1]
-        return (self, p_mapped)
+    def _map_hyper(self, hp_mapped=None):
+        """Replace hyper-parameter values with pointers to a 1D array."""
+        if hp_mapped == None:
+            hp_mapped = empty(self.Nhp)
+        if isinstance(self, KernelSum) or isinstance(self, KernelProd):
+            i = 0
+            for kern in self.terms:
+                kern._map_hyper(hp_mapped[i:i+kern.Nhp])
+                i += kern.Nhp
+        else:
+            for (hp, i) in zip(self.hp_id, xrange(self.Nhp)):
+                if not isinstance(hp, int):
+                    hp_mapped[i] = self.hp[i].guess
+                    self.p[hp] = hp_mapped[i:i+1]
+                else:
+                    hp_mapped[i] = self.hp[i].guess
+                    self.p['l'][hp] = hp_mapped[i:i+1]
+        return (self, hp_mapped)
 
     def _ln_priors(self, params, grad=False):
         """
@@ -115,6 +109,9 @@ class Kernel:
         ---------
         params: array-1D
             array of hyper-parameter values.
+        grad: bool (optional),
+            when grad is True also return d_logpdf, and when grad is 'Hess'
+            also return d2_logpdf.
             
         Returns
         -------
@@ -126,25 +123,27 @@ class Kernel:
             array of gradients of log prior probabilities evaluated at 
             values provided by params
         """
-        
-        logPrior = 0.0
-        if (grad == True):
-            PriorGrad = array([])
-            for f in self.Prior:
-                (prior,d_prior) = f(params,True)
-                for p in prior:
-                    logPrior += p
-                if isinstance(d_prior,list):
-                    for i in len(d_prior):
-                        d_prior[i] = d_prior[i]
-                else:
-                    d_prior = d_prior
-                PriorGrad = concatenate((PriorGrad,d_prior),axis=1)
-            return logPrior, PriorGrad
-        else:
-            for f in self.Prior:
-                logPrior += log(abs(f(params)))
-            return logPrior
+        ln_prior = 0.0
+        if not grad:
+            for (f_prior, i) in zip(self.hp, xrange(self.Nhp)):
+                ln_prior += f_prior(params[i])
+            return ln_prior
+        elif grad == True:
+            PriorGrad = empty(self.Nhp)
+            for (f_prior, i) in zip(self.hp, xrange(self.Nhp)):
+                (lnp, dlnp) = f_prior(params[i], grad)
+                ln_prior += lnp
+                PriorGrad[i] = dlnp
+            return (ln_prior, PriorGrad)
+        elif grad == 'Hess':
+            PriorGrad = empty(self.Nhp)
+            PriorHess = zeros(self.Nhp, self.Nhp)
+            for (f_prior, i) in zip(self.hp, xrange(self.Nhp)):
+                (lnp, dlnp, d2lnp) = f_prior(params[i], grad)
+                ln_prior += lnp
+                PriorGrad[i] = dlnp
+                PriorHess[i, i] = d2lnp
+            return (ln_prior, PriorGrad, PriorHess)
 
     @abstractmethod
     def __call__(self, Rk, grad=False, **options):
@@ -347,7 +346,7 @@ class SquareExp(Kernel):
             return w2*K0
         # First derivatives:
         Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-        for (i, h) in zip(range(self.Nhp), self.hp_iterable):
+        for (i, h) in zip(range(self.Nhp), self.hp_id):
             if h == 'w':
                 # dK/dw:
                 Kgrad[:,:,i] = 2.0*w*K0
@@ -361,8 +360,8 @@ class SquareExp(Kernel):
             return (w2*K0, Kgrad)
         # Second derivatives:
         Khess = empty((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
-        for (i, h1) in zip(xrange(self.Nhp), self.hp_iterable):
-            for (j, h2) in zip(xrange(i, self.Nhp), self.hp_iterable[i:]):
+        for (i, h1) in zip(xrange(self.Nhp), self.hp_id):
+            for (j, h2) in zip(xrange(i, self.Nhp), self.hp_id[i:]):
                 if h1 == 'w' and h2 == 'w':
                     # d^2K/dw^2:
                     Khess[:,:,i,j] = 2.0*K0
@@ -417,7 +416,7 @@ class GammaExp(Kernel):
             return w2*K0
         # First derivatives:
         Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-        for (i, h) in zip(range(self.Nhp), self.hp_iterable):
+        for (i, h) in zip(range(self.Nhp), self.hp_id):
             if h == 'w':
                 # dK/dw:
                 Kgrad[:,:,i] = 2.0*w*K0
@@ -437,8 +436,8 @@ class GammaExp(Kernel):
             return (w2*K0, Kgrad)
         # Second derivatives:
         Khess = empty((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
-        for (i, h1) in zip(xrange(self.Nhp), self.hp_iterable):
-            for (j, h2) in zip(xrange(i, self.Nhp), self.hp_iterable[i:]):
+        for (i, h1) in zip(xrange(self.Nhp), self.hp_id):
+            for (j, h2) in zip(xrange(i, self.Nhp), self.hp_id[i:]):
                 if h1 == 'w' and h2 == 'w':
                     # d^2K/dw^2:
                     Khess[:,:,i,j] = 2.0*K0
@@ -509,7 +508,7 @@ class RatQuad(Kernel):
             return w2*K0
         # First derivatives:
         Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-        for (i, h) in zip(range(self.Nhp), self.hp_iterable):
+        for (i, h) in zip(range(self.Nhp), self.hp_id):
             if h == 'w':
                 # dK/dw:
                 Kgrad[:,:,i] = 2.0*w*K0
@@ -527,8 +526,8 @@ class RatQuad(Kernel):
             return (w2*K0, Kgrad)
         # Second derivatives:
         Khess = empty((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
-        for (i, h1) in zip(xrange(self.Nhp), self.hp_iterable):
-            for (j, h2) in zip(xrange(i, self.Nhp), self.hp_iterable[i:]):
+        for (i, h1) in zip(xrange(self.Nhp), self.hp_id):
+            for (j, h2) in zip(xrange(i, self.Nhp), self.hp_id[i:]):
                 if h1 == 'w' and h2 == 'w':
                     # d^2K/dw^2:
                     Khess[:,:,i,j] = 2.0*K0
