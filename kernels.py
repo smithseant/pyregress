@@ -297,7 +297,7 @@ class Noise(Kernel):
     White noise is discontinuous.
     """
     def __init__(self, **params):
-        p_bounds = {'w':(0.0, None)}
+        p_bounds = odict([('w', (0.0, None))])
         super(Noise, self).__init__(params, p_bounds)
     def __call__(self, Rk, grad=False, **kwargs):
         w = self.p['w']
@@ -332,12 +332,12 @@ class SquareExp(Kernel):
     Squared-exponential is continuous and infinitely differentiable.
     """
     def __init__(self, **params):
-        p_bounds = {'w':(0.0, None), 'l':(0.0, None)}
+        p_bounds = odict([('w', (0.0, None)), ('l', (0.0, None))])
         super(SquareExp, self).__init__(params, p_bounds)
     def __call__(self, Rk, grad=False, **kwargs):
         (w, l) = (self.p['w'], self.p['l'])
         if not isinstance(l, list):
-            R2l2 = (sum(Rk,2)/l)**2
+            R2l2 = sum(Rk**2,2)/l
         else:
             R2l2 = zeros(Rk.shape[:2])
             for k in xrange(Rk.shape[2]):
@@ -402,12 +402,13 @@ class GammaExp(Kernel):
     Gamma-exponential is continuous, and when gamma=2 it is smooth.
     """
     def __init__(self, **params):
-        p_bounds = {'w':(0.0, None), 'l':(0.0, None), 'gamma':(0.0, 2.0)}
+        p_bounds = odict([('w', (0.0, None)), ('l', (0.0, None)),
+                          ('gamma', (0.0, 2.0))])
         super(GammaExp, self).__init__(params, p_bounds)
     def __call__(self, Rk, grad=False, **kwargs):
         (w, l, g) = (self.p['w'], self.p['l'], self.p['gamma'])
         if not isinstance(l, list):
-            Rglg = (sum(Rk,2)/l)**g
+            Rglg = sum(Rk**g,2)/l
         else:
             Rglg = zeros(Rk.shape[:2])
             for k in xrange(Rk.shape[2]):
@@ -494,12 +495,13 @@ class RatQuad(Kernel):
     with a mean of alpha*l^2 and variance of alpha*l^4.
     """
     def __init__(self, **params):
-        p_bounds = {'w':(0.0, None), 'l':(0.0, None), 'alpha':(0.0, None)}
+        p_bounds = odict([('w', (0.0, None)), ('l', (0.0, None)),
+                          ('alpha', (0.0, None))])
         super(RatQuad, self).__init__(params, p_bounds)
     def __call__(self, Rk, grad=False, **kwargs):
         (w, l, a) = (self.p['w'], self.p['l'], self.p['alpha'])
         if not isinstance(l, list):
-            R2l2 = (sum(Rk,2)/l)**2
+            R2l2 = sum(Rk**2,2)/l
         else:
             R2l2 = zeros(Rk.shape[:2])
             for k in xrange(Rk.shape[2]):

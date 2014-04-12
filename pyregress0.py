@@ -29,8 +29,8 @@ Reading the code and development:
 # @author: Sean T. Smith
 
 #from termcolor import colored  # may not work on windows
-from numpy import (array, empty, ones, eye, shape, tile,
-                   maximum, diag, trace, sum, sqrt)
+from numpy import (ndarray, array, empty, ones, eye, shape, tile,
+                   maximum, diag, sum, sqrt)
 from numpy.linalg.linalg import LinAlgError
 from numpy.random import randn
 from scipy import pi, log
@@ -52,21 +52,21 @@ class GPR:
     >>> from pyregress import GPR, Noise, SquareExp, RatQuad
     >>> Xd = array([[0.1], [0.3], [0.6]])
     >>> Yd = array([[0.0], [1.0], [0.5]])
-    >>> myGPR = GPR( Xd, Yd, Noise([0.1]) + SquareExp([1.0, 0.1]) )
+    >>> myGPR = GPR( Xd, Yd, Noise(w=0.1) + SquareExp(w=1.0, l=0.3) )
     >>> print myGPR( np.array([[0.2]]) )
-    [[ 0.54624635]]
+    [[ 0.52641732]]
     
     >>> Xd = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
     ...             [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     >>> Yd = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
-    >>> myGPR = GPR(Xd, Yd, RatQuad([0.6, 0.33, 1.0]), anisotropy=False,
+    >>> myGPR = GPR(Xd, Yd, RatQuad(w=0.6, l=0.3, alpha=1.0),
     ...             explicit_basis=[0, 1], transform='Probit')
     >>> myGPR.maximize_hyper_posterior([False, True, False])
     >>> print myGPR( np.array([[0.10, 0.10], [0.50, 0.42]]) )
-    [[ 0.21513894]
-     [ 0.75675894]]
+    [[ 0.22770558]
+     [ 0.78029862]]
     """
-    def __init__(self, Xd, Yd, Cov, anisotropy='auto',
+    def __init__(self, Xd, Yd, Cov, anisotropy=None,
                  Yd_mean=None, explicit_basis=None, transform=None):
         """
         Create a GPR object and prepare for inference.
@@ -80,12 +80,12 @@ class GPR:
             dependent-variable observed values - same length as the first
             dimension of Xd.
         Cov:  Kernel object,
-            prior covariance kernel. Options include: Noise, OU, GammaExp,
-            SquareExp, RatQuad, or the sum of any of these.
-        anisotropy:  string or bool or array-1D (optional),
-            scaling of the independent variables. For 'auto' or True, it uses
-            range scaling. For False, no scaling. For an array with the same
-            length as the second dimension of Xd, it uses manual scaling.
+            prior covariance kernel. Options include: Noise, SquareExp,
+            GammaExp, RatQuad, or the sum of any of these.
+        anisotropy:  string or array-1D (optional),
+            scaling of the independent variables. With 'auto', it uses range
+            scaling. With an array having the same length as the second
+            dimension of Xd, it uses manual scaling.
         Yd_mean:  a function (optional),
             prior mean of the dependent variable at Xd.  Must take input
             of data in form of Xd, and output in same shape as Yd.  If
@@ -97,7 +97,7 @@ class GPR:
         transform:  string or BaseTransform object (optional)
             specify a dependent variable transformation with the name of a
             BaseTransform class (as a string) or a BaseTransform object.
-            Options include: Logarithm, Probit, ProbitBeta, or Logit.
+            Options include: Logarithm, Logit, Probit, or ProbitBeta.
         
         Raises
         ------
@@ -116,7 +116,7 @@ class GPR:
         (self.Nd, self.Nx) = shape(Xd)
         if not anisotropy:
             self.aniso = ones(self.Nx)
-        elif anisotropy is True or anisotropy == 'auto':
+        elif anisotropy == 'auto':
             self.aniso = (Xd.max(0)-Xd.min(0))**2
         elif shape(anisotropy) == (self.Nx,):
             self.aniso = anisotropy
@@ -215,11 +215,9 @@ class GPR:
         (Nx, Ny) = (X.shape[0], Y.shape[0])
         Rk = empty((Nx, Ny, self.Nx))
         for k in xrange(self.Nx):
-            #Rk2[:, :, k] = (tile(X[:,k], (1, Ny)) - tile(Y[:,k], (Nx, 1)))**2
-            Rk[:, :, k] = ( tile(X[:,[k]]**2, (1, Ny)) +
-                             tile(Y[:,[k]].T**2, (Nx, 1)) -
-                             2.0*X[:,[k]].dot(Y[:,[k]].T) )  # why are there brackets around k?
-            Rk[:, :, k] /= self.aniso[k]
+            Rk[:, :, k] = tile(X[:,[k]], (1, Ny)) - tile(Y[:,[k]].T, (Nx, 1))
+            if self.aniso == 'auto' or isinstance(self.aniso, ndarray):
+                Rk[:, :, k] /= self.aniso[k]
         return Rk
     
     
@@ -408,6 +406,8 @@ class GPR:
             if 'covar', return the full posterior covariance matrix.
         untransform:  bool (optional),
             if True, any inverse transformation is applied.
+        data: bool (optional),
+            if True, inferred points also include the Noise contribution.
         
         Returns
         -------
@@ -554,7 +554,7 @@ if __name__ == "__main__":
     Xd1 = array([[0.1], [0.3], [0.6]])
     Yd1 = array([[0.0], [1.0], [0.5]])
     #myGPR1 = GPR( Xd1, Yd1, Noise([0.1]) + SquareExp([1.0, 0.3]) )
-    myGPR1 = GPR( Xd1, Yd1, Noise(w=0.1) + SquareExp(w=1.0,l=0.3) )
+    myGPR1 = GPR( Xd1, Yd1, Noise(w=0.1) + SquareExp(w=1.0, l=0.3) )
     xi1 = array([[0.2]])
     yi1 = myGPR1( xi1 )
     print 'Example 1:'
@@ -565,8 +565,8 @@ if __name__ == "__main__":
     Xd2 = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
                  [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
-    myGPR2 = GPR(Xd2, Yd2, RatQuad(w=0.6,l=0.33,alpha=1.0), anisotropy=False,
-                 explicit_basis=[0, 1], transform='Probit')
+    myGPR2 = GPR(Xd2, Yd2, RatQuad(w=0.6, l=0.3, alpha=1.0),
+                 anisotropy=False, explicit_basis=[0, 1], transform='Probit')
     #(myGRP2, param) = myGPR2.maximize_hyper_posterior([False, LogNormal(mean=0.3,std=0.25), False])
     #(myGRP2, param) = myGPR2.maximize_hyper_posterior([False, Gamma(1.,2.), False])
     #print 'Optimized value of the hyper-parameters:', param    
