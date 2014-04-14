@@ -42,7 +42,7 @@ class Kernel:
         """
         # TODO: throw an error if the parameters don't match the spec.
         self.Np = len(params_spec)
-        self.Nhp = len([i for i in params if isinstance(i, HyperPrior)])
+        self.Nhp = len([i for i in params.values() if isinstance(i, HyperPrior)])
         if params.has_key('l') and isinstance(params['l'], list):
             self.Np += len(params['l']) - 1
             self.Nhp += len([i for i in params['l']
@@ -99,7 +99,8 @@ class Kernel:
                 else:
                     hp_mapped[i] = self.hp[i].guess
                     self.p['l'][hp] = hp_mapped[i:i+1]
-        return (self, hp_mapped)
+        #return (self, hp_mapped)
+        return hp_mapped
 
     def _ln_priors(self, params, grad=False):
         """
@@ -127,24 +128,52 @@ class Kernel:
         """
         lnprior = 0.0
         if not grad:
-            for (f_prior, i) in zip(self.hp, xrange(self.Nhp)):
-                lnprior += f_prior(params[i])
+            i = 0
+            if isinstance(self, KernelSum) or isinstance(self, KernelProd):
+                for kern in self.terms:
+                    for f_prior in kern.hp:
+                        lnprior += f_prior(params[i])
+                        i += 1
+            else:
+                for (f_prior, i) in zip(self.hp, xrange(self.Nhp)):
+                    lnprior += f_prior(params[i])
             return lnprior
+            
         elif grad == True:
             dlnprior = empty(self.Nhp)
-            for (f_prior, i) in zip(self.hp, xrange(self.Nhp)):
-                (lnp, dlnp) = f_prior(params[i], grad)
-                lnprior += lnp
-                dlnprior[i] = dlnp
+            i = 0
+            if isinstance(self, KernelSum) or isinstance(self, KernelProd):
+                for kern in self.terms:
+                    for f_prior in kern.hp:
+                        (lnp, dlnp) = f_prior(params[i], grad)
+                        lnprior += lnp
+                        dlnprior[i] = dlnp
+                        i += 1
+            else:
+                for (f_prior, i) in zip(self.hp, xrange(self.Nhp)):
+                    (lnp, dlnp) = f_prior(params[i], grad)
+                    lnprior += lnp
+                    dlnprior[i] = dlnp
             return (lnprior, dlnprior)
+            
         elif grad == 'Hess':
             dlnprior = empty(self.Nhp)
             d2lnprior = zeros(self.Nhp, self.Nhp)
-            for (f_prior, i) in zip(self.hp, xrange(self.Nhp)):
-                (lnp, dlnp, d2lnp) = f_prior(params[i], grad)
-                lnprior += lnp
-                dlnprior[i] = dlnp
-                d2lnprior[i, i] = d2lnp
+            i = 0
+            if isinstance(self, KernelSum) or isinstance(self, KernelProd):
+                for kern in self.terms:
+                    for f_prior in kern.hp:
+                        (lnp, dlnp, d2lnp) = f_prior(params[i], grad)
+                        lnprior += lnp
+                        dlnprior[i] = dlnp
+                        d2lnprior[i, i] = d2lnp 
+                        i += 1
+            else:
+                for (f_prior, i) in zip(self.hp, xrange(self.Nhp)):
+                    (lnp, dlnp, d2lnp) = f_prior(params[i], grad)
+                    lnprior += lnp
+                    dlnprior[i] = dlnp
+                    d2lnprior[i, i] = d2lnp
             return (lnprior, dlnprior, d2lnprior)
 
     @abstractmethod
@@ -179,7 +208,7 @@ class KernelSum(Kernel):
     """Modified Kernel class that holds the sum of Kernel objects."""
     def __init__(self, k1, k2):
         self.terms = [k1, k2]
-        (self.Np, self.Nhp) = (k1.Np + k2.Np, k1.Nhp + k1.Nhp)
+        (self.Np, self.Nhp) = (k1.Np + k2.Np, k1.Nhp + k2.Nhp)
     
     def __add__(self, other, self_on_right=False):
         if isinstance(other, KernelSum):
@@ -193,13 +222,13 @@ class KernelSum(Kernel):
         self.Nhp += other.Nhp
         return self
     
-    def map_hyper(self, p_mapped, unmap=False):
-        # TODO: throw and error if the length of p_mapped is not Nhyper.
-        h = 0
-        for kern in self.terms:
-            kern.map_hyper(p_mapped[h:h+kern.Nhp], unmap)
-            h += kern.Nhp
-        return (self, p_mapped)
+    #def map_hyper(self, p_mapped, unmap=False):
+    #    # TODO: throw and error if the length of p_mapped is not Nhyper.
+    #    h = 0
+    #    for kern in self.terms:
+    #        kern.map_hyper(p_mapped[h:h+kern.Nhp], unmap)
+    #        h += kern.Nhp
+    #    return (self, p_mapped)
     
     def __call__(self, Rk, grad=False, **kwargs):
         if not grad:
@@ -310,13 +339,13 @@ class Noise(Kernel):
             # K = w2*K0
             return w2*K0
         Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-        if self.hp['w']:
+        if 'w' in self.hp:
             # dK/dw:
             Kgrad[:,:,0] = 2.0*w*K0
         if grad != 'Hess':
             return (w2*K0, Kgrad)
         Khess = empty((Rk.shape[0], Rk.shape[1], self.Np, self.Np))
-        if self.hp['w']:
+        if 'w' in self.hp:
             # d^2K/dw^2:
             Khess[:,:,0,0] = 2.0*K0
         return (w2*K0, Kgrad, Khess)
@@ -337,7 +366,7 @@ class SquareExp(Kernel):
     def __call__(self, Rk, grad=False, **kwargs):
         (w, l) = (self.p['w'], self.p['l'])
         if not isinstance(l, list):
-            R2l2 = sum(Rk**2,2)/l
+            R2l2 = sum(Rk**2,2)/l**2
         else:
             R2l2 = zeros(Rk.shape[:2])
             for k in xrange(Rk.shape[2]):
@@ -408,7 +437,7 @@ class GammaExp(Kernel):
     def __call__(self, Rk, grad=False, **kwargs):
         (w, l, g) = (self.p['w'], self.p['l'], self.p['gamma'])
         if not isinstance(l, list):
-            Rglg = sum(Rk**g,2)/l
+            Rglg = sum(Rk**2,2)/l**2
         else:
             Rglg = zeros(Rk.shape[:2])
             for k in xrange(Rk.shape[2]):
@@ -501,7 +530,7 @@ class RatQuad(Kernel):
     def __call__(self, Rk, grad=False, **kwargs):
         (w, l, a) = (self.p['w'], self.p['l'], self.p['alpha'])
         if not isinstance(l, list):
-            R2l2 = sum(Rk**2,2)/l
+            R2l2 = sum(Rk**2,2)/l**2
         else:
             R2l2 = zeros(Rk.shape[:2])
             for k in xrange(Rk.shape[2]):

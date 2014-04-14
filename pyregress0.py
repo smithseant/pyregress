@@ -39,6 +39,7 @@ from scipy.optimize import minimize
 
 from kernels import Kernel
 from transforms import BaseTransform, Probit
+from hyper_params import *
 
 HLOG2PI = 0.5*log(2.0*pi)
 
@@ -160,21 +161,24 @@ class GPR:
         self.Rdd = self._radius(self.Xd, self.Xd)
         # -- the following is repeated in maximize_hyper_posterior,
         #    create a separate function? --
-        self.Kdd = self.kernel(self.Rdd, data=True)
-        try:
-            self.LKdd = cho_factor(self.Kdd)
-        except LinAlgError as e:
-            print ("GPR method __init__ failed to factor data kernel." +
-                   "This is often an indication that Xd has duplicates or " +
-                   "the noise kernel has too small of weight.")
-            raise e
-        self.invKdd_Yd = cho_solve(self.LKdd, self.Yd)
-        if self.basis is not None:
-            self.invKdd_Hd = cho_solve(self.LKdd, self.Hd)
-            LSth = cho_factor(self.Hd.T.dot(self.invKdd_Hd))
-            self.Sth = cho_solve(LSth, eye(self.Nth))
-            self.Th = cho_solve(LSth, self.Hd.T.dot(self.invKdd_Yd))
-            self.invKdd_HdTh = cho_solve(self.LKdd, self.Hd.dot(self.Th))
+        if (self.kernel.Nhp > 0):
+            self.maximize_hyper_posterior()        
+        else:
+            self.Kdd = self.kernel(self.Rdd, data=True)
+            try:
+                self.LKdd = cho_factor(self.Kdd)
+            except LinAlgError as e:
+                print ("GPR method __init__ failed to factor data kernel." +
+                       "This is often an indication that Xd has duplicates or " +
+                       "the noise kernel has too small of weight.")
+                raise e
+            self.invKdd_Yd = cho_solve(self.LKdd, self.Yd)
+            if self.basis is not None:
+                self.invKdd_Hd = cho_solve(self.LKdd, self.Hd)
+                LSth = cho_factor(self.Hd.T.dot(self.invKdd_Hd))
+                self.Sth = cho_solve(LSth, eye(self.Nth))
+                self.Th = cho_solve(LSth, self.Hd.T.dot(self.invKdd_Yd))
+                self.invKdd_HdTh = cho_solve(self.LKdd, self.Hd.dot(self.Th))
     
     
     def _basis(self, X):
@@ -221,7 +225,8 @@ class GPR:
         return Rk
     
     
-    def hyper_posterior(self, params, hp_mapped, grad=True):
+    #def hyper_posterior(self, params, hp_mapped, grad=True):
+    def hyper_posterior(self, params, grad=True):
         """
         Negative log of the hyper-parameter posterior & its gradient.
         
@@ -244,7 +249,7 @@ class GPR:
         lnP_hess:  array-2D (optional - depending on argument grad),
             Hessian matrix (2nd derivatives) of lnP_neg.
         """
-        hp_mapped[:] = params
+        #hp_mapped[:] = params
         (Nd, Nhp) = (self.Nd, self.kernel.Nhp)
         if not grad:  # may want to add the call to kernel._ln_priors here
             K = self.kernel(self.Rdd, grad=False, data=True)
@@ -283,7 +288,7 @@ class GPR:
             return lnP_neg
         
         # grad == True or 'Hess':
-        invK = cho_solve(LK, eye(Nhp))
+        invK = cho_solve(LK, eye(Nd))
         invK_aa = invK - invK_Y.dot(invK_Y.T)
         lnP_grad = empty(Nhp)
         for j in xrange(Nhp):
@@ -346,12 +351,15 @@ class GPR:
         """             
         
         # Setup hyper-parameters & map values from a single array
-        if hyper_params:
-            Nhyper = self.kernel.declare_hyper(hyper_params)
-        else:
-            Nhyper = self.kernel.Nhp
-        all_hyper = empty(Nhyper)
-        self.kernel.map_hyper(all_hyper)
+        all_hyper = self.kernel._map_hyper()        
+        
+        
+        #if hyper_params:
+        #    Nhyper = self.kernel.declare_hyper(hyper_params)
+        #else:
+        #    Nhyper = self.kernel.Nhp
+        #all_hyper = empty(Nhyper)
+        #self.kernel.map_hyper(all_hyper)
         
         # Perform minimization
         #myResult = minimize(self.hyper_posterior, all_hyper,
@@ -362,9 +370,12 @@ class GPR:
         # myResult = minimize(self.hyper_posterior, all_hyper,
         #                     args=(all_hyper,), method='BFGS', jac=True,
         #                     tol=1e-4, options={'maxiter':200, 'disp':True})
-        myResult = minimize(self.hyper_posterior, all_hyper,
-                             args=(all_hyper,), method='L-BFGS-B', jac=True,
-                             bounds=[(0.0,None)]*Nhyper, tol=1e-4,
+        #myResult = minimize(self.hyper_posterior, all_hyper,
+        #                     args=(all_hyper,), method='L-BFGS-B', jac=True,
+        #                     bounds=[(0.0,None)]*Nhyper, tol=1e-4,
+        #                     options={'maxiter':200, 'disp':True})        
+        myResult = minimize(self.hyper_posterior, all_hyper, method='L-BFGS-B',
+                            jac=True,bounds=[(0.0,None)]*self.kernel.Nhp, tol=1e-4,
                              options={'maxiter':200, 'disp':True})
         
         #------------------------------------   
@@ -554,7 +565,7 @@ if __name__ == "__main__":
     Xd1 = array([[0.1], [0.3], [0.6]])
     Yd1 = array([[0.0], [1.0], [0.5]])
     #myGPR1 = GPR( Xd1, Yd1, Noise([0.1]) + SquareExp([1.0, 0.3]) )
-    myGPR1 = GPR( Xd1, Yd1, Noise(w=0.1) + SquareExp(w=1.0, l=0.3) )
+    myGPR1 = GPR( Xd1, Yd1, Noise(w=0.1) + SquareExp(w=1.0, l=Jeffreys(0.3)) )
     xi1 = array([[0.2]])
     yi1 = myGPR1( xi1 )
     print 'Example 1:'
