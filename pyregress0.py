@@ -162,7 +162,7 @@ class GPR:
         # -- the following is repeated in maximize_hyper_posterior,
         #    create a separate function? --
         if (self.kernel.Nhp > 0):
-            self.maximize_hyper_posterior()        
+            self.maximize_hyper_posterior()
         else:
             self.Kdd = self.kernel(self.Rdd, data=True)
             try:
@@ -303,18 +303,19 @@ class GPR:
             return (lnP_neg, lnP_grad)
         
         # grad == 'Hess':
-        (invK_Kp, aa_Kp) = (empty(Nd, Nd, Nhp), empty(Nd, Nd, Nhp))
+        (invK_Kp, aa_Kp) = (empty((Nd, Nd, Nhp)), empty((Nd, Nd, Nhp)))
         for j in xrange(Nhp):
             invK_Kp[:,:,j] = invK.dot(Kp[:,:,j])
             a_Kp = invK_Y.T.dot(Kp[:,:,j])
-            aa_Kp[:,:,j] = invK_Y.dot(a_Kp)
-        lnP_hess = empty(Nhp, Nhp)
+            aa_Kp[:,:,j] = 2.0*invK_Y.dot(a_Kp)
+        lnP_hess = empty((Nhp, Nhp))
         for j in xrange(Nhp):
-            for i in xrange(Nhp):
-                lnP_hess[i, j] = 0.5*sum( invK_aa.T*Kpp[:,:,i,j] +
+            for i in xrange(j + 1):
+                lnP_hess[i, j] = 0.5*sum( invK_aa.T*Kpp[:,:,i,j] -
                                           invK_Kp[:,:,i].T*invK_Kp[:,:,j] +
                                           aa_Kp[:,:,i].T*invK_Kp[:,:,j] -
                                           d2lnprior[i,j])
+                lnP_hess[j, i] = lnP_hess[i, j]
         if self.basis is not None:
             diff1 = betaTh.T - invK_Y.T
             bSb_2invK = invK_H.dot(Sth).dot(invK_H.T) - 2.0*invK
@@ -380,13 +381,13 @@ class GPR:
         
         #------------------------------------   
         # Work in progress                                               
-        #multi_Dimensional_Newton(self.hyper_posterior, all_hyper, args=all_hyper, 
-        #                        options={'tol':1e-4, 'maxit':200, 'positive':True})
+        #multi_Dimensional_Newton(self.hyper_posterior, all_hyper, args=all_hyper,
+        #                         options={'tol':1e-4, 'maxit':200, 'positive':True})
         #myResult[:]=all_hyper
-        #------------------------------------                                                  
+        #------------------------------------
         
         # copy hyper-parameter values back to kernel (remove mapping)
-        self.kernel.map_hyper(all_hyper, unmap=True)
+        self.kernel._map_hyper(all_hyper, unmap=True)
         
         # Do as many calculations as possible in preparation for the inference
         self.Kdd = self.kernel(self.Rdd, data=True)
@@ -565,7 +566,7 @@ if __name__ == "__main__":
     Xd1 = array([[0.1], [0.3], [0.6]])
     Yd1 = array([[0.0], [1.0], [0.5]])
     #myGPR1 = GPR( Xd1, Yd1, Noise([0.1]) + SquareExp([1.0, 0.3]) )
-    myGPR1 = GPR( Xd1, Yd1, Noise(w=0.1) + SquareExp(w=1.0, l=Jeffreys(0.3)) )
+    myGPR1 = GPR( Xd1, Yd1, Noise(w=0.1) + SquareExp(w=1.0, l=Constant(0.3)) )
     xi1 = array([[0.2]])
     yi1 = myGPR1( xi1 )
     print 'Example 1:'

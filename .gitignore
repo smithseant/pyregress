@@ -11,3 +11,4 @@
 !examples/two_profile.py
 !examples/verification_test.py
 !multi_newton.py
+!kernels_tests.py

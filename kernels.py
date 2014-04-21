@@ -49,7 +49,8 @@ class Kernel:
                              if isinstance(i, HyperPrior)])
         self.p = odict([(key, None) for key in params_spec.keys()])
         (self.hp, self.hp_id) = ([], [])
-        for (key, val) in params.items():
+        for key in params_spec.keys():
+            val = params[key]
             if isinstance(val, Number):
                 self.p[key] = val
             elif isinstance(val, HyperPrior):
@@ -158,7 +159,7 @@ class Kernel:
             
         elif grad == 'Hess':
             dlnprior = empty(self.Nhp)
-            d2lnprior = zeros(self.Nhp, self.Nhp)
+            d2lnprior = zeros((self.Nhp, self.Nhp))
             i = 0
             if isinstance(self, KernelSum) or isinstance(self, KernelProd):
                 for kern in self.terms:
@@ -393,7 +394,7 @@ class SquareExp(Kernel):
         # Second derivatives:
         Khess = empty((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
         for (i, h1) in zip(xrange(self.Nhp), self.hp_id):
-            for (j, h2) in zip(xrange(i, self.Nhp), self.hp_id[i:]):
+            for (j, h2) in zip(xrange(i, self.Nhp+1), self.hp_id[i:]):
                 if h1 == 'w' and h2 == 'w':
                     # d^2K/dw^2:
                     Khess[:,:,i,j] = 2.0*K0
@@ -403,8 +404,7 @@ class SquareExp(Kernel):
                     Khess[:,:,j,i] = Khess[:,:,i,j]
                 elif h1 == 'w' and isinstance(h2, int):
                     # d^2K/dwdl_i:
-                    Khess[:,:,i,j] =  (2.0*w *
-                                       Rk[:,:,h1]**2/l[h1]**3*K0)
+                    Khess[:,:,i,j] =  2.0*w * Rk[:,:,h2]**2/l[h2]**3 * K0
                     Khess[:,:,j,i] = Khess[:,:,i,j]
                 elif h1 == 'l' and h2 == 'l':
                     # d^2K/dl^2:
