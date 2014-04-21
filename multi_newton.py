@@ -24,8 +24,8 @@ from numpy import concatenate, abs, dot, squeeze, array
 from scipy.linalg import inv, solve
 from scipy.linalg import cho_factor, cho_solve
 #from scipy.optimize import line_search, brute
-from linesearch_edited import line_search_wolfe2 as line_search
-from linesearch_edited import _zoom
+#from linesearch_edited import line_search_wolfe2 as line_search
+#from linesearch_edited import _zoom
 
 def multi_Dimensional_Newton(function, guess, args=None, options=None):
 
@@ -33,8 +33,12 @@ def multi_Dimensional_Newton(function, guess, args=None, options=None):
         test1 = test2 = True
         # is minimum step size met?  
         if options.has_key('tol'): 
-            test1 = (abs(dx/x) > options['tol']).any()
-        else: test1 = (abs(dx/x) > 1e-6 ).any()
+            _tol = options['tol']
+        else: _tol = 1e-6
+        if (x != 0.).any() or (dx != 0.).any():
+            test1 = (abs(dx/x) > _tol).any()
+        elif iteration == 0: test1 = True
+        else: test1 = (abs(dx) > _tol).any()
         # it maximum number of iterations met
         if options.has_key('maxiter'):
             test2 = iteration < options['maxiter']
@@ -167,6 +171,7 @@ def multi_Dimensional_Newton(function, guess, args=None, options=None):
         #    alpha = line_search(ff,dff,x,dx,gfk=df,old_fval=f)
         #a = alpha[0]
             a = line_search1(func,x,dx)
+        a=1.
         
         # 5) Update estimate   
         x += a*dx
@@ -260,26 +265,24 @@ if __name__ == "__main__":
         return f, df, H
         
     def test_func5(x,*args):
-        #f(x) = (0.2*cos(x)-1)*exp(2y)*x
-        f = (0.2*cos(x[0]) - 1.)*exp(2.*x[1])*x[0]
+        #f(x) = (x**2+y-11)**2 + (x+y**2-7)**2 
+        f = (x[0]**2+x[1]-11.)**2 + (x[0]+x[1]**2-7.)**2
         
-        #df/dx = exp(2y)*(-0.2*x*sin(x) + 0.2*cos(x) - 1)
-        df1 = exp(2.*x[1])*(-0.2*x[0]*sin(x[0]) + 0.2*cos(x[0]) -1.0)
-        #df/dy = 2x*exp(2y)*(0.2*cos(x)-1)
-        df2 = 2.0*x[0]*exp(2.0*x[1])*(0.2*cos(x[0]) - 1.0)
+        #df/dx = 2(2x(x**2+y-11) +x +y**2 -7.)
+        df1 = 2.*(2.*x[0]*(x[0]**2+x[1]-11.)+x[0]+x[1]**2-7.)
+        #df/dy = 2(x**2+2y(x+y**2-7)+y-11)
+        df2 = 2.*(x[0]**2+2.*x[1]*(x[0]+x[1]**2-7.)+x[1]-11.)
         #df = [df/dx;df/dy]
         df = array((df1,df2))
         
-        #d2f/dx2 = exp(2y)*(-0.4*sin(x) -0.2x*cos(x))
-        d2f1 = exp(2.*x[1])*(-0.4*sin(x[0]) - 0.2*x[0]*cos(x[0]))
-        #d2f/dxdy = 2*exp(2y)*(-0.2x*sin(x) + 0.2*cos(x) - 1)
-        d2f2 = exp(2.*x[1])*(-0.4*x[0]*sin(x[0]) + 0.4*cos(x[0]) - 2.)
-        #d2f/dydx = 0.4*exp(2y)*(-x*sin(x) + cos(x) - 5)
-        d2f3 = exp(2.*x[1])*(-0.4*x[0]*sin(x[0]) + 0.4*cos(x[0]) - 2.)
-        #d2f/dy2 = 4x*exp(2y)*(0.2*cos(x) - 1)
-        d2f4 = 4.*x[0]*exp(2.*x[1])*(0.2*cos(x[0]) - 1.)
+        #d2f/dx2 = 12x**2+4y-42
+        d2f1 = 12.*x[0]**2+4.*x[1]-42.
+        #d2f/dxdy = 4(x+y)
+        d2f2 = 4.*(x[0]+x[1])
+        #d2f/dy2 = 4x+12y-26
+        d2f4 = 4.*x[0]+12.*x[1]-26.
         #H = [d2f/dx2 d2f/dxdy; d2f/dydx d2f/dy2]
-        H = array([[d2f1,d2f2],[d2f3,d2f4]])
+        H = array([[d2f1,d2f2],[d2f2,d2f4]])
         
         return f, df, H
 
@@ -315,7 +318,7 @@ if __name__ == "__main__":
         high = ['inf']*len(guess)
         low = ['-inf']*len(guess)
         multi_Dimensional_Newton(Rosenbrock_func, guess, 
-                        options={'tol':1e-6, 'maxiter':600, 
+                        options={'tol':1e-6, 'maxiter':100, 
                         'bounds':(low,high)})
          
     #------------------------------------------------------               
@@ -369,15 +372,17 @@ if __name__ == "__main__":
 
     #Test 6
     print 'Test function 6'
-    x1_range = linspace(1,10)
-    x2_range = linspace(-1.5,1.5)
+    x1_range = linspace(-4.,4.)
+    x2_range = linspace(-4.,4.)
     XX,YY = meshgrid(x1_range,x2_range)
     ZZ = test_func5(array([XX,YY]))[0]
-    guess5 = array([5.,-1.])
-    high = [10, 1.5]
-    low = [1, -1.5]
+    guess5 = array([0.,0.])
+    high = [4., 4.]
+    low = [-4., -4.]
+    #hist5 = multi_Dimensional_Newton(test_func5, guess5,
+    #                                 options={'history':True,'bounds':(low,high)})
     hist5 = multi_Dimensional_Newton(test_func5, guess5,
-                                     options={'history':True,'bounds':(low,high)})
+                                     options={'history':True})
         
     fig6 = plt.figure()
     ax6 = fig6.gca(projection='3d')
