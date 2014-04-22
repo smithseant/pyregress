@@ -11,56 +11,11 @@ Provided prior distributions (log(P) and d_log(P))
     not being explored.
 """
 
-from numpy import array, sum, divide, concatenate, squeeze, mean, amin, copy
+from numpy import array, sum, divide, concatenate, squeeze, amin, copy
+from numpy import mean as np_mean
 from scipy import log, sqrt, pi
 from scipy.special import gamma
 
-class shift_to_zero:
-    """shift data above zero and (optional) scale be mean value"""
-    def __init__(self):
-        self._shift = 0.
-        self._scale = 1.
-    
-    def __call__(self,original_data,scale=False):
-        data = copy(original_data)
-        if (data < 0.).any():
-            self._shift = amin(data)
-            data -= self._shift
-        if scale == True:
-            self._scale = mean(data)
-            data /= self._scale
-        return data
-
-    def reverse(self,data):
-        return (data*self._scale)+self._shift
-
-
-class derivative:
-    """Derivative input class."""
-    def __init__(self, *args):
-        #deduce if three arays were passed for an array of three values
-        self._derivative_position = 0
-        
-        if len(args) == 3:
-            if isinstance(args[0],float):
-                self._x    = array([args[0]])
-                self._dy   = array([args[1]])
-                self._xref = array([args[2]])
-            else:
-                self._x    = args[0]
-                self._dy   = args[1]
-                self._xref = args[2]
-        # TODO: output error is more than 3 args
-    def merge(self,x,y):
-        self._derivative_position = len(y)
-        new_x = concatenate((squeeze(x.T),self._x),axis=1)
-        new_y = concatenate((squeeze(y),self._dy),axis=1)
-        return new_x,new_y
-        
-    def separate(self,x,y):
-        old_x = x[:self._derivative_position]
-        old_y = y[:self._derivative_position]
-        return old_x,old_y
     
 """Prior hyper-parameter distributions"""
 
@@ -195,3 +150,51 @@ class Gamma(HyperPrior):
         if grad == 'Hess':
             d2lnpdf = -k/x**2
             return lnpdf, dlnpdf, d2lnpdf
+            
+            
+class shift_to_zero:
+    """shift data above zero and (optional) scale be mean value"""
+    def __init__(self):
+        self._shift = 0.
+        self._scale = 1.
+    
+    def __call__(self,original_data,scale=False):
+        data = copy(original_data)
+        if (data < 0.).any():
+            self._shift = amin(data)
+            data -= self._shift
+        if scale == True:
+            self._scale = np_mean(data)
+            data /= self._scale
+        return data
+
+    def reverse(self,data):
+        return (data*self._scale)+self._shift
+
+
+class derivative:
+    """Derivative input class."""
+    def __init__(self, *args):
+        #deduce if three arays were passed for an array of three values
+        self._derivative_position = 0
+        
+        if len(args) == 3:
+            if isinstance(args[0],float):
+                self._x    = array([args[0]])
+                self._dy   = array([args[1]])
+                self._xref = array([args[2]])
+            else:
+                self._x    = args[0]
+                self._dy   = args[1]
+                self._xref = args[2]
+        # TODO: output error is more than 3 args
+    def merge(self,x,y):
+        self._derivative_position = len(y)
+        new_x = concatenate((squeeze(x.T),self._x),axis=1)
+        new_y = concatenate((squeeze(y),self._dy),axis=1)
+        return new_x,new_y
+        
+    def separate(self,x,y):
+        old_x = x[:self._derivative_position]
+        old_y = y[:self._derivative_position]
+        return old_x,old_y

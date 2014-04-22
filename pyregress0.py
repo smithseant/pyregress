@@ -40,6 +40,7 @@ from scipy.optimize import minimize
 from kernels import Kernel
 from transforms import BaseTransform, Probit
 from hyper_params import *
+from multi_newton import *
 
 HLOG2PI = 0.5*log(2.0*pi)
 
@@ -329,7 +330,7 @@ class GPR:
             for j in xrange(Nhp):
                 for i in xrange(Nhp):
                     my_mess = ( invK_H.T.dot(Kpp[:,:,i,j]).dot(invK_H) +
-                                bKp[:,:,i].T.dot(bSb_2invK).dot(bKp[:,:,j]) )
+                                bKp[:,:,i].dot(bSb_2invK).dot(bKp[:,:,j].T) )
                     lnP_hess[i, j] -= 0.5 * ( sum(my_mess.T * Sth) +
                               diff1.dot(Kpp[:,:,i,j]).dot(betaTh) -
                               2.0*diff2Kp[:,i].dot(invK).dot(ThbKp[:,j].T) +
@@ -354,7 +355,6 @@ class GPR:
         # Setup hyper-parameters & map values from a single array
         all_hyper = self.kernel._map_hyper()        
         
-        
         #if hyper_params:
         #    Nhyper = self.kernel.declare_hyper(hyper_params)
         #else:
@@ -375,20 +375,20 @@ class GPR:
         #                     args=(all_hyper,), method='L-BFGS-B', jac=True,
         #                     bounds=[(0.0,None)]*Nhyper, tol=1e-4,
         #                     options={'maxiter':200, 'disp':True})        
-        myResult = minimize(self.hyper_posterior, all_hyper, method='L-BFGS-B',
-                            jac=True,bounds=[(0.0,None)]*self.kernel.Nhp, tol=1e-4,
-                             options={'maxiter':200, 'disp':True})
+        #myResult = minimize(self.hyper_posterior, all_hyper, method='L-BFGS-B',
+        #                    jac=True,bounds=[(0.0,None)]*self.kernel.Nhp, tol=1e-4,
+        #                     options={'maxiter':200, 'disp':True})
         
         #------------------------------------   
-        # Work in progress                                               
-        #multi_Dimensional_Newton(self.hyper_posterior, all_hyper, args=all_hyper,
-        #                         options={'tol':1e-4, 'maxit':200, 'positive':True})
-        #myResult[:]=all_hyper
+        multi_Dimensional_Newton(self.hyper_posterior, all_hyper, args=('Hess'),
+                                 options={'tol':1e-6, 'maxiter':100,
+                                          'bounds':(0.,None)})
         #------------------------------------
         
         # copy hyper-parameter values back to kernel (remove mapping)
-        self.kernel._map_hyper(all_hyper, unmap=True)
-        
+#        self.kernel._map_hyper(all_hyper, hp_mapped=True)
+        #self.kernel._map_hyper(all_hyper)
+
         # Do as many calculations as possible in preparation for the inference
         self.Kdd = self.kernel(self.Rdd, data=True)
         self.LKdd = cho_factor(self.Kdd)
@@ -399,7 +399,7 @@ class GPR:
             self.Sth = cho_solve(LSth, eye(self.Nth))
             self.Th = cho_solve(LSth, self.Hd.T.dot(self.invKdd_Yd))
             self.invKdd_HdTh = cho_solve(self.LKdd, self.Hd.dot(self.Th))
-        return (self, myResult.x)
+        return self, all_hyper
     
     
     def inference(self, Xi, infer_std=False, untransform=True, data=False):
@@ -565,8 +565,8 @@ if __name__ == "__main__":
     # Simple case, 1D with three data points and one regression point
     Xd1 = array([[0.1], [0.3], [0.6]])
     Yd1 = array([[0.0], [1.0], [0.5]])
-    #myGPR1 = GPR( Xd1, Yd1, Noise([0.1]) + SquareExp([1.0, 0.3]) )
-    myGPR1 = GPR( Xd1, Yd1, Noise(w=0.1) + SquareExp(w=1.0, l=Constant(0.3)) )
+    myGPR1 = GPR( Xd1, Yd1, Noise(w=0.1) + SquareExp(w=Constant(0.3),
+                                  l=Constant(0.5)) )
     xi1 = array([[0.2]])
     yi1 = myGPR1( xi1 )
     print 'Example 1:'
@@ -579,8 +579,6 @@ if __name__ == "__main__":
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
     myGPR2 = GPR(Xd2, Yd2, RatQuad(w=0.6, l=0.3, alpha=1.0),
                  anisotropy=False, explicit_basis=[0, 1], transform='Probit')
-    #(myGRP2, param) = myGPR2.maximize_hyper_posterior([False, LogNormal(mean=0.3,std=0.25), False])
-    #(myGRP2, param) = myGPR2.maximize_hyper_posterior([False, Gamma(1.,2.), False])
     #print 'Optimized value of the hyper-parameters:', param    
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
     yi2 = myGPR2( xi2 )

@@ -250,6 +250,7 @@ class KernelSum(Kernel):
             K = zeros(Rk.shape[:2])
             Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
             Khess = zeros((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
+            h = 0
             for kern in self.terms:
                 hn = h + kern.Nhp
                 (Kt, Kgrad[:,:,h:hn], Khess[:,:,h:hn,h:hn]) = kern(Rk, grad, **kwargs)
@@ -303,6 +304,7 @@ class KernelProd(Kernel):
             K = zeros(Rk.shape[:2])
             Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
             Khess = zeros((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
+            h = 0
             for kern in self.terms:
                 (Kt, Kgt, Kht) = kern(Rk, grad, **kwargs)
                 K *= Kt

@@ -67,17 +67,8 @@ def multi_Dimensional_Newton(function, guess, args=None, options=None):
         
         return test1 & test2 & test3
         
-    def line_search1(func,x,dx,alpha=1.0,c1=1e-4,c2=0.9,bounds=None):
+    def line_search1(func,x,dx,alpha=1.0,c1=1e-4,c2=0.9,bounds=False):
         
-        fun = lambda a : func(x + a*dx)[0]      
-        fun_star,dfun_star,d2funstar = func(x+alpha*dx)
-        fun_0,dfun_0,d2fun0 = func(x)
-        alpha_hi = 1.5
-        alpha_lo = .75
-        if bounds == None:
-            bounds = ['-inf']*len(x),['inf']*len(x)
-        low, high = bounds
-
         # Strong Wolfe conditions
         # 1) sufficient decrease
         #    f(x+alpha*dx) <= f(x) + c1*alpha*df(x).T*dx  ; c1 - (0,1)
@@ -90,28 +81,41 @@ def multi_Dimensional_Newton(function, guess, args=None, options=None):
         def curvature_cond():
             return (abs(dot(dfun_star,dx)) <= 
                     c2*abs(dot(dfun_0,dx))) 
+                    
+        # Check that alpha value doesn't put x outside of bounds
+        def check_low(alpha_try):
+            if (x + alpha_try*dx < [float(i) for i in low]).any():
+                inv_a = abs((dx/(x-low)).min())
+                return .99/inv_a
+            else: return alpha_try
+                
+        def check_high(alpha_try):
+            if (x + alpha_try*dx > [float(i) for i in high]).any():
+                inv_a = abs((dx/(x-high)).min())
+                return .99/inv_a
+            else: return alpha_try
+         
+        if bounds == False:
+            bounds = ['-inf']*len(x),['inf']*len(x)
+        low, high = bounds             
+        if not isinstance(low, list):
+            low=[low]
+        if not isinstance(high,list):
+            high=[high]
+            
         iters = 0
+        alpha = check_low(alpha)
+        alpha = check_high(alpha)
+        fun = lambda a : func(x + a*dx)[0]      
+        fun_star,dfun_star,d2funstar = func(x+alpha*dx)
+        fun_0,dfun_0,d2fun0 = func(x)
+        alpha_hi = 1.5
+        alpha_lo = .75
+        
         while not ( sufficent_decrease() & curvature_cond() ):
             if iters > 20:
-                alpha = 1.
+                alpha = 0.004
                 break
-                
-            if not isinstance(low, list):
-                low=[low]
-            if not isinstance(high,list):
-                high=[high]
-
-            def check_low(alpha_try):
-                if (x + alpha_try*dx < [float(i) for i in low]).any():
-                    inv_a = abs((dx/(x-low)).min())
-                    return .99/inv_a
-                else: return alpha_try
-                
-            def check_high(alpha_try):
-                if (x + alpha_try*dx > [float(i) for i in high]).any():
-                    inv_a = abs((dx/(x-high)).min())
-                    return .99/inv_a
-                else: return alpha_try
 
             alpha_hi = check_low(alpha_hi)
             alpha_lo = check_low(alpha_lo)
@@ -144,6 +148,17 @@ def multi_Dimensional_Newton(function, guess, args=None, options=None):
     iteration = 0
     a=0
     boundscount= array((0,0))
+    
+    if options.has_key('bounds'):
+        low_bounds, high_bounds = options['bounds']
+        if not isinstance(low_bounds, list):
+            low_bounds = [low_bounds]
+        if not isinstance(high_bounds, list):
+            high_bounds = [high_bounds]
+        for i in xrange(len(low_bounds)):
+            if low_bounds[i] == None: low_bounds[i] = '-inf'
+            if high_bounds[i] == None: high_bounds[i] = 'inf'
+        options['bounds']=(low_bounds,high_bounds)
 
     # 2) Test for convergence
     while convergence_crit(x, dx, iteration, boundscount, options):
@@ -158,21 +173,19 @@ def multi_Dimensional_Newton(function, guess, args=None, options=None):
                 beta = abs(d2f).max() * 5. 
             else: beta = 1e-14
             d2f = (d2f + beta*identity(len(x)))/(1.+beta)
-            dx = solve(d2f,-df)      
+            dx = solve(d2f,-df) 
+        dx = squeeze(dx)
         
         # 4) Line search      
-        #ff = lambda x : func(x)[0]
-        #dff = lambda x : func(x)[1]
         if options.has_key('bounds'):# and options['bounds'][0]==0.:
         ##    alpha = line_search(ff,dff,x,dx,gfk=df,old_fval=f,bounded=True)
             a = line_search1(func,x,dx,bounds=options['bounds'])
         else:
-        ##    alpha = line_search(ff,dff,x,dx,gfk=df,old_fval=f)
-        ##a = alpha[0]
-            a = line_search1(func,x,dx)
-        #a=1.
-        #alpha = line_search(ff,dff,x,dx,gfk=df,old_fval=f)
-        #a=alpha[0]
+            ff = lambda x : func(x)[0]
+            dff = lambda x : func(x)[1]
+            alpha = line_search(ff,dff,x,dx,gfk=df,old_fval=f)
+            a = alpha[0]
+            #a = line_search1(func,x,dx)
             
         # 5) Update estimate 
         x += a*dx
@@ -308,8 +321,8 @@ if __name__ == "__main__":
         plt.title('Rosenbrock Function Minimization',fontsize=16)
         
     else:
-        high = ['inf']*len(guess)
-        low = ['-inf']*len(guess)
+        high = [None]*len(guess)
+        low = [None]*len(guess)
         multi_Dimensional_Newton(Rosenbrock_func, guess, 
                         options={'tol':1e-6, 'maxiter':200, 
                         'bounds':(low,high)})
