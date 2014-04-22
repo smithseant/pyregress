@@ -37,6 +37,7 @@ def radius(X, Y, aniso=None):
 X = randn(Nx, 2)
 Rk = radius(X, X)
 
+my_kernel = Noise(w=Constant(guess=1.5))
 #my_kernel = SquareExp(w=Constant(guess=1.5), l=2.0)
 #my_kernel = SquareExp(w=1.5, l=Constant(guess=2.0))
 #my_kernel = SquareExp(w=Constant(guess=1.5), l=[2.0, 2.5])
@@ -45,21 +46,21 @@ Rk = radius(X, X)
 #my_kernel = SquareExp(w=Constant(guess=1.5), l=Constant(guess=2.0))
 #my_kernel = SquareExp(w=Constant(guess=1.5), l=[Constant(guess=2.0), 2.5])
 #my_kernel = SquareExp(w=Constant(guess=1.5), l=[2.0, Constant(guess=2.5)])
-my_kernel = SquareExp(w=1.5, l=[Constant(guess=2.0), Constant(guess=2.5)])
+#my_kernel = SquareExp(w=1.5, l=[Constant(guess=2.0), Constant(guess=2.5)])
 
 my_hyper = my_kernel._map_hyper()
 my_gpr = GPR(X, test_func(X), my_kernel)
 
-K, Kp, Kpp = my_kernel(Rk, grad='Hess')
+K, Kp, Kpp = my_kernel(Rk, grad='Hess', data=True)
 P, Pp, Ppp = my_gpr.hyper_posterior(my_hyper, grad='Hess')
 
 my_hyper[0] += dx
-Kplus = my_kernel(Rk)
+Kplus = my_kernel(Rk, data=True)
 Pplus = my_gpr.hyper_posterior(my_hyper, grad=False)
 my_hyper[0] -= dx
 
 my_hyper[0] -= dx
-Kminus = my_kernel(Rk)
+Kminus = my_kernel(Rk, data=True)
 Pminus = my_gpr.hyper_posterior(my_hyper, grad=False)
 my_hyper[0] += dx
 
@@ -78,12 +79,12 @@ print 'Posterior Hessian Error (1st dim.):', abs(Pdd[0,0] - Ppp[0,0])
 
 if len(my_hyper) > 1:
     my_hyper[1] += dx
-    Kplus = my_kernel(Rk)
+    Kplus = my_kernel(Rk, data=True)
     Pplus = my_gpr.hyper_posterior(my_hyper, grad=False)
     my_hyper[1] -= dx
     
     my_hyper[1] -= dx
-    Kminus = my_kernel(Rk)
+    Kminus = my_kernel(Rk, data=True)
     Pminus = my_gpr.hyper_posterior(my_hyper, grad=False)
     my_hyper[1] += dx
         
@@ -101,28 +102,28 @@ if len(my_hyper) > 1:
     
     my_hyper[0] += dx
     my_hyper[1] += dx
-    Kplusplus = my_kernel(Rk)
+    Kplusplus = my_kernel(Rk, data=True)
     Pplusplus = my_gpr.hyper_posterior(my_hyper, grad=False)
     my_hyper[0] -= dx
     my_hyper[1] -= dx
     
     my_hyper[0] += dx
     my_hyper[1] -= dx
-    Kplusminus = my_kernel(Rk)
+    Kplusminus = my_kernel(Rk, data=True)
     Pplusminus = my_gpr.hyper_posterior(my_hyper, grad=False)
     my_hyper[0] -= dx
     my_hyper[1] += dx
     
     my_hyper[0] -= dx
     my_hyper[1] += dx
-    Kminusplus = my_kernel(Rk)
+    Kminusplus = my_kernel(Rk, data=True)
     Pminusplus = my_gpr.hyper_posterior(my_hyper, grad=False)
     my_hyper[0] += dx
     my_hyper[1] -= dx
     
     my_hyper[0] -= dx
     my_hyper[1] -= dx
-    Kminusminus = my_kernel(Rk)
+    Kminusminus = my_kernel(Rk, data=True)
     Pminusminus = my_gpr.hyper_posterior(my_hyper, grad=False)
     my_hyper[0] += dx
     my_hyper[1] += dx

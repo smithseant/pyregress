@@ -340,13 +340,13 @@ class Noise(Kernel):
             # K = w2*K0
             return w2*K0
         Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-        if 'w' in self.hp:
+        if 'w' in self.hp_id:
             # dK/dw:
             Kgrad[:,:,0] = 2.0*w*K0
         if grad != 'Hess':
             return (w2*K0, Kgrad)
         Khess = empty((Rk.shape[0], Rk.shape[1], self.Np, self.Np))
-        if 'w' in self.hp:
+        if 'w' in self.hp_id:
             # d^2K/dw^2:
             Khess[:,:,0,0] = 2.0*K0
         return (w2*K0, Kgrad, Khess)
