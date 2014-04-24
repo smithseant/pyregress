@@ -87,7 +87,8 @@ class Kernel:
         """Replace hyper-parameter values with pointers to a 1D array."""
         if hp_mapped == None:
             hp_mapped = empty(self.Nhp)
-        if isinstance(self, KernelSum) or isinstance(self, KernelProd):
+        if isinstance(self, KernelSum) or \
+            isinstance(self, KernelProd):
             i = 0
             for kern in self.terms:
                 kern._map_hyper(hp_mapped[i:i+kern.Nhp])
@@ -223,14 +224,6 @@ class KernelSum(Kernel):
         self.Nhp += other.Nhp
         return self
     
-    #def map_hyper(self, p_mapped, unmap=False):
-    #    # TODO: throw and error if the length of p_mapped is not Nhyper.
-    #    h = 0
-    #    for kern in self.terms:
-    #        kern.map_hyper(p_mapped[h:h+kern.Nhp], unmap)
-    #        h += kern.Nhp
-    #    return (self, p_mapped)
-    
     def __call__(self, Rk, grad=False, **kwargs):
         if not grad:
             K = zeros(Rk.shape[:2])
@@ -275,14 +268,6 @@ class KernelProd(Kernel):
         self.Np += other.Np
         self.Nhp += other.Nhp
         return self
-    
-    def map_hyper(self, p_mapped, unmap=False):
-        # TODO: throw and error if the length of p_mapped is not Nhyper.
-        h = 0
-        for kern in self.terms:
-            kern.map_hyper(p_mapped[h:h+kern.Nhp], unmap)
-            h += kern.Nhp
-        return (self, p_mapped)
     
     def __call__(self, Rk, grad=False, **kwargs):
         if not grad:

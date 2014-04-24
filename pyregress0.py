@@ -131,7 +131,7 @@ class GPR:
         if Yd.shape[0] != self.Nd:
             raise InputError("GPR argument Yd must have the same length as " +
                              "the first dimension of Xd.", Yd)
-        self.Yd = Yd.reshape((-1, 1))
+        self.Yd = Yd.reshape((-1, 1)).copy()
         if transform is None:
             self.trans = None
         elif isinstance(transform, basestring):
@@ -152,12 +152,10 @@ class GPR:
         self.basis = explicit_basis
         if self.basis is not None:
             (self.Nth, self.Hd) = self._basis(Xd)
-        
         # Kernel (prior covariance)
         self.kernel = Cov
         if not isinstance(Cov, Kernel):
             raise InputError("GPR argument Cov must be a Kernel object.", Cov)
-        
         # Do as many calculations as possible in preparation for the inference
         self.Rdd = self._radius(self.Xd, self.Xd)
         # -- the following is repeated in maximize_hyper_posterior,
@@ -180,7 +178,6 @@ class GPR:
                 self.Sth = cho_solve(LSth, eye(self.Nth))
                 self.Th = cho_solve(LSth, self.Hd.T.dot(self.invKdd_Yd))
                 self.invKdd_HdTh = cho_solve(self.LKdd, self.Hd.dot(self.Th))
-    
     
     def _basis(self, X):
         """Calculate the basis functions given independent variables."""
@@ -225,8 +222,6 @@ class GPR:
                 Rk[:, :, k] /= self.aniso[k]
         return Rk
     
-    
-    #def hyper_posterior(self, params, hp_mapped, grad=True):
     def hyper_posterior(self, params, grad=True):
         """
         Negative log of the hyper-parameter posterior & its gradient.
@@ -350,7 +345,7 @@ class GPR:
             to the argument Cov from __init__, and each bool or function
             indicates which kernel parameters are hyper-parameters and if they
             are, what is their prior.
-        """             
+        """                 
         
         # Setup hyper-parameters & map values from a single array
         all_hyper = self.kernel._map_hyper()        
@@ -364,7 +359,7 @@ class GPR:
         
         # Perform minimization
         #myResult = minimize(self.hyper_posterior, all_hyper,
-        #                    args=(all_hyper, False), method='Nelder-Mead',
+        #                    args=(False), method='Nelder-Mead',
         #                    tol=1e-4, options={'maxiter':200, 'disp':True})
         # -- To use BFGS or CG, one must edit those routines for
         #    a smaller initial step (arguments fed to linesearch). --
@@ -377,17 +372,15 @@ class GPR:
         #                     options={'maxiter':200, 'disp':True})        
         #myResult = minimize(self.hyper_posterior, all_hyper, method='L-BFGS-B',
         #                    jac=True,bounds=[(0.0,None)]*self.kernel.Nhp, tol=1e-4,
-        #                     options={'maxiter':200, 'disp':True})
-        
+        #                     options={'maxiter':200, 'disp':True}) 
+        #all_hyper[:] = myResult.x
         #------------------------------------   
+#        multi_Dimensional_Newton(self.hyper_posterior, all_hyper, args=('Hess'),
+#                                 options={'tol':1e-3, 'maxiter':200,
+#                                          'bounds':(0.,None)})
         multi_Dimensional_Newton(self.hyper_posterior, all_hyper, args=('Hess'),
-                                 options={'tol':1e-6, 'maxiter':100,
-                                          'bounds':(0.,None)})
+                                 options={'tol':1e-3, 'maxiter':200})
         #------------------------------------
-        
-        # copy hyper-parameter values back to kernel (remove mapping)
-#        self.kernel._map_hyper(all_hyper, hp_mapped=True)
-        #self.kernel._map_hyper(all_hyper)
 
         # Do as many calculations as possible in preparation for the inference
         self.Kdd = self.kernel(self.Rdd, data=True)
@@ -468,7 +461,7 @@ class GPR:
                 post_mean += Yi_mean
             else:
                 post_mean += self.trans(Yi_mean)
-        
+                
         # Inference of posterior covariance
         if infer_std:
             Rii = self._radius(Xi, Xi)

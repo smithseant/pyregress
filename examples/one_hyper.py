@@ -14,43 +14,43 @@ plt.close('all')
 
 # Setup the source GP with any single hyper-parameter
 Nt = Nd = 5*2**1
-Xt = Xd = 8.0*(random(Nd)).reshape((-1,1))
+Xt = 2.0*(random(Nd)).reshape((-1,1))
+Xd = 2.0*(random(Nd)).reshape((-1,1))
+#Xd = np.linspace(0.0,2.0,Nd).reshape((-1,1))
 #Xt = Xd = np.linspace(0.0, 8.0, Nt).reshape((-1,1))
+
 def prior_mean(inputs):
-    return 5.0*(inputs/8.0 - 0.5)
+    return 2.0*(inputs/5.0 - 0.5)
 
-#(myK, myHyper) = (Noise([1.0]), [True])
-#(myK, myHyper) = (OU([1.0, [1.0]]), [False, [True]])
-#(myK, myHyper) = (GammaExp([1.0, 1.0, 2.0]), [False, True, False])
-#(myK, myHyper) = (SquareExp([1.0, 1.0]), [False, LogNormal(mean=0.1,std=0.25)])
-(myK, myHyper) = (SquareExp([1.0, 1.0]), [False, Jeffreys()])
-#(myK, myHyper) = (RatQuad([1.0, 1.0, 1.0]), [False, False, True])
-
-# Setup hyper-parameters in the kernel and map to an array
-myK.declare_hyper(myHyper)
-p_mapped = np.empty(1)
-myK.map_hyper(p_mapped)
+#myK = RatQuad(w=1.0, l=0.5, alpha=1.0)
+myK = SquareExp(w=1.0, l=0.5) 
 
 # Generate the testing data from the source GP
-sourceGP = GPR(Xt, np.zeros((Nt, 1)), myK, anisotropy=False)
-Yt = Yd = sourceGP.Kdd.dot(randn(Nt)).reshape((Nt, 1)) + prior_mean(Xt)
+sourceGP = GPR(Xt, np.ones((Nt, 1)), myK)
+#Yt = Yd = sourceGP.Kdd.dot(randn(Nt)).reshape((Nt, 1)) + prior_mean(Xt)
+
+Yd = sourceGP.sample(Xt) + prior_mean(Xt)
+#Yt = Yd = sourceGP.Kdd.dot(randn(Nt)).reshape((Nt, 1))
 (Xt, Yt) = (Xd.reshape(Nt), Yd.reshape(Nt))
 
 # Setup the GPR object
-myGPR = GPR(Xd, Yd, myK, anisotropy=False, Yd_mean=prior_mean)
+#myK = RatQuad(w=Constant(1.0), l=0.5, alpha=1.0) + Noise(w=0.1)
+myK = SquareExp(w=1.0, l=LogNormal(guess=0.5,mean=0.5,std=0.5))# + Noise(w=0.1)
 
-# Posterior of the hyper-parameter
-hyper = np.linspace(0.2, 2.0, 100)
+myGPR = GPR(Xd, Yd, myK, Yd_mean=prior_mean)
+
+## Posterior of the hyper-parameter
+hyper = np.linspace(0.2, 3.0, 100)
 h_post = np.empty(np.shape(hyper))
 h_grad = np.empty(np.shape(hyper))
 for i in xrange(len(hyper)):
-    (h_post[i], h_grad[i]) = myGPR.hyper_posterior(hyper[i:i+1], p_mapped)
+    (h_post[i], h_grad[i]) = myGPR.hyper_posterior(hyper[i:i+1])
 
 # Check that the posterior and its gradient are consistent
-test_hyper = np.array([0.9])
-delta = 1e-5
-(h_post_t0, h_grad_t0) = myGPR.hyper_posterior(test_hyper, p_mapped)
-(h_post_t1, h_grad_t1) = myGPR.hyper_posterior(test_hyper+delta, p_mapped)
+test_hyper = np.array([0.5])
+delta = 1e-4
+(h_post_t0, h_grad_t0) = myGPR.hyper_posterior(test_hyper)
+(h_post_t1, h_grad_t1) = myGPR.hyper_posterior(test_hyper+delta)
 grad = 0.5*(h_grad_t0[0] + h_grad_t1[0])
 finite_diff = (h_post_t1[0,0] - h_post_t0[0,0])/delta
 print 'Gradient:    ', grad
@@ -58,21 +58,24 @@ print 'Finite diff.:', finite_diff
 print 'Error (abs.):', abs(grad - finite_diff)
 print 'Error (rel.):', abs(1.0 - finite_diff/grad)
 print ' '
+param = myGPR.kernel.p[myGPR.kernel.hp_id[0]]
+#param = myGPR.kernel.terms[0].p[myGPR.kernel.terms[0].hp_id[0]]
+(hopt_post, hopt_grad) = myGPR.hyper_posterior(param)
+
 # I previously used chech_grad (from scipy.optimize import check_grad),
 # but I don't trust it anymore.
 
-# Maximize the hyper-parameter posterior
-p_mapped[0] = hyper[len(hyper)/2]
-myK.map_hyper(p_mapped, unmap=True)
-(myGPR, param) = myGPR.maximize_hyper_posterior()
-print 'Optimized value of the hyper-parameter:', param
-myK.map_hyper(p_mapped)
-(hopt_post, hopt_grad) = myGPR.hyper_posterior(param, p_mapped)
+## Maximize the hyper-parameter posterior
+#p_mapped[0] = hyper[len(hyper)/2]
+#myK.map_hyper(p_mapped, unmap=True)
+#(myGPR, param) = myGPR.maximize_hyper_posterior()
+#print 'Optimized value of the hyper-parameter:', param
+#myK.map_hyper(p_mapped)
+#(hopt_post, hopt_grad) = myGPR.hyper_posterior(param, p_mapped)
 
 # Inference over the entire domain
 Ni = 100
-Xi = np.linspace(0.0, 8.0, Ni).reshape((-1,1))
-Yi_prior = 5.0*(Xi/8.0 - 0.5)
+Xi = np.linspace(0.0, 2.0, Ni).reshape((-1,1))
 (post_mean, post_std) = myGPR.inference(Xi, infer_std=True)
 Xi = Xi.reshape(-1)
 (post_mean, post_std) = (post_mean.reshape(-1), post_std.reshape(-1))
@@ -97,7 +100,7 @@ plot1.legend(loc='lower center',  prop={'size':10}, numpoints=1)
 
 fig2 = plt.figure(figsize=(5,3), dpi=150)
 p1, = plt.plot(Xt,Yt, 'ko')
-p2, = plt.plot(Xi,post_mean, linewidth=2.0, color='blue')
+p2, = plt.plot(Xi, post_mean, linewidth=2.0, color='blue')
 plt.fill_between(Xi, post_mean-2.0*post_std, post_mean+2.0*post_std, alpha=0.25)    
 p3 = plt.Rectangle((0.0, 0.0), 1.0, 1.0, facecolor='blue', alpha=0.25)
 fig2.subplots_adjust(left=0.15, right=0.95, bottom=0.15,top=0.9)

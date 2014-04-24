@@ -113,7 +113,7 @@ def multi_Dimensional_Newton(function, guess, args=None, options=None):
         alpha_lo = .75
         
         while not ( sufficent_decrease() & curvature_cond() ):
-            if iters > 20:
+            if iters > 10:
                 alpha = 0.004
                 break
 
@@ -124,12 +124,12 @@ def multi_Dimensional_Newton(function, guess, args=None, options=None):
 
             if (fun(alpha_hi) >= fun(alpha_lo)):
                 alpha = alpha_lo
-                alpha_lo *= .7
-                alpha_hi *= .99
+                alpha_lo *= .5
+                alpha_hi *= .95
             else: 
                 alpha = alpha_hi
-                alpha_lo *= 1.01
-                alpha_hi *= 1.3
+                alpha_lo *= 1.05
+                alpha_hi *= 1.5
             iters += 1
 
             fun_star,dfun_star,d2funstar = func(x+alpha*dx)
@@ -181,10 +181,10 @@ def multi_Dimensional_Newton(function, guess, args=None, options=None):
         ##    alpha = line_search(ff,dff,x,dx,gfk=df,old_fval=f,bounded=True)
             a = line_search1(func,x,dx,bounds=options['bounds'])
         else:
-            ff = lambda x : func(x)[0]
-            dff = lambda x : func(x)[1]
+            ff = lambda x : func(squeeze(x))[0]
+            dff = lambda x : func(squeeze(x))[1]
             alpha = line_search(ff,dff,x,dx,gfk=df,old_fval=f)
-            a = alpha[0]
+            a = squeeze(alpha[0])
             #a = line_search1(func,x,dx)
             
         # 5) Update estimate 
