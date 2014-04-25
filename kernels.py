@@ -83,7 +83,7 @@ class Kernel:
             # Combine with the existing KernelProd object.
             return other.__mul__(self, self_on_right=True)
     
-    def _map_hyper(self, hp_mapped=None):
+    def _map_hyper(self, hp_mapped=None, unmap=False):
         """Replace hyper-parameter values with pointers to a 1D array."""
         if hp_mapped == None:
             hp_mapped = empty(self.Nhp)
@@ -91,16 +91,24 @@ class Kernel:
             isinstance(self, KernelProd):
             i = 0
             for kern in self.terms:
-                kern._map_hyper(hp_mapped[i:i+kern.Nhp])
+                kern._map_hyper(hp_mapped[i:i+kern.Nhp], unmap=unmap)
                 i += kern.Nhp
         else:
             for (hp, i) in zip(self.hp_id, xrange(self.Nhp)):
                 if not isinstance(hp, int):
-                    hp_mapped[i] = self.hp[i].guess
-                    self.p[hp] = hp_mapped[i:i+1]
+                    if unmap == True:
+                        self.hp[i].guess = self.p[hp]
+                        hp_mapped[i] = self.hp[i].guess
+                    else:
+                        hp_mapped[i] = self.hp[i].guess
+                        self.p[hp] = hp_mapped[i:i+1]
                 else:
-                    hp_mapped[i] = self.hp[i].guess
-                    self.p['l'][hp] = hp_mapped[i:i+1]
+                    if unmap == True:
+                        self.hp[i].guess = self.p['l'][hp]
+                        hp_mapped[i] = self.hp[i].guess
+                    else:
+                        hp_mapped[i] = self.hp[i].guess
+                        self.p['l'][hp] = hp_mapped[i:i+1]
         #return (self, hp_mapped)
         return hp_mapped
 

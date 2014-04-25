@@ -247,7 +247,7 @@ class GPR:
         """
         #hp_mapped[:] = params
         (Nd, Nhp) = (self.Nd, self.kernel.Nhp)
-        if not grad:  # may want to add the call to kernel._ln_priors here
+        if not grad:
             K = self.kernel(self.Rdd, grad=False, data=True)
             lnprior = self.kernel._ln_priors(params)
         elif grad != 'Hess':
@@ -267,7 +267,6 @@ class GPR:
             print (repr(params))
             raise e
         invK_Y = cho_solve(LK, self.Yd)
-        ()
         lnP_neg = ( float(self.Nd)*HLOG2PI + sum(log(diag(LK[0]))) +
                     0.5*self.Yd.T.dot(invK_Y) - lnprior)
                     
@@ -375,12 +374,14 @@ class GPR:
         #                     options={'maxiter':200, 'disp':True}) 
         #all_hyper[:] = myResult.x
         #------------------------------------   
-#        multi_Dimensional_Newton(self.hyper_posterior, all_hyper, args=('Hess'),
-#                                 options={'tol':1e-3, 'maxiter':200,
-#                                          'bounds':(0.,None)})
         multi_Dimensional_Newton(self.hyper_posterior, all_hyper, args=('Hess'),
-                                 options={'tol':1e-3, 'maxiter':200})
+                                 options={'tol':1e-4, 'maxiter':200,
+                                          'bounds':(0.,2.)})
+        #multi_Dimensional_Newton(self.hyper_posterior, all_hyper, args=('Hess'),
+        #                         options={'tol':1e-3, 'maxiter':200})
         #------------------------------------
+
+        all_hyper = self.kernel._map_hyper(all_hyper,unmap=True)
 
         # Do as many calculations as possible in preparation for the inference
         self.Kdd = self.kernel(self.Rdd, data=True)
@@ -558,8 +559,8 @@ if __name__ == "__main__":
     # Simple case, 1D with three data points and one regression point
     Xd1 = array([[0.1], [0.3], [0.6]])
     Yd1 = array([[0.0], [1.0], [0.5]])
-    myGPR1 = GPR( Xd1, Yd1, Noise(w=0.1) + SquareExp(w=Constant(0.3),
-                                  l=Constant(0.5)) )
+    myGPR1 = GPR( Xd1, Yd1, SquareExp(w=0.1, l=LogNormal(guess=.3,mean=.3,std=.25)) )
+    #myGPR1 = GPR( Xd1, Yd1, Noise(w=0.1) + RatQuad(w=Constant(.3), l=Constant(.5), alpha=1.))
     xi1 = array([[0.2]])
     yi1 = myGPR1( xi1 )
     print 'Example 1:'

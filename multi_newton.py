@@ -7,7 +7,7 @@ Multi-Dimensional Newton Solve
     function : function being minimized (function), \
         must return (f(guess,params), \
         df(guess,params), d2f(guess,params)) \n
-    guess : initial guess for parameters being minimized (array) \n
+    x : parameters being minimized (array) \n
     args : currently same as guess, eventually guess will be eliminated \n
   Optional Inputs(specify within an options dictionary)
     tol : minimum change in parameter space (scalar, optional)  \n
@@ -26,7 +26,7 @@ from scipy.linalg import inv, solve, eigvals
 from scipy.linalg import cho_factor, cho_solve
 from scipy.optimize import line_search, brute
 
-def multi_Dimensional_Newton(function, guess, args=None, options=None):
+def multi_Dimensional_Newton(function, x, args=None, options=None):
 
     def convergence_crit(x, dx, iteration, boundscount, options=None):
         test1 = test2 = True
@@ -124,12 +124,12 @@ def multi_Dimensional_Newton(function, guess, args=None, options=None):
 
             if (fun(alpha_hi) >= fun(alpha_lo)):
                 alpha = alpha_lo
-                alpha_lo *= .5
-                alpha_hi *= .95
+                alpha_lo *= .7
+                alpha_hi *= .99
             else: 
                 alpha = alpha_hi
-                alpha_lo *= 1.05
-                alpha_hi *= 1.5
+                alpha_lo *= 1.01
+                alpha_hi *= 1.3
             iters += 1
 
             fun_star,dfun_star,d2funstar = func(x+alpha*dx)
@@ -141,10 +141,16 @@ def multi_Dimensional_Newton(function, guess, args=None, options=None):
 
         
     # 1) Initiate
-    func = lambda x : function(x, args)
-    x = guess
+    def func(x_input):
+        tempHolder = x.copy()
+        x[:] = x_input
+        output = function(x, args)
+        x[:] = tempHolder
+        return output
+    
+    #x = guess
     dx = x.copy()
-    history = guess.copy()
+    history = x.copy()
     iteration = 0
     a=0
     boundscount= array((0,0))
@@ -181,13 +187,18 @@ def multi_Dimensional_Newton(function, guess, args=None, options=None):
         ##    alpha = line_search(ff,dff,x,dx,gfk=df,old_fval=f,bounded=True)
             a = line_search1(func,x,dx,bounds=options['bounds'])
         else:
-            ff = lambda x : func(squeeze(x))[0]
-            dff = lambda x : func(squeeze(x))[1]
+            if len(x)>1:
+                ff = lambda x : func(squeeze(x))[0]
+                dff = lambda x : func(squeeze(x))[1]
+            else:
+                ff = lambda x : func(x)[0]
+                dff = lambda x : func(x)[1]
             alpha = line_search(ff,dff,x,dx,gfk=df,old_fval=f)
             a = squeeze(alpha[0])
             #a = line_search1(func,x,dx)
             
         # 5) Update estimate 
+        #a=1.
         x += a*dx
         iteration += 1
         history = concatenate((history, x))
@@ -200,7 +211,7 @@ def multi_Dimensional_Newton(function, guess, args=None, options=None):
     if boundscount[0] > 0: print 'hit low bounds ',boundscount[0],' times'
     if boundscount[1] > 0: print 'hit upper bounds ',boundscount[1],' times'
     if options.has_key('history'):
-        history = history.reshape(-1,len(guess))
+        history = history.reshape(-1,len(x))
         return history
     
 if __name__ == "__main__":
