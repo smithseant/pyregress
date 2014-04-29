@@ -6,15 +6,15 @@ This demonstration generates a random sample from a 1D Gaussian process.
 Then, using the same kernel with all parameters known except one,
 the posterior of this hyper-parameter is calculated and maximized.
 """
-import numpy as np
 from numpy.random import random, randn
+from numpy import zeros, linspace, empty, shape
 import matplotlib.pyplot as plt
 from pyregress import *
 plt.close('all')
 
 # Setup the source GP with any single hyper-parameter
 Nt = Nd = 5*2**1
-Xd = Xt =  2.0*(random(Nd)).reshape((-1,1))
+Xd =  2.0*(random(Nd)).reshape((-1,1))
 
 def prior_mean(inputs):
     return 2.0*(inputs/5.0 - 0.5)
@@ -23,16 +23,13 @@ def prior_mean(inputs):
 myK = SquareExp(w=1.0, l=0.5) 
 
 # Generate the testing data from the source GP
-sourceGP = GPR(Xt, np.ones((Nt, 1)), myK)
-Yt = Yd = sourceGP.Kdd.dot(randn(Nt)).reshape((Nt, 1)) + prior_mean(Xt)
-
-#Yd = sourceGP.sample(Xt) + prior_mean(Xt)
-#Yt = Yd = sourceGP.Kdd.dot(randn(Nt)).reshape((Nt, 1))
+sourceGP = GPR(zeros((0,0)), zeros(0), myK, Yd_mean=prior_mean)
+Yd = sourceGP.sample(Xd).reshape(shape(Xd))
 (Xt, Yt) = (Xd.reshape(Nt), Yd.reshape(Nt))
 
 # Setup the GPR object
 #myK = RatQuad(w=Constant(1.0), l=0.5, alpha=1.0) + Noise(w=0.1)
-myK = SquareExp(w=1.0, l=Constant(0.5)) + Noise(w=0.1)
+myK = SquareExp(w=1.0, l=LogNormal(guess=0.5,std=.25)) + Noise(w=0.1)
 
 myGPR = GPR(Xd, Yd, myK, Yd_mean=prior_mean)
 #param = myGPR.kernel.p[myGPR.kernel.hp_id[0]]
@@ -41,7 +38,7 @@ param = myGPR.kernel.terms[0].p[myGPR.kernel.terms[0].hp_id[0]]
 
 # Inference over the entire domain
 Ni = 100
-Xi = np.linspace(0.0, 2.0, Ni).reshape((-1,1))
+Xi = linspace(0.0, 2.0, Ni).reshape((-1,1))
 (post_mean, post_std) = myGPR.inference(Xi, infer_std=True)
 Xi = Xi.reshape(-1)
 (post_mean, post_std) = (post_mean.reshape(-1), post_std.reshape(-1))
@@ -62,9 +59,9 @@ print 'Error (rel.):', abs(1.0 - finite_diff/grad)
 print ' '
 
 ## Posterior of the hyper-parameter
-hyper = np.linspace(0.2, 3.0, 100)
-h_post = np.empty(np.shape(hyper))
-h_grad = np.empty(np.shape(hyper))
+hyper = linspace(0.2, 3.0, 100)
+h_post = empty(shape(hyper))
+h_grad = empty(shape(hyper))
 for i in xrange(len(hyper)):
     test_hyper[:] = hyper[i:i+1]
     (h_post[i], h_grad[i]) = myGPR.hyper_posterior(test_hyper)

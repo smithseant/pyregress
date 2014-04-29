@@ -30,17 +30,16 @@ Reading the code and development:
 
 #from termcolor import colored  # may not work on windows
 from numpy import (ndarray, array, empty, ones, eye, shape, tile,
-                   maximum, diag, sum, sqrt)
+                   maximum, diag, sum, sqrt, resize, size)
 from numpy.linalg.linalg import LinAlgError
 from numpy.random import randn
 from scipy import pi, log
-from scipy.linalg import cho_factor, cho_solve
-from scipy.optimize import minimize
-
+#from pyregress import *
 from kernels import Kernel
 from transforms import BaseTransform, Probit
-from hyper_params import *
 from multi_newton import *
+from hyper_params import cho_factor_mod as cho_factor
+from hyper_params import cho_solve_mod as cho_solve
 
 HLOG2PI = 0.5*log(2.0*pi)
 
@@ -162,22 +161,22 @@ class GPR:
         #    create a separate function? --
         if (self.kernel.Nhp > 0):
             self.maximize_hyper_posterior()
-        else:
-            self.Kdd = self.kernel(self.Rdd, data=True)
-            try:
-                self.LKdd = cho_factor(self.Kdd)
-            except LinAlgError as e:
-                print ("GPR method __init__ failed to factor data kernel." +
-                       "This is often an indication that Xd has duplicates or " +
-                       "the noise kernel has too small of weight.")
-                raise e
-            self.invKdd_Yd = cho_solve(self.LKdd, self.Yd)
-            if self.basis is not None:
+    
+        self.Kdd = self.kernel(self.Rdd, data=True)
+        try:
+            self.LKdd = cho_factor(self.Kdd)
+        except LinAlgError as e:
+            print ("GPR method __init__ failed to factor data kernel." +
+                   "This is often an indication that Xd has duplicates or " +
+                   "the noise kernel has too small of weight.")
+            raise e
+        self.invKdd_Yd = cho_solve(self.LKdd, self.Yd)
+        if self.basis is not None:
                 self.invKdd_Hd = cho_solve(self.LKdd, self.Hd)
                 LSth = cho_factor(self.Hd.T.dot(self.invKdd_Hd))
                 self.Sth = cho_solve(LSth, eye(self.Nth))
                 self.Th = cho_solve(LSth, self.Hd.T.dot(self.invKdd_Yd))
-                self.invKdd_HdTh = cho_solve(self.LKdd, self.Hd.dot(self.Th))
+                self.invKdd_HdTh = cho_solve(self.LKdd, self.Hd.dot(self.Th))           
     
     def _basis(self, X):
         """Calculate the basis functions given independent variables."""
@@ -215,10 +214,12 @@ class GPR:
         # Previously used: cdist(X, Y, 'seuclidean',V=self.aniso),
         # which required: from scipy.spatial.distance import cdist.
         (Nx, Ny) = (X.shape[0], Y.shape[0])
-        Rk = empty((Nx, Ny, self.Nx))
-        for k in xrange(self.Nx):
+        if (X.shape[1] != Y.shape[1]): Xn = 0
+        else: Xn = X.shape[1]
+        Rk = empty((Nx, Ny, Xn))
+        for k in list(range(Xn)):
             Rk[:, :, k] = tile(X[:,[k]], (1, Ny)) - tile(Y[:,[k]].T, (Nx, 1))
-            if self.aniso == 'auto' or isinstance(self.aniso, ndarray):
+            if self.aniso == 'auto' or (isinstance(self.aniso, ndarray) and len(self.aniso) > 0):
                 Rk[:, :, k] /= self.aniso[k]
         return Rk
     
@@ -287,7 +288,7 @@ class GPR:
         invK_aa = invK - invK_Y.dot(invK_Y.T)
         lnP_grad = empty(Nhp)
         for j in xrange(Nhp):
-            lnP_grad[j] = 0.5*sum(invK_aa.T * Kp[:,:,j] - 2.0*dlnprior[j])
+            lnP_grad[j] = 0.5*sum(invK_aa.T * Kp[:,:,j]) - 1.0*dlnprior[j]
         if self.basis is not None:
             diff2 = betaTh.T - 2.0*invK_Y.T
             for j in xrange(Nhp):
@@ -308,8 +309,8 @@ class GPR:
             for i in xrange(j + 1):
                 lnP_hess[i, j] = 0.5*sum( invK_aa.T*Kpp[:,:,i,j] -
                                           invK_Kp[:,:,i].T*invK_Kp[:,:,j] +
-                                          aa_Kp[:,:,i].T*invK_Kp[:,:,j] -
-                                          d2lnprior[i,j])
+                                          aa_Kp[:,:,i].T*invK_Kp[:,:,j]
+                                          ) - d2lnprior[i,j]
                 lnP_hess[j, i] = lnP_hess[i, j]
         if self.basis is not None:
             diff1 = betaTh.T - invK_Y.T
@@ -349,50 +350,25 @@ class GPR:
         # Setup hyper-parameters & map values from a single array
         all_hyper = self.kernel._map_hyper()        
         
-        #if hyper_params:
-        #    Nhyper = self.kernel.declare_hyper(hyper_params)
-        #else:
-        #    Nhyper = self.kernel.Nhp
-        #all_hyper = empty(Nhyper)
-        #self.kernel.map_hyper(all_hyper)
-        
-        # Perform minimization
-        #myResult = minimize(self.hyper_posterior, all_hyper,
-        #                    args=(False), method='Nelder-Mead',
-        #                    tol=1e-4, options={'maxiter':200, 'disp':True})
-        # -- To use BFGS or CG, one must edit those routines for
-        #    a smaller initial step (arguments fed to linesearch). --
-        # myResult = minimize(self.hyper_posterior, all_hyper,
-        #                     args=(all_hyper,), method='BFGS', jac=True,
-        #                     tol=1e-4, options={'maxiter':200, 'disp':True})
-        #myResult = minimize(self.hyper_posterior, all_hyper,
-        #                     args=(all_hyper,), method='L-BFGS-B', jac=True,
-        #                     bounds=[(0.0,None)]*Nhyper, tol=1e-4,
-        #                     options={'maxiter':200, 'disp':True})        
-        #myResult = minimize(self.hyper_posterior, all_hyper, method='L-BFGS-B',
-        #                    jac=True,bounds=[(0.0,None)]*self.kernel.Nhp, tol=1e-4,
-        #                     options={'maxiter':200, 'disp':True}) 
-        #all_hyper[:] = myResult.x
-        #------------------------------------   
+        # Perform minimization 
         multi_Dimensional_Newton(self.hyper_posterior, all_hyper, args=('Hess'),
-                                 options={'tol':1e-4, 'maxiter':200,
+                                 options={'tol':1e-6, 'maxiter':200,
                                           'bounds':(0.,2.)})
         #multi_Dimensional_Newton(self.hyper_posterior, all_hyper, args=('Hess'),
         #                         options={'tol':1e-3, 'maxiter':200})
-        #------------------------------------
 
         all_hyper = self.kernel._map_hyper(all_hyper,unmap=True)
 
-        # Do as many calculations as possible in preparation for the inference
-        self.Kdd = self.kernel(self.Rdd, data=True)
-        self.LKdd = cho_factor(self.Kdd)
-        self.invKdd_Yd = cho_solve(self.LKdd, self.Yd)
-        if self.basis is not None:
-            self.invKdd_Hd = cho_solve(self.LKdd, self.Hd)
-            LSth = cho_factor(self.Hd.T.dot(self.invKdd_Hd))
-            self.Sth = cho_solve(LSth, eye(self.Nth))
-            self.Th = cho_solve(LSth, self.Hd.T.dot(self.invKdd_Yd))
-            self.invKdd_HdTh = cho_solve(self.LKdd, self.Hd.dot(self.Th))
+#        # Do as many calculations as possible in preparation for the inference
+#        self.Kdd = self.kernel(self.Rdd, data=True)
+#        self.LKdd = cho_factor(self.Kdd)
+#        self.invKdd_Yd = cho_solve(self.LKdd, self.Yd)
+#        if self.basis is not None:
+#            self.invKdd_Hd = cho_solve(self.LKdd, self.Hd)
+#            LSth = cho_factor(self.Hd.T.dot(self.invKdd_Hd))
+#            self.Sth = cho_solve(LSth, eye(self.Nth))
+#            self.Th = cho_solve(LSth, self.Hd.T.dot(self.invKdd_Yd))
+#            self.invKdd_HdTh = cho_solve(self.LKdd, self.Hd.dot(self.Th))
         return self, all_hyper
     
     
@@ -442,8 +418,10 @@ class GPR:
             Xi = Xi.reshape((-1, 1))
         #Ni = Xi.shape[0]
         if Xi.ndim != 2 or Xi.shape[1] != self.Nx:
-            raise InputError("GPR object argument Xi must be a 2D array " +
-                             "(2nd dimension must match that of Xd.)", Xi)
+            if self.Nx == 0: pass
+            else:
+                raise InputError("GPR object argument Xi must be a 2D array " +
+                                 "(2nd dimension must match that of Xd.)", Xi)
         
         # Mixed i-d kernel & inference of posterior mean
         Rid = self._radius(Xi, self.Xd)
@@ -459,15 +437,17 @@ class GPR:
         if self.prior_mean is not None:
             Yi_mean = self.prior_mean(Xi).reshape((-1,1))
             if self.trans is None or not untransform:
-                post_mean += Yi_mean
+                post_mean = resize(post_mean,shape(Yi_mean)) + Yi_mean
             else:
-                post_mean += self.trans(Yi_mean)
+                post_mean = (resize(post_mean,shape(Yi_mean)) + 
+                            self.trans(Yi_mean))
                 
         # Inference of posterior covariance
         if infer_std:
             Rii = self._radius(Xi, Xi)
             Kii = self.kernel(Rii, data=data)
-            post_covar = Kii-Kid.dot(cho_solve(self.LKdd, Kid.T))
+            post_covar = (Kii - 
+                    resize(Kid.dot(cho_solve(self.LKdd, Kid.T)),shape(Kii)))            
             if self.basis is not None:
                 A = Hi - Kid.dot(self.invKdd_Hd)
                 post_covar += A.dot(self.Sth.dot(A.T))
@@ -514,11 +494,12 @@ class GPR:
         InputError:
             an exception is thrown for incompatible format of any inputs.
         """
-        Ns = Xs.size
+        Ns = shape(Xs)[0]
         (Ys_post, Cov) = self.inference(Xs, infer_std='covar',
                                         untransform=False, data=data)
-        Z = randn(Ns).reshape((Ns, 1))
-        Ys = Ys_post + Cov.dot(Z)
+        Z = randn(Ns).reshape(Ns)
+        Ys = Cov.dot(Z)
+        if size(Ys_post > 0): Ys += Ys_post.reshape(shape(Ys))
         if self.trans is not None:
             Ys = self.trans(Ys, inverse=True)
         return Ys
@@ -545,13 +526,14 @@ class InputError(Error):  # -- not a ValueError? --
         self.args = (msg,)
         self.input_argument = input_argument
 
+__all__ = ['GPR']
 
 if __name__ == "__main__":
     from numpy import linspace, hstack, meshgrid, reshape
     import matplotlib as mpl
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
-    from kernels import Noise, SquareExp, RatQuad
+    from pyregress import *
     
     # TODO: Examples that provide verification!
     
@@ -559,8 +541,9 @@ if __name__ == "__main__":
     # Simple case, 1D with three data points and one regression point
     Xd1 = array([[0.1], [0.3], [0.6]])
     Yd1 = array([[0.0], [1.0], [0.5]])
-    myGPR1 = GPR( Xd1, Yd1, SquareExp(w=0.1, l=LogNormal(guess=.3,mean=.3,std=.25)) )
-    #myGPR1 = GPR( Xd1, Yd1, Noise(w=0.1) + RatQuad(w=Constant(.3), l=Constant(.5), alpha=1.))
+    myGPR1 = GPR( Xd1, Yd1, SquareExp(w=Constant(0.1),
+                                      l=LogNormal(guess=.3,std=.25)) )
+    #myGPR1 = GPR( Xd1, Yd1, Noise(w=0.01) + RatQuad(w=Constant(.3), l=Constant(.5), alpha=1.))
     xi1 = array([[0.2]])
     yi1 = myGPR1( xi1 )
     print 'Example 1:'

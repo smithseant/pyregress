@@ -6,7 +6,7 @@ This demonstration generates a random sample from a 2D Gaussian process.
 Then, using the same kernel with all parameters known except two,
 the posterior of this hyper-parameter is calculated and maximized.
 """
-from numpy import log, zeros, linspace, empty, array, meshgrid, hstack
+from numpy import zeros, linspace, empty, array, meshgrid, hstack
 from numpy.random import random, randn
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -16,18 +16,18 @@ plt.close('all')
 
 # Setup the source sGP with exactly two hyper-parameters
 Nt = Nd = 5*2**4
-Xt = Xd = 8.0*(random(2*Nd)).reshape((-1,2))
+Xd = 8.0*(random(2*Nd)).reshape((-1,2))
 
-myK = Noise(w=0.1)+SquareExp(w=1.0, l=[0.7,1.1])
+myK = Noise(w=0.1) + SquareExp(w=1.0, l=[0.7,1.1])
 
 # Generate the testing data from the source GP
-sourceGPR = GPR(Xt, zeros((Nt, 1)), myK)
-Yd = sourceGPR.Kdd.dot(randn(Nt)).reshape((Nt, 1))
+sourceGPR = GPR(zeros((0,0)), zeros(0), myK)
+Yd = sourceGPR.sample(Xd)
 (Xt, Yt) = (Xd.T, Yd.reshape(Nt))
 
 # Setup the GPR object
 myK = Noise(w=0.1)+SquareExp(w=1.0,
-     l=[Constant(.7),Constant(1.1)])
+     l=[LogNormal(guess=.7,std=.25),LogNormal(guess=1.1,std=.25)])
 myGPR = GPR(Xd, Yd, myK)
 
 # Inference over the entire domain

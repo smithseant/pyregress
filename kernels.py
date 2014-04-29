@@ -10,7 +10,6 @@ from collections import OrderedDict as odict
 from numbers import Number
 from numpy import empty, zeros, ones, eye, sum, prod, ix_, expand_dims, tile
 from scipy import exp, log
-
 from hyper_params import HyperPrior
 
 # TODO: Add periodic, but it would require general handling of multiple Rs.
@@ -595,3 +594,5 @@ class RatQuad(Kernel):
                     Khess[:,:,i,j] = ( w2*(R2l2**2/(4.0*a**3*all_tmp**2)+
                                            alpha_tmp**2)*K0 )
         return (w2*K0, Kgrad, Khess)
+        
+__all__ = ['Kernel', 'Noise', 'SquareExp', 'GammaExp', 'RatQuad']

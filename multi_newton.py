@@ -23,8 +23,8 @@ Multi-Dimensional Newton Solve
 from numpy import concatenate, abs, dot, squeeze, array
 from scipy import identity
 from scipy.linalg import inv, solve, eigvals
-from scipy.linalg import cho_factor, cho_solve
-from scipy.optimize import line_search, brute
+#from scipy.linalg import cho_factor, cho_solve
+from scipy.optimize import line_search
 
 def multi_Dimensional_Newton(function, x, args=None, options=None):
 
@@ -213,6 +213,8 @@ def multi_Dimensional_Newton(function, x, args=None, options=None):
     if options.has_key('history'):
         history = history.reshape(-1,len(x))
         return history
+
+__all__ = ['multi_Dimensional_Newton']
     
 if __name__ == "__main__":
 

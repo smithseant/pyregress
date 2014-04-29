@@ -128,3 +128,5 @@ class Logit(BaseTransform):
         return log(y/(1.0 - y))
     def inv_transform(self, z):
         return 1.0/(exp(-z)+1.0)
+        
+__all__ = ['BaseTransform', 'Logarithm', 'Probit', 'ProbitBeta', 'Logit']

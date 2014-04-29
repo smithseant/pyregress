@@ -12,3 +12,4 @@
 !examples/verification_test.py
 !multi_newton.py
 !kernels_tests.py
+!sampling_test.py
