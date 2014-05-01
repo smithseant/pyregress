@@ -26,8 +26,8 @@ Yd = sourceGPR.sample(Xd)
 (Xt, Yt) = (Xd.T, Yd.reshape(Nt))
 
 # Setup the GPR object
-myK = Noise(w=0.1)+SquareExp(w=1.0,
-     l=[LogNormal(guess=.7,std=.25),LogNormal(guess=1.1,std=.25)])
+myK = SquareExp(w=1.0, l=[LogNormal(guess=.7,std=.25),
+                          LogNormal(guess=1.1,std=.25)]) + Noise(w=0.1)
 myGPR = GPR(Xd, Yd, myK)
 
 # Inference over the entire domain
@@ -39,13 +39,11 @@ post_mean = myGPR.inference(Xi, infer_std=False)
 post_mean = post_mean.reshape(Ni)
 
 ## Maximize the hyper-parameter posterior
-#param = myGPR.kernel.p[myGPR.kernel.hp_id[0]]
-param = zeros(myGPR.kernel.Nhp)
-param[:] = myGPR.kernel.terms[1].p['l']
+param, bounds = myGPR.kernel._map_hyper(unmap=True)
 (hopt_post, hopt_grad) = myGPR.hyper_posterior(param)
 
 # Check that the posterior and its gradient are consistent
-test_hyper = myGPR.kernel._map_hyper()    
+test_hyper, bounds = myGPR.kernel._map_hyper()    
 test_hyper[:] = array([0.9, 0.9])
 delta = 1e-5
 (d1, d2) = (array([delta, 0.0]), array([0.0, delta]))

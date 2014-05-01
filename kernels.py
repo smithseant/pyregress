@@ -8,7 +8,8 @@ Docstring for the kernels module - needs to be written
 from abc import ABCMeta, abstractmethod
 from collections import OrderedDict as odict
 from numbers import Number
-from numpy import empty, zeros, ones, eye, sum, prod, ix_, expand_dims, tile
+from numpy import (empty, zeros, ones, eye, sum, prod, ix_, expand_dims, tile,
+                   hstack)
 from scipy import exp, log
 from hyper_params import HyperPrior
 
@@ -47,6 +48,7 @@ class Kernel:
             self.Nhp += len([i for i in params['l']
                              if isinstance(i, HyperPrior)])
         self.p = odict([(key, None) for key in params_spec.keys()])
+        self.p_bounds = [val for val in params_spec.values()]
         (self.hp, self.hp_id) = ([], [])
         for key in params_spec.keys():
             val = params[key]
@@ -82,15 +84,19 @@ class Kernel:
             # Combine with the existing KernelProd object.
             return other.__mul__(self, self_on_right=True)
     
-    def _map_hyper(self, hp_mapped=None, unmap=False):
+    def _map_hyper(self, hp_mapped=None, bounds_mapped=None, unmap=False):
         """Replace hyper-parameter values with pointers to a 1D array."""
         if hp_mapped == None:
             hp_mapped = empty(self.Nhp)
+            bounds_mapped = empty(0) 
+        if unmap == True: bounds_mapped = []
         if isinstance(self, KernelSum) or \
             isinstance(self, KernelProd):
             i = 0
             for kern in self.terms:
-                kern._map_hyper(hp_mapped[i:i+kern.Nhp], unmap=unmap)
+                hp_mapped[i:i+kern.Nhp],bounds_mapped = \
+                kern._map_hyper(hp_mapped[i:i+kern.Nhp], 
+                                bounds_mapped, unmap=unmap)
                 i += kern.Nhp
         else:
             for (hp, i) in zip(self.hp_id, xrange(self.Nhp)):
@@ -108,8 +114,9 @@ class Kernel:
                     else:
                         hp_mapped[i] = self.hp[i].guess
                         self.p['l'][hp] = hp_mapped[i:i+1]
+                bounds_mapped = hstack((bounds_mapped,(self.p_bounds[i])))
         #return (self, hp_mapped)
-        return hp_mapped
+        return hp_mapped, bounds_mapped
 
     def _ln_priors(self, params, grad=False):
         """

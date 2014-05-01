@@ -246,7 +246,6 @@ class GPR:
         lnP_hess:  array-2D (optional - depending on argument grad),
             Hessian matrix (2nd derivatives) of lnP_neg.
         """
-        #hp_mapped[:] = params
         (Nd, Nhp) = (self.Nd, self.kernel.Nhp)
         if not grad:
             K = self.kernel(self.Rdd, grad=False, data=True)
@@ -346,18 +345,20 @@ class GPR:
             indicates which kernel parameters are hyper-parameters and if they
             are, what is their prior.
         """                 
-        
+
         # Setup hyper-parameters & map values from a single array
-        all_hyper = self.kernel._map_hyper()        
+        all_hyper,bounds = self.kernel._map_hyper()        
+        lo,hi = [],[]
+        [(lo.append(bounds[i+i]),hi.append(bounds[2*i+1])) for i in xrange(len(bounds)/2)]
         
         # Perform minimization 
         multi_Dimensional_Newton(self.hyper_posterior, all_hyper, args=('Hess'),
                                  options={'tol':1e-6, 'maxiter':200,
-                                          'bounds':(0.,2.)})
+                                          'bounds':(lo,hi)})
         #multi_Dimensional_Newton(self.hyper_posterior, all_hyper, args=('Hess'),
         #                         options={'tol':1e-3, 'maxiter':200})
 
-        all_hyper = self.kernel._map_hyper(all_hyper,unmap=True)
+        all_hyper,bounds = self.kernel._map_hyper(all_hyper,unmap=True)
 
 #        # Do as many calculations as possible in preparation for the inference
 #        self.Kdd = self.kernel(self.Rdd, data=True)

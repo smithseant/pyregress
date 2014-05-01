@@ -61,13 +61,13 @@ def multi_Dimensional_Newton(function, x, args=None, options=None):
                 
         test3 = (sum(boundscount) < 20)
             
-        if not test1: print '--- mix tol reached ---'
+        if not test1: print '--- min tol reached ---'
         if not test2: print '--- max iter reached ---' 
         if not test3: print '--- hit bounds too many times ---'           
         
         return test1 & test2 & test3
         
-    def line_search1(func,x,dx,alpha=1.0,c1=1e-4,c2=0.9,bounds=False):
+    def line_search1(f,x,dx,alpha=1.0,c1=1e-4,c2=0.9,bounds=False):
         
         # Strong Wolfe conditions
         # 1) sufficient decrease
@@ -106,9 +106,9 @@ def multi_Dimensional_Newton(function, x, args=None, options=None):
         iters = 0
         alpha = check_low(alpha)
         alpha = check_high(alpha)
-        fun = lambda a : func(x + a*dx)[0]      
-        fun_star,dfun_star,d2funstar = func(x+alpha*dx)
-        fun_0,dfun_0,d2fun0 = func(x)
+        fun = lambda a : f(x + a*dx,grad=False)      
+        fun_star,dfun_star = f(x+alpha*dx,grad=True)
+        fun_0,dfun_0 = f(x,grad=True)
         alpha_hi = 1.5
         alpha_lo = .75
         
@@ -132,7 +132,7 @@ def multi_Dimensional_Newton(function, x, args=None, options=None):
                 alpha_hi *= 1.3
             iters += 1
 
-            fun_star,dfun_star,d2funstar = func(x+alpha*dx)
+            fun_star,dfun_star = f(x+alpha*dx,grad=True)
             
         return alpha
         
@@ -141,10 +141,10 @@ def multi_Dimensional_Newton(function, x, args=None, options=None):
 
         
     # 1) Initiate
-    def func(x_input):
+    def func(x_input, grad=True):
         tempHolder = x.copy()
         x[:] = x_input
-        output = function(x, args)
+        output = function(x, grad=grad)
         x[:] = tempHolder
         return output
     
@@ -170,7 +170,7 @@ def multi_Dimensional_Newton(function, x, args=None, options=None):
     while convergence_crit(x, dx, iteration, boundscount, options):
 
         # 3) Compute step direction
-        f, df, d2f = func(x)
+        f, df, d2f = func(x,grad='Hess')
         if iteration == 0: f_init = f
         if len(d2f) == 1: 
             dx = -df/d2f
@@ -188,11 +188,11 @@ def multi_Dimensional_Newton(function, x, args=None, options=None):
             a = line_search1(func,x,dx,bounds=options['bounds'])
         else:
             if len(x)>1:
-                ff = lambda x : func(squeeze(x))[0]
-                dff = lambda x : func(squeeze(x))[1]
+                ff = lambda x : func(squeeze(x),grad=False)
+                dff = lambda x : func(squeeze(x),grad=True)[1]
             else:
-                ff = lambda x : func(x)[0]
-                dff = lambda x : func(x)[1]
+                ff = lambda x : func(x,grad=False)
+                dff = lambda x : func(x,grad=True)[1]
             alpha = line_search(ff,dff,x,dx,gfk=df,old_fval=f)
             a = squeeze(alpha[0])
             #a = line_search1(func,x,dx)
@@ -227,24 +227,28 @@ if __name__ == "__main__":
 
     #Test Function
     #---------------------------------------------------
-    def Rosenbrock_func(x,*args):
+    def Rosenbrock_func(x,grad=False):
         
         if len(x) == 2:
             f = (1.-x[0])**2 + 100.*(x[1]-x[0]**2)**2
-
+            if grad == False: return f
+                
             dfdx = 400.*x[0]**3 - 400.*x[0]*x[1] + 2*x[0] - 2
             dfdy = 200*(x[1]-x[0]**2)
             df = array((dfdx,dfdy))  
-            
+            if grad == True: return f,df
+                
             d2fdx2 = 1200.*x[0]**2 - 400.*x[1] + 2. 
             d2fdxdy = -400.*x[0]
             d2fdy2 = 200
             H = array([[d2fdx2,d2fdxdy],[d2fdxdy,d2fdy2]])    
-    
+            if grad == 'Hess': return f,df,H
+
         else:    
             # High dimensional Rosenbrock from scipy optimize docs
             f = sum(100.0*(x[1:]-x[:-1]**2.0)**2.0 + (1-x[:-1])**2.0)
-
+            if grad == False: return f
+                
             xm = x[1:-1]
             xm_m1 = x[:-2]
             xm_p1 = x[2:]
@@ -252,6 +256,7 @@ if __name__ == "__main__":
             df[1:-1] = 200*(xm-xm_m1**2) - 400*(xm_p1 - xm**2)*xm - 2*(1-xm)
             df[0] = -400*x[0]*(x[1]-x[0]**2) - 2*(1-x[0])
             df[-1] = 200*(x[-1]-x[-2]**2)
+            if grad == True: return f,df       
         
             x = asarray(x)
             H = diag(-400*x[:-1],1) - diag(400*x[:-1],-1)
@@ -260,50 +265,57 @@ if __name__ == "__main__":
             diagonal[-1] = 200
             diagonal[1:-1] = 202 + 1200*x[1:-1]**2 - 400*x[2:]
             H = H + diag(diagonal)
-        return f, df, H
+            if grad == 'Hess': return f,df,H
         
-    def test_func1(x,*args):
+    def test_func1(x,grad=False):
         #f(x) = (x + sin(x))*exp(-x**2)
         f = (x + sin(x))*exp(-x**2)
+        if grad==False: return f
         df = exp(-x**2)*(-2.*x**2 - 2.*x*sin(x) + cos(x) + 1.)
+        if grad==True: return f,df
         H = exp(-x**2) * (4.*x**2 + (4.*x**2 - 3.)*sin(x) - 6.*x - 4.*x*cos(x))
-        return f, df, H
+        if grad == 'Hess': return f, df, H
         
-    def test_func2(x,*args):
+    def test_func2(x,grad=False):
         #f(x) = exp(x) - 2*x + 0.01/x - 1e-6/x**2
         f = exp(x) - 2.*x + 0.01/x - 1e-6/x**2
-        df = exp(x) -2. - 0.01/x**2 + 2e-6/x**3 
+        if grad==False: return f
+        df = exp(x) -2. - 0.01/x**2 + 2e-6/x**3
+        if grad==True: return f,df
         H = exp(x) + (0.02*x - 6e-6)/x**4 
-        return f, df, H
+        if grad == 'Hess': return f, df, H
     
-    def test_func3(x,*args):
+    def test_func3(x,grad=False):
         #f(x) = 3. * x**2 + 1 + (log((x-pi)**2))/pi**4
         f = 3. * x**2 + (log((x-pi)**2))/pi**4
+        if grad==False: return f
         df = 6.*x + 2./(pi**4 * (x-pi))
+        if grad==True: return f,df
         H = 6. - 0.020532/(pi-x)**2
-        return f, df, H
+        if grad == 'Hess': return f, df, H
         
-    def test_func4(x,*args):
+    def test_func4(x,grad=False):
         #f(x) = x**4 + 2*x**2 + x + 3
         f = x**4 + 2.*x**2 + x + 3.
+        if grad==False: return f
         df = 4.*x**3 + 4.*x + 1.
+        if grad==True: return f,df
         H = 12.*x**2 + 4.
-        return f, df, H
+        if grad == 'Hess': return f, df, H
         
-    def test_func5(x,*args):
+    def test_func5(x,grad=False):
         #f(x) = (x**2+y-11)**2 + (x+y**2-7)**2 
         f = (x[0]**2+x[1]-11.)**2 + (x[0]+x[1]**2-7.)**2
-        
+        if grad==False: return f
         df1 = 2.*(2.*x[0]*(x[0]**2+x[1]-11.)+x[0]+x[1]**2-7.)
         df2 = 2.*(x[0]**2+2.*x[1]*(x[0]+x[1]**2-7.)+x[1]-11.)
         df = array((df1,df2))
-        
+        if grad==True: return f,df
         d2f1 = 12.*x[0]**2+4.*x[1]-42.
         d2f2 = 4.*(x[0]+x[1])
         d2f4 = 4.*x[0]+12.*x[1]-26.
         H = array([[d2f1,d2f2],[d2f2,d2f4]])
-        
-        return f, df, H
+        if grad == 'Hess': return f, df, H
 
     #---------------------------------------------------  
     #Test 1      
@@ -320,12 +332,12 @@ if __name__ == "__main__":
         fig = plt.figure()
         ax = fig.gca(projection='3d')
             
-        plt.plot(hist[:,0],hist[:,1],Rosenbrock_func(hist.T)[0],'b-*')
+        plt.plot(hist[:,0],hist[:,1],Rosenbrock_func(hist.T),'b-*')
             
         x_space = linspace(amin(hist[:,0]),amax(hist[:,0]))
         y_space = linspace(amin(hist[:,1]),amax(hist[:,1]))
         X,Y = meshgrid(x_space,y_space)
-        Z = Rosenbrock_func(array([X,Y]))[0]
+        Z = Rosenbrock_func(array([X,Y]))
         surf = ax.plot_surface(X,Y,Z,rstride=2,
                 cstride=2,cmap=cm.cool, 
                 linewidth=0, antialiased=False)
@@ -334,11 +346,11 @@ if __name__ == "__main__":
         plt.title('Rosenbrock Function Minimization',fontsize=16)
         
     else:
-        high = [None]*len(guess)
-        low = [None]*len(guess)
+        #high = [None]*len(guess)
+        #low = [None]*len(guess)
         multi_Dimensional_Newton(Rosenbrock_func, guess, 
-                        options={'tol':1e-6, 'maxiter':200, 
-                        'bounds':(low,high)})
+                        options={'tol':1e-6, 'maxiter':200})#, 
+                        #'bounds':(low,high)})
          
     #------------------------------------------------------               
     #Test 2 
@@ -349,10 +361,10 @@ if __name__ == "__main__":
                                      options={'history':True,
                                      'bounds':(-10.,10.)})    
     fig2 = plt.figure()
-    plt.plot(x_range1,test_func1(x_range1)[0])
-    plt.plot(hist1,test_func1(hist1)[0],'go--')
+    plt.plot(x_range1,test_func1(x_range1))
+    plt.plot(hist1,test_func1(hist1),'go--')
     plt.title('Test 2', fontsize=16)  
-    print 'Real min - ', min(test_func1(x_range1)[0])
+    print 'Real min - ', min(test_func1(x_range1))
     
     #Test 3
     print 'Test function 3'
@@ -362,10 +374,10 @@ if __name__ == "__main__":
                                      options={'history':True,
                                      'bounds':(0.,1.)})
     fig3 = plt.figure()
-    plt.plot(x_range2,test_func2(x_range2)[0])
-    plt.plot(hist2,test_func2(hist2)[0],'go--')
+    plt.plot(x_range2,test_func2(x_range2))
+    plt.plot(hist2,test_func2(hist2),'go--')
     plt.title('Test 3', fontsize=16)    
-    print 'Real min - ', min(test_func2(x_range2)[0])
+    print 'Real min - ', min(test_func2(x_range2))
 
     #Test 4
     print 'Test function 4'
@@ -375,10 +387,10 @@ if __name__ == "__main__":
                                      options={'history':True,
                                      'bounds':(0.,2.)})
     fig4 = plt.figure()
-    plt.plot(x_range3,test_func3(x_range3)[0])
-    plt.plot(hist3,test_func3(hist3)[0],'go--')
+    plt.plot(x_range3,test_func3(x_range3))
+    plt.plot(hist3,test_func3(hist3),'go--')
     plt.title('Test 4', fontsize=16)    
-    print 'Real min - ', min(test_func3(x_range3)[0])
+    print 'Real min - ', min(test_func3(x_range3))
 
     #Test 5
     print 'Test function 5'
@@ -388,17 +400,17 @@ if __name__ == "__main__":
                                      options={'history':True,
                                      'bounds':(0.,2.)})
     fig5 = plt.figure()
-    plt.plot(x_range4,test_func4(x_range4)[0])
-    plt.plot(hist4,test_func4(hist4)[0],'go--')
+    plt.plot(x_range4,test_func4(x_range4))
+    plt.plot(hist4,test_func4(hist4),'go--')
     plt.title('Test 5', fontsize=16) 
-    print 'Real min - ', min(test_func4(x_range4)[0])
+    print 'Real min - ', min(test_func4(x_range4))
 
     #Test 6
     print 'Test function 6'
     x1_range = linspace(-4.,4.)
     x2_range = linspace(-4.,4.)
     XX,YY = meshgrid(x1_range,x2_range)
-    ZZ = test_func5(array([XX,YY]))[0]
+    ZZ = test_func5(array([XX,YY]))
     guess5 = array([0.,0.])
     high = [4., 4.]
     low = [-4., -4.]
@@ -409,7 +421,7 @@ if __name__ == "__main__":
     fig6 = plt.figure()
     ax6 = fig6.gca(projection='3d')
     surf2 = ax6.plot_surface(XX, YY, ZZ, rstride=2, cstride=2, cmap=cm.cool)
-    plt.plot(hist5[:,0],hist5[:,1],test_func5(hist5.T)[0])
+    plt.plot(hist5[:,0],hist5[:,1],test_func5(hist5.T))
     print 'Real min - ', ZZ.min()
 
     plt.show()

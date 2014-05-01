@@ -33,7 +33,7 @@ myK = SquareExp(w=1.0, l=LogNormal(guess=0.5,std=.25)) + Noise(w=0.1)
 
 myGPR = GPR(Xd, Yd, myK, Yd_mean=prior_mean)
 #param = myGPR.kernel.p[myGPR.kernel.hp_id[0]]
-param = myGPR.kernel.terms[0].p[myGPR.kernel.terms[0].hp_id[0]]
+param, bounds = myGPR.kernel._map_hyper(unmap=True)
 (hopt_post, hopt_grad) = myGPR.hyper_posterior(param)
 
 # Inference over the entire domain
@@ -44,7 +44,7 @@ Xi = Xi.reshape(-1)
 (post_mean, post_std) = (post_mean.reshape(-1), post_std.reshape(-1))
 
 # Check that the posterior and its gradient are consistent
-test_hyper = myGPR.kernel._map_hyper()    
+test_hyper,bounds = myGPR.kernel._map_hyper()    
 test_hyper[:] = 0.9
 (h_post_t0, h_grad_t0) = myGPR.hyper_posterior(test_hyper)
 delta = 1e-5
