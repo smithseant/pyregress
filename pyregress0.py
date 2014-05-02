@@ -30,14 +30,14 @@ Reading the code and development:
 
 #from termcolor import colored  # may not work on windows
 from numpy import (ndarray, array, empty, ones, eye, shape, tile,
-                   maximum, diag, sum, sqrt, resize, size)
-from numpy.linalg.linalg import LinAlgError
+                   maximum, diag, sum, sqrt, resize, size, std)
+from numpy.linalg.linalg import LinAlgError, svd
 from numpy.random import randn
 from scipy import pi, log
 #from pyregress import *
 from kernels import Kernel
 from transforms import BaseTransform, Probit
-from multi_newton import *
+from multi_newton import MD_Newton
 from hyper_params import cho_factor_mod as cho_factor
 from hyper_params import cho_solve_mod as cho_solve
 
@@ -67,8 +67,8 @@ class GPR:
     [[ 0.22770558]
      [ 0.78029862]]
     """
-    def __init__(self, Xd, Yd, Cov, anisotropy=None,
-                 Yd_mean=None, explicit_basis=None, transform=None):
+    def __init__(self, Xd, Yd, Cov, x_scaling=None,
+                 y_mean=None, explicit_basis=None, transform=None):
         """
         Create a GPR object and prepare for inference.
         
@@ -83,12 +83,13 @@ class GPR:
         Cov:  Kernel object,
             prior covariance kernel. Options include: Noise, SquareExp,
             GammaExp, RatQuad, or the sum of any of these.
-        anisotropy:  string or array-1D (optional),
+        x_scaling:  string or array-1D (optional),
             scaling of the independent variables. With 'range', it uses range
             scaling. With an array having the same length as the second
-            dimension of Xd, it uses manual scaling.
-        Yd_mean:  a function (optional),
-            prior mean of the dependent variable at Xd.  Must take input
+            dimension of Xd, it uses manual scaling.  With 'std' it scales
+            by the standard deviation.
+        y_mean:  a function (optional),
+            prior mean of the dependent variable at Xd & Xi.  Must take input
             of data in form of Xd, and output in same shape as Yd.  If
             omitted, uses a prior mean of zero.  Will be used in inference
             if supplied for GPR object.
@@ -115,16 +116,19 @@ class GPR:
         else:
             raise InputError("GPR argument Xd must be a 2D array.", Xd)
         (self.Nd, self.Nx) = shape(Xd)
-        if not anisotropy:
-            self.aniso = ones(self.Nx)
-        elif anisotropy == 'range':
-            self.aniso = (Xd.max(0)-Xd.min(0))**2
-        elif shape(anisotropy) == (self.Nx,):
-            self.aniso = anisotropy
+        if not x_scaling:
+            self.xscale = ones(self.Nx)
+        elif x_scaling == 'range':
+            self.xscale = (Xd.max(0)-Xd.min(0))**2
+        elif x_scaling == 'std':
+            self.xscale = std(Xd,axis=0)
+        elif shape(x_scaling) == (self.Nx,):
+            self.xscale = x_scaling
         else:
-            raise InputError("GPR argument anisotropy must be one of: " +
-                             "False, True, 'range', or 1D array (same length " +
-                             "as the second dimension of Xd).", anisotropy)
+            raise InputError("GPR argument x_scaling must be one of: " +
+                             "False, True, 'range', 'std', or 1D array " +
+                             "(same length  + as the second dimension of Xd)"
+                             , x_scaling)
         
         # Dependent variable
         if Yd.shape[0] != self.Nd:
@@ -142,7 +146,7 @@ class GPR:
         else:
             raise InputError("GPR argument transform must be BaseTransform " +
                              "class (string of name) or object.", transform)
-        self.prior_mean = Yd_mean
+        self.prior_mean = y_mean
         if self.prior_mean is not None:
             if self.trans is None:
                 self.Yd -= self.prior_mean(Xd).reshape((-1, 1))
@@ -211,7 +215,7 @@ class GPR:
     
     def _radius(self, X, Y):
         """Calculate the distance matrix (radius)."""
-        # Previously used: cdist(X, Y, 'seuclidean',V=self.aniso),
+        # Previously used: cdist(X, Y, 'seuclidean',V=self.xscale),
         # which required: from scipy.spatial.distance import cdist.
         (Nx, Ny) = (X.shape[0], Y.shape[0])
         if (X.shape[1] != Y.shape[1]): Xn = 0
@@ -219,8 +223,9 @@ class GPR:
         Rk = empty((Nx, Ny, Xn))
         for k in list(range(Xn)):
             Rk[:, :, k] = tile(X[:,[k]], (1, Ny)) - tile(Y[:,[k]].T, (Nx, 1))
-            if self.aniso == 'range' or (isinstance(self.aniso, ndarray) and len(self.aniso) > 0):
-                Rk[:, :, k] /= self.aniso[k]
+            if (self.xscale == 'range' or self.xscale == 'std' or
+                (isinstance(self.xscale, ndarray) and len(self.xscale) > 0)):
+                Rk[:, :, k] /= self.xscale[k]
         return Rk
     
     def hyper_posterior(self, params, grad=True):
@@ -349,27 +354,16 @@ class GPR:
         # Setup hyper-parameters & map values from a single array
         all_hyper,bounds = self.kernel._map_hyper()        
         lo,hi = [],[]
-        [(lo.append(bounds[i+i]),hi.append(bounds[2*i+1])) for i in xrange(len(bounds)/2)]
+        [(lo.append(bounds[i+i]),hi.append(bounds[2*i+1])) 
+            for i in xrange(len(bounds)/2)]
         
         # Perform minimization 
-        multi_Dimensional_Newton(self.hyper_posterior, all_hyper, args=('Hess'),
-                                 options={'tol':1e-6, 'maxiter':200,
-                                          'bounds':(lo,hi)})
+        MD_Newton(self.hyper_posterior, all_hyper, args=('Hess'),
+                  options={'tol':1e-6, 'maxiter':200, 'bounds':(lo,hi)})
         #multi_Dimensional_Newton(self.hyper_posterior, all_hyper, args=('Hess'),
         #                         options={'tol':1e-3, 'maxiter':200})
 
         all_hyper,bounds = self.kernel._map_hyper(all_hyper,unmap=True)
-
-#        # Do as many calculations as possible in preparation for the inference
-#        self.Kdd = self.kernel(self.Rdd, data=True)
-#        self.LKdd = cho_factor(self.Kdd)
-#        self.invKdd_Yd = cho_solve(self.LKdd, self.Yd)
-#        if self.basis is not None:
-#            self.invKdd_Hd = cho_solve(self.LKdd, self.Hd)
-#            LSth = cho_factor(self.Hd.T.dot(self.invKdd_Hd))
-#            self.Sth = cho_solve(LSth, eye(self.Nth))
-#            self.Th = cho_solve(LSth, self.Hd.T.dot(self.invKdd_Yd))
-#            self.invKdd_HdTh = cho_solve(self.LKdd, self.Hd.dot(self.Th))
         return self, all_hyper
     
     
@@ -499,7 +493,8 @@ class GPR:
         (Ys_post, Cov) = self.inference(Xs, infer_std='covar',
                                         untransform=False, data=data)
         Z = randn(Ns).reshape(Ns)
-        Ys = Cov.dot(Z)
+        (U,S,V) = svd(Cov)
+        Ys = U.dot(diag(sqrt(S))).dot(Z)
         if size(Ys_post > 0): Ys += Ys_post.reshape(shape(Ys))
         if self.trans is not None:
             Ys = self.trans(Ys, inverse=True)
@@ -556,7 +551,7 @@ if __name__ == "__main__":
                  [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
     myGPR2 = GPR(Xd2, Yd2, RatQuad(w=0.6, l=0.3, alpha=1.0),
-                 anisotropy=False, explicit_basis=[0, 1], transform='Probit')
+                 x_scaling=False, explicit_basis=[0, 1], transform='Probit')
     #print 'Optimized value of the hyper-parameters:', param    
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
     yi2 = myGPR2( xi2 )

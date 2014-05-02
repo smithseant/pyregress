@@ -1,44 +1,42 @@
 # -*- coding: utf-8 -*-
-"""
-Multi-Dimensional Newton Solve
-    multi_Dimensional_Newton(function, guess, args, options={}) 
-    
-  Inputs:
-    function : function being minimized (function), \
-        must return (f(guess,params), \
-        df(guess,params), d2f(guess,params)) \n
-    x : parameters being minimized (array) \n
-    args : currently same as guess, eventually guess will be eliminated \n
-  Optional Inputs(specify within an options dictionary)
-    tol : minimum change in parameter space (scalar, optional)  \n
-    maxit : maximum number of iterations (int, optional) \n
-    bounds : parameter bounds, specify as tuple of lists \n
-             e.i ([low_1, low_2],[high_1, high_2]) \n
-        
-  Outputs:
-    history : time history of minimization (vector, optional), \n
-              also specify as True in options dictionary
-"""
-
 from numpy import concatenate, abs, dot, squeeze, array
 from scipy import identity
 from scipy.linalg import inv, solve, eigvals
-#from scipy.linalg import cho_factor, cho_solve
 from scipy.optimize import line_search
 
-def multi_Dimensional_Newton(function, x, args=None, options=None):
+def MD_Newton(function, x, args=None, options=None):
+    """
+    Multi-Dimensional Newton Solve
+        MD_Newton(function, guess, args, 
+                  options={'tol':1e-6, 'maxiter':200, 'bounds':(lo,hi)}) 
+    
+    Inputs:
+        function : function being minimized (function), \
+            must return (f(guess,params), \
+            df(guess,params), d2f(guess,params)) \n
+        x : parameters being minimized (array) \n
+        args : currently same as guess, eventually guess will be eliminated \n
+    Optional Inputs(specify within an options dictionary)
+        tol : minimum change in parameter space (scalar, optional)  \n
+        maxit : maximum number of iterations (int, optional) \n
+        bounds : parameter bounds, specify as tuple of lists \n
+                 e.i ([low_1, low_2],[high_1, high_2]) \n
+        
+    Outputs:
+        history : time history of minimization (vector, optional), \n
+                  also specify as True in options dictionary
+"""
 
     def convergence_crit(x, dx, iteration, boundscount, options=None):
         test1 = test2 = True
         # is minimum step size met?  
-        if options.has_key('tol'): 
-            _tol = options['tol']
+        if options.has_key('tol'): _tol = options['tol']
         else: _tol = 1e-6
-        if (x != 0.).any() or (dx != 0.).any():
+        if (x != 0.).any() or (dx != 0.).any(): 
             test1 = (abs(dx/x) > _tol).any()
         elif iteration == 0: test1 = True
         else: test1 = (abs(dx) > _tol).any()
-        # it maximum number of iterations met
+        # is maximum number of iterations met
         if options.has_key('maxiter'):
             test2 = iteration < options['maxiter']
         else: test2 = iteration < 200
@@ -46,10 +44,6 @@ def multi_Dimensional_Newton(function, x, args=None, options=None):
         # trial test to keep parameters within bounds
         if options.has_key('bounds'):
             low, high = options['bounds']
-            if not isinstance(low, list):
-                low=[low]
-            if not isinstance(high,list):
-                high=[high]
             if (x <= [float(i) for i in low]).any():
                 change = ((x-low)/abs(dx)).min()
                 boundscount[0] += 1
@@ -58,7 +52,8 @@ def multi_Dimensional_Newton(function, x, args=None, options=None):
                 change = ((x-high)/abs(dx)).max() 
                 boundscount[1] += 1
                 x -= dx*change*(1.+.001/boundscount[1])
-                
+         
+        # check # of times bounds have been hit
         test3 = (sum(boundscount) < 20)
             
         if not test1: print '--- min tol reached ---'
@@ -67,61 +62,54 @@ def multi_Dimensional_Newton(function, x, args=None, options=None):
         
         return test1 & test2 & test3
         
-    def line_search1(f,x,dx,alpha=1.0,c1=1e-4,c2=0.9,bounds=False):
+    def line_search_bnd(f, x, dx, alpha=1.0, c1=1e-4, c2=0.9, bounds=False):
         
         # Strong Wolfe conditions
         # 1) sufficient decrease
         #    f(x+alpha*dx) <= f(x) + c1*alpha*df(x).T*dx  ; c1 - (0,1)
         def sufficent_decrease():
             return (fun_star <= fun_0 + 
-                c1*alpha*dot(dfun_0,dx))
-        
+                c1*alpha*dot(dfun_0, dx))
         # 2) curvature condition
         #    |df(x + alpha*dx)*dx| <= c2*|(f(x)dx|   ;   c2 - (c1,1)
         def curvature_cond():
-            return (abs(dot(dfun_star,dx)) <= 
-                    c2*abs(dot(dfun_0,dx))) 
-                    
-        # Check that alpha value doesn't put x outside of bounds
+            return (abs(dot(dfun_star, dx)) <= 
+                    c2*abs(dot(dfun_0, dx)))             
+        # Check that alpha value doesn't put x outside of bounds (low and high)
         def check_low(alpha_try):
             if (x + alpha_try*dx < [float(i) for i in low]).any():
                 inv_a = abs((dx/(x-low)).min())
                 return .99/inv_a
             else: return alpha_try
-                
         def check_high(alpha_try):
             if (x + alpha_try*dx > [float(i) for i in high]).any():
                 inv_a = abs((dx/(x-high)).min())
                 return .99/inv_a
             else: return alpha_try
-         
-        if bounds == False:
-            bounds = ['-inf']*len(x),['inf']*len(x)
-        low, high = bounds             
-        if not isinstance(low, list):
-            low=[low]
-        if not isinstance(high,list):
-            high=[high]
-            
+        
+        # initiation of line search parameters
+        low, high = bounds                         
         iters = 0
         alpha = check_low(alpha)
         alpha = check_high(alpha)
-        fun = lambda a : f(x + a*dx,grad=False)      
-        fun_star,dfun_star = f(x+alpha*dx,grad=True)
-        fun_0,dfun_0 = f(x,grad=True)
+        fun = lambda a : f(x+a*dx, grad=False)      
+        fun_star,dfun_star = f(x+alpha*dx, grad=True)
+        fun_0,dfun_0 = f(x, grad=True)
         alpha_hi = 1.5
         alpha_lo = .75
         
+        # loop for adjusting percent of newton step taken wrt Wolfe cond.
         while not ( sufficent_decrease() & curvature_cond() ):
+            # only linesearch for limited # of iterations            
             if iters > 10:
                 alpha = 0.004
                 break
-
+            # check potential alpha values against bounds
             alpha_hi = check_low(alpha_hi)
             alpha_lo = check_low(alpha_lo)
             alpha_hi = check_high(alpha_hi)
             alpha_lo = check_high(alpha_lo)
-
+            # adjust alpha values, either expanding up or collapsing down
             if (fun(alpha_hi) >= fun(alpha_lo)):
                 alpha = alpha_lo
                 alpha_lo *= .7
@@ -131,30 +119,26 @@ def multi_Dimensional_Newton(function, x, args=None, options=None):
                 alpha_lo *= 1.01
                 alpha_hi *= 1.3
             iters += 1
-
-            fun_star,dfun_star = f(x+alpha*dx,grad=True)
-            
+            fun_star,dfun_star = f(x+alpha*dx, grad=True)
         return alpha
         
     def is_pos_def(x):
         return all(eigvals(x) >= 0.)
-
         
-    # 1) Initiate
     def func(x_input, grad=True):
         tempHolder = x.copy()
         x[:] = x_input
         output = function(x, grad=grad)
         x[:] = tempHolder
         return output
-    
-    #x = guess
+        
+    # 1) Initiate
     dx = x.copy()
     history = x.copy()
-    iteration = 0
-    a=0
+    iteration = a = 0
     boundscount= array((0,0))
     
+    # check that bounds are in form required in tests
     if options.has_key('bounds'):
         low_bounds, high_bounds = options['bounds']
         if not isinstance(low_bounds, list):
@@ -165,6 +149,8 @@ def multi_Dimensional_Newton(function, x, args=None, options=None):
             if low_bounds[i] == None: low_bounds[i] = '-inf'
             if high_bounds[i] == None: high_bounds[i] = 'inf'
         options['bounds']=(low_bounds,high_bounds)
+        print 'low bounds - ',low_bounds
+        print 'high bounds - ',high_bounds
 
     # 2) Test for convergence
     while convergence_crit(x, dx, iteration, boundscount, options):
@@ -175,6 +161,7 @@ def multi_Dimensional_Newton(function, x, args=None, options=None):
         if len(d2f) == 1: 
             dx = -df/d2f
         else:
+            # use steepest decent if Hess matrix is not pos. def.
             if not is_pos_def(d2f):
                 beta = abs(d2f).max() * 5. 
             else: beta = 1e-14
@@ -182,23 +169,21 @@ def multi_Dimensional_Newton(function, x, args=None, options=None):
             dx = solve(d2f,-df) 
         dx = squeeze(dx)
         
-        # 4) Line search      
+        # 4) Line search   
+        # if bounds specified use own linesearch, else use scipy's version
         if options.has_key('bounds'):# and options['bounds'][0]==0.:
-        ##    alpha = line_search(ff,dff,x,dx,gfk=df,old_fval=f,bounded=True)
-            a = line_search1(func,x,dx,bounds=options['bounds'])
+            a = line_search_bnd(func, x, dx, bounds=options['bounds'])
         else:
             if len(x)>1:
-                ff = lambda x : func(squeeze(x),grad=False)
-                dff = lambda x : func(squeeze(x),grad=True)[1]
+                ff = lambda x : func(squeeze(x), grad=False)
+                dff = lambda x : func(squeeze(x), grad=True)[1]
             else:
-                ff = lambda x : func(x,grad=False)
-                dff = lambda x : func(x,grad=True)[1]
-            alpha = line_search(ff,dff,x,dx,gfk=df,old_fval=f)
+                ff = lambda x : func(x, grad=False)
+                dff = lambda x : func(x, grad=True)[1]
+            alpha = line_search(ff, dff, x, dx, gfk=df, old_fval=f)
             a = squeeze(alpha[0])
-            #a = line_search1(func,x,dx)
             
         # 5) Update estimate 
-        #a=1.
         x += a*dx
         iteration += 1
         history = concatenate((history, x))
@@ -211,10 +196,10 @@ def multi_Dimensional_Newton(function, x, args=None, options=None):
     if boundscount[0] > 0: print 'hit low bounds ',boundscount[0],' times'
     if boundscount[1] > 0: print 'hit upper bounds ',boundscount[1],' times'
     if options.has_key('history'):
-        history = history.reshape(-1,len(x))
+        history = history.reshape(-1, len(x))
         return history
 
-__all__ = ['multi_Dimensional_Newton']
+__all__ = ['MD_Newton']
     
 if __name__ == "__main__":
 
@@ -225,9 +210,9 @@ if __name__ == "__main__":
     from numpy import zeros_like, asarray, diag, cos, sin, exp, pi, log
     plt.close('all')
 
-    #Test Function
+    #Test Functions
     #---------------------------------------------------
-    def Rosenbrock_func(x,grad=False):
+    def Rosenbrock_func(x, grad=False):
         
         if len(x) == 2:
             f = (1.-x[0])**2 + 100.*(x[1]-x[0]**2)**2
@@ -267,7 +252,7 @@ if __name__ == "__main__":
             H = H + diag(diagonal)
             if grad == 'Hess': return f,df,H
         
-    def test_func1(x,grad=False):
+    def test_func1(x, grad=False):
         #f(x) = (x + sin(x))*exp(-x**2)
         f = (x + sin(x))*exp(-x**2)
         if grad==False: return f
@@ -276,7 +261,7 @@ if __name__ == "__main__":
         H = exp(-x**2) * (4.*x**2 + (4.*x**2 - 3.)*sin(x) - 6.*x - 4.*x*cos(x))
         if grad == 'Hess': return f, df, H
         
-    def test_func2(x,grad=False):
+    def test_func2(x, grad=False):
         #f(x) = exp(x) - 2*x + 0.01/x - 1e-6/x**2
         f = exp(x) - 2.*x + 0.01/x - 1e-6/x**2
         if grad==False: return f
@@ -285,7 +270,7 @@ if __name__ == "__main__":
         H = exp(x) + (0.02*x - 6e-6)/x**4 
         if grad == 'Hess': return f, df, H
     
-    def test_func3(x,grad=False):
+    def test_func3(x, grad=False):
         #f(x) = 3. * x**2 + 1 + (log((x-pi)**2))/pi**4
         f = 3. * x**2 + (log((x-pi)**2))/pi**4
         if grad==False: return f
@@ -294,7 +279,7 @@ if __name__ == "__main__":
         H = 6. - 0.020532/(pi-x)**2
         if grad == 'Hess': return f, df, H
         
-    def test_func4(x,grad=False):
+    def test_func4(x, grad=False):
         #f(x) = x**4 + 2*x**2 + x + 3
         f = x**4 + 2.*x**2 + x + 3.
         if grad==False: return f
@@ -303,7 +288,7 @@ if __name__ == "__main__":
         H = 12.*x**2 + 4.
         if grad == 'Hess': return f, df, H
         
-    def test_func5(x,grad=False):
+    def test_func5(x, grad=False):
         #f(x) = (x**2+y-11)**2 + (x+y**2-7)**2 
         f = (x[0]**2+x[1]-11.)**2 + (x[0]+x[1]**2-7.)**2
         if grad==False: return f
@@ -325,9 +310,8 @@ if __name__ == "__main__":
         
     if len(guess) == 2:
 
-        hist = multi_Dimensional_Newton(Rosenbrock_func, guess, 
-                           options={'tol':1e-6, 'maxiter':200, 
-                          'history':True})        
+        hist = MD_Newton(Rosenbrock_func, guess,
+                         options={'tol':1e-6,'maxiter':200, 'history':True})        
         
         fig = plt.figure()
         ax = fig.gca(projection='3d')
@@ -348,7 +332,7 @@ if __name__ == "__main__":
     else:
         #high = [None]*len(guess)
         #low = [None]*len(guess)
-        multi_Dimensional_Newton(Rosenbrock_func, guess, 
+        MD_Newton(Rosenbrock_func, guess, 
                         options={'tol':1e-6, 'maxiter':200})#, 
                         #'bounds':(low,high)})
          
@@ -357,9 +341,8 @@ if __name__ == "__main__":
     print 'Test function 2'
     x_range1 = linspace(-6.,6.)
     guess1 = array([4.])
-    hist1 = multi_Dimensional_Newton(test_func1, guess1, 
-                                     options={'history':True,
-                                     'bounds':(-10.,10.)})    
+    hist1 = MD_Newton(test_func1, guess1, options={'history':True,
+                                                   'bounds':(-10.,10.)})    
     fig2 = plt.figure()
     plt.plot(x_range1,test_func1(x_range1))
     plt.plot(hist1,test_func1(hist1),'go--')
@@ -370,9 +353,8 @@ if __name__ == "__main__":
     print 'Test function 3'
     x_range2 = linspace(0.1,1.)
     guess2 = array([.8])
-    hist2 = multi_Dimensional_Newton(test_func2, guess2,
-                                     options={'history':True,
-                                     'bounds':(0.,1.)})
+    hist2 = MD_Newton(test_func2, guess2, options={'history':True,
+                                                   'bounds':(0.,1.)})
     fig3 = plt.figure()
     plt.plot(x_range2,test_func2(x_range2))
     plt.plot(hist2,test_func2(hist2),'go--')
@@ -383,9 +365,8 @@ if __name__ == "__main__":
     print 'Test function 4'
     x_range3 = linspace(1E-6,2.)
     guess3 = array([.6])
-    hist3 = multi_Dimensional_Newton(test_func3, guess3,
-                                     options={'history':True,
-                                     'bounds':(0.,2.)})
+    hist3 = MD_Newton(test_func3, guess3, options={'history':True,
+                                                   'bounds':(0.,2.)})
     fig4 = plt.figure()
     plt.plot(x_range3,test_func3(x_range3))
     plt.plot(hist3,test_func3(hist3),'go--')
@@ -396,9 +377,8 @@ if __name__ == "__main__":
     print 'Test function 5'
     x_range4 = linspace(1E-6,2.)
     guess4 = array([1.2])
-    hist4 = multi_Dimensional_Newton(test_func4, guess4,
-                                     options={'history':True,
-                                     'bounds':(0.,2.)})
+    hist4 = MD_Newton(test_func4, guess4, options={'history':True,
+                                                   'bounds':(0.,2.)})
     fig5 = plt.figure()
     plt.plot(x_range4,test_func4(x_range4))
     plt.plot(hist4,test_func4(hist4),'go--')
@@ -414,9 +394,8 @@ if __name__ == "__main__":
     guess5 = array([0.,0.])
     high = [4., 4.]
     low = [-4., -4.]
-    hist5 = multi_Dimensional_Newton(test_func5, guess5,
-                                     options={'history':True,
-                                     'bounds':(low,high)})
+    hist5 = MD_Newton(test_func5, guess5, options={'history':True,
+                                                   'bounds':(low,high)})
         
     fig6 = plt.figure()
     ax6 = fig6.gca(projection='3d')

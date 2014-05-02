@@ -23,7 +23,7 @@ myK = RatQuad(w=1.0, l=0.5, alpha=1.0)
 #myK = SquareExp(w=1.0, l=0.5) 
 
 # Generate the testing data from the source GP
-sourceGP = GPR(zeros((0,0)), zeros(0), myK, Yd_mean=prior_mean)
+sourceGP = GPR(zeros((0,0)), zeros(0), myK, y_mean=prior_mean)
 Yd = sourceGP.sample(Xd).reshape(shape(Xd))
 (Xt, Yt) = (Xd.reshape(Nt), Yd.reshape(Nt))
 
@@ -31,7 +31,7 @@ Yd = sourceGP.sample(Xd).reshape(shape(Xd))
 myK = RatQuad(w=1.0, l=0.5, alpha=LogNormal(guess=.5,std=.2)) + Noise(w=0.1)
 #myK = SquareExp(w=1.0, l=LogNormal(guess=0.3,std=.1)) + Noise(w=0.1)
 
-myGPR = GPR(Xd, Yd, myK, Yd_mean=prior_mean)
+myGPR = GPR(Xd, Yd, myK, y_mean=prior_mean)
 param, bounds = myGPR.kernel._map_hyper(unmap=True)
 (hopt_post, hopt_grad) = myGPR.hyper_posterior(param)
 
