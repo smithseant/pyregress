@@ -26,8 +26,8 @@ Yd = sourceGPR.sample(Xd)
 (Xt, Yt) = (Xd.T, Yd.reshape(Nt))
 
 # Setup the GPR object
-myK = SquareExp(w=1.0, l=[LogNormal(guess=.7,std=.25),
-                          LogNormal(guess=1.1,std=.25)]) + Noise(w=0.1)
+myK = SquareExp(w=1.0, l=[LogNormal(guess=.4,std=.25),
+                          LogNormal(guess=1.4,std=.25)]) + Noise(w=0.1)
 myGPR = GPR(Xd, Yd, myK)
 
 # Inference over the entire domain

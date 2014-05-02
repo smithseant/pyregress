@@ -84,7 +84,7 @@ class GPR:
             prior covariance kernel. Options include: Noise, SquareExp,
             GammaExp, RatQuad, or the sum of any of these.
         anisotropy:  string or array-1D (optional),
-            scaling of the independent variables. With 'auto', it uses range
+            scaling of the independent variables. With 'range', it uses range
             scaling. With an array having the same length as the second
             dimension of Xd, it uses manual scaling.
         Yd_mean:  a function (optional),
@@ -117,13 +117,13 @@ class GPR:
         (self.Nd, self.Nx) = shape(Xd)
         if not anisotropy:
             self.aniso = ones(self.Nx)
-        elif anisotropy == 'auto':
+        elif anisotropy == 'range':
             self.aniso = (Xd.max(0)-Xd.min(0))**2
         elif shape(anisotropy) == (self.Nx,):
             self.aniso = anisotropy
         else:
             raise InputError("GPR argument anisotropy must be one of: " +
-                             "False, True, 'auto', or 1D array (same length " +
+                             "False, True, 'range', or 1D array (same length " +
                              "as the second dimension of Xd).", anisotropy)
         
         # Dependent variable
@@ -219,7 +219,7 @@ class GPR:
         Rk = empty((Nx, Ny, Xn))
         for k in list(range(Xn)):
             Rk[:, :, k] = tile(X[:,[k]], (1, Ny)) - tile(Y[:,[k]].T, (Nx, 1))
-            if self.aniso == 'auto' or (isinstance(self.aniso, ndarray) and len(self.aniso) > 0):
+            if self.aniso == 'range' or (isinstance(self.aniso, ndarray) and len(self.aniso) > 0):
                 Rk[:, :, k] /= self.aniso[k]
         return Rk
     

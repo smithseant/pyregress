@@ -19,8 +19,8 @@ Xd =  2.0*(random(Nd)).reshape((-1,1))
 def prior_mean(inputs):
     return 2.0*(inputs/5.0 - 0.5)
 
-#myK = RatQuad(w=1.0, l=0.5, alpha=1.0)
-myK = SquareExp(w=1.0, l=0.5) 
+myK = RatQuad(w=1.0, l=0.5, alpha=1.0)
+#myK = SquareExp(w=1.0, l=0.5) 
 
 # Generate the testing data from the source GP
 sourceGP = GPR(zeros((0,0)), zeros(0), myK, Yd_mean=prior_mean)
@@ -28,11 +28,10 @@ Yd = sourceGP.sample(Xd).reshape(shape(Xd))
 (Xt, Yt) = (Xd.reshape(Nt), Yd.reshape(Nt))
 
 # Setup the GPR object
-#myK = RatQuad(w=Constant(1.0), l=0.5, alpha=1.0) + Noise(w=0.1)
-myK = SquareExp(w=1.0, l=LogNormal(guess=0.5,std=.25)) + Noise(w=0.1)
+myK = RatQuad(w=1.0, l=0.5, alpha=LogNormal(guess=.5,std=.2)) + Noise(w=0.1)
+#myK = SquareExp(w=1.0, l=LogNormal(guess=0.3,std=.1)) + Noise(w=0.1)
 
 myGPR = GPR(Xd, Yd, myK, Yd_mean=prior_mean)
-#param = myGPR.kernel.p[myGPR.kernel.hp_id[0]]
 param, bounds = myGPR.kernel._map_hyper(unmap=True)
 (hopt_post, hopt_grad) = myGPR.hyper_posterior(param)
 
@@ -59,7 +58,7 @@ print 'Error (rel.):', abs(1.0 - finite_diff/grad)
 print ' '
 
 ## Posterior of the hyper-parameter
-hyper = linspace(0.2, 3.0, 100)
+hyper = linspace(0.2, 1.9, 100)
 h_post = empty(shape(hyper))
 h_grad = empty(shape(hyper))
 for i in xrange(len(hyper)):
