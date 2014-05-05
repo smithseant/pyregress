@@ -197,8 +197,8 @@ class GPR:
                 H[:, j:j+self.Nx] = X
                 j += self.Nx
             if self.basis.count(2):
-                for ix in range(self.Nx):
-                    for jx in range(self.Nx):
+                for ix in xrange(self.Nx):
+                    for jx in xrange(self.Nx):
                         H[:, j] = X[:,ix]*X[:,jx]
                         j += 1
         # TODO: add a base class or abtract interface for the basis functions.
@@ -319,8 +319,8 @@ class GPR:
         if self.basis is not None:
             diff1 = betaTh.T - invK_Y.T
             bSb_2invK = invK_H.dot(Sth).dot(invK_H.T) - 2.0*invK
-            (bKp, ThbKp) = (empty(Nth, Nd, Nhp), empty(Nd, Nhp))
-            (diff1Kpb, diff2Kp) = (empty(Nth, Nhp), empty(Nd, Nhp))
+            (bKp, ThbKp) = (empty((Nth, Nd, Nhp)), empty((Nd, Nhp)))
+            (diff1Kpb, diff2Kp) = (empty((Nth, Nhp)), empty((Nd, Nhp)))
             for j in xrange(Nhp):
                 bKp[:,:,j] = invK_H.T.dot(Kp[:,:,j])
                 ThbKp[:,j] = betaTh.T.dot(Kp[:,:,j])
@@ -331,7 +331,7 @@ class GPR:
                     my_mess = ( invK_H.T.dot(Kpp[:,:,i,j]).dot(invK_H) +
                                 bKp[:,:,i].dot(bSb_2invK).dot(bKp[:,:,j].T) )
                     lnP_hess[i, j] -= 0.5 * ( sum(my_mess.T * Sth) +
-                              diff1.dot(Kpp[:,:,i,j]).dot(betaTh) -
+                              diff2.dot(Kpp[:,:,i,j]).dot(betaTh) -
                               2.0*diff2Kp[:,i].dot(invK).dot(ThbKp[:,j].T) +
                               2.0*diff1Kpb[:,i].dot(Sth).dot(diff1Kpb[:,j].T) )
                     
