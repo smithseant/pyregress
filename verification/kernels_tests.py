@@ -2,16 +2,14 @@
 """
 Created on Thu Apr 17 15:48:02 2014
 
-For this script to work the minimization in GPR.__init__ must be disabled!
+For this script to work, the minimization in GPP.__init__ must be disabled!
 
 @author: Sean T. Smith, University of Utah
 """
 from numpy import ndarray, zeros, empty, tile, abs, nanmax
 from numpy.random import randn
 
-from pyregress0 import *
-from hyper_params import *
-from kernels import *
+from pyregress import *
 
 Nx = 10
 dx = 1e-3  # This doesn't seem to behave well smaller than 1e-4.
@@ -40,7 +38,7 @@ X = randn(Nx, 2)
 Rk = radius(X, X)
 
 #my_kernel = Noise(w=Constant(guess=1.5))
-my_kernel = SquareExp(w=Constant(guess=1.5), l=2.0)
+#my_kernel = SquareExp(w=Constant(guess=1.5), l=2.0)
 #my_kernel = SquareExp(w=1.5, l=Constant(guess=2.0))
 #my_kernel = SquareExp(w=Constant(guess=1.5), l=[2.0, 2.5])
 #my_kernel = SquareExp(w=1.5, l=[Constant(guess=2.0), 2.5])
@@ -49,10 +47,11 @@ my_kernel = SquareExp(w=Constant(guess=1.5), l=2.0)
 #my_kernel = SquareExp(w=Constant(guess=1.5), l=[Constant(guess=2.0), 2.5])
 #my_kernel = SquareExp(w=Constant(guess=1.5), l=[2.0, Constant(guess=2.5)])
 #my_kernel = SquareExp(w=1.5, l=[Constant(guess=2.0), Constant(guess=2.5)])
+my_kernel = Noise(w=Constant(guess=0.5)) + SquareExp(w=1.5, l=Constant(guess=2.0))
 
 my_hyper, hyper_bounds = my_kernel._map_hyper()
-my_gpr = GPR(X, test_func(X), my_kernel)
-my_gpb = GPR(X, test_func(X), my_kernel, explicit_basis=[0, 1])
+my_gpr = GPP(X, test_func(X), my_kernel)
+my_gpb = GPP(X, test_func(X), my_kernel, explicit_basis=[0, 1])
 
 K, Kp, Kpp = my_kernel(Rk, grad='Hess', data=True)
 P, Pp, Ppp = my_gpr.hyper_posterior(my_hyper, grad='Hess')

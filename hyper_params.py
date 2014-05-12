@@ -10,13 +10,13 @@ Provided prior distributions (log(P) and d_log(P))
     Marginalized class also created to hold space of hyper-parameters that are 
     not being explored.
 """
+__all__ = ['HyperPrior', 'LogNormal', 'Constant', 'Jeffreys', 'Beta', 'Gamma']
 
-from numpy import array, sum, divide, concatenate, squeeze, amin, copy, zeros_like
+from numpy import array, sum, divide, concatenate, squeeze, amin, copy
 from numpy import mean as np_mean
 from scipy import log, sqrt, pi
 from scipy.special import gamma
-from scipy.linalg import cho_factor, cho_solve
-    
+
 """Prior hyper-parameter distributions"""
 
 class HyperPrior:
@@ -154,15 +154,6 @@ class Gamma(HyperPrior):
 #-----------------------------------------------------------------
 # Additional utilities
             
-def cho_factor_mod(K):
-    if K.size == 0: return zeros_like(K)
-    else: return cho_factor(K)
-        
-def cho_solve_mod(L, Y):
-    if not isinstance(L,tuple) and L.size == 0:
-        return zeros_like(L)
-    else: return cho_solve(L, Y)   
-            
 class shift_to_zero:
     """shift data above zero and (optional) scale be mean value"""
     def __init__(self):
@@ -209,6 +200,3 @@ class derivative:
         old_x = x[:self._derivative_position]
         old_y = y[:self._derivative_position]
         return old_x,old_y
-        
-__all__ = ['HyperPrior', 'LogNormal', 'Constant', 'Jeffreys', 'Beta', 'Gamma', 
-           'cho_factor_mod', 'cho_solve_mod']

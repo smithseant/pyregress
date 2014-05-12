@@ -6,6 +6,7 @@ Docstring for the transforms module - needs to be written
 # @author: Sean T. Smith
 
 from abc import ABCMeta, abstractmethod
+
 from numpy import sqrt, mean, var
 from scipy.special import erf, erfinv, betainc, betaincinv
 from scipy import exp, log
@@ -128,5 +129,3 @@ class Logit(BaseTransform):
         return log(y/(1.0 - y))
     def inv_transform(self, z):
         return 1.0/(exp(-z)+1.0)
-        
-__all__ = ['BaseTransform', 'Logarithm', 'Probit', 'ProbitBeta', 'Logit']
