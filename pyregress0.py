@@ -27,7 +27,7 @@ Reading the code and development:
 """
 # Created Sep 2013
 # @author: Sean T. Smith
-__all__ = ['GPR']
+__all__ = ['GPP']
 
 #from termcolor import colored  # may not work on windows
 from numpy import (ndarray, array, empty, ones, eye, tile,
@@ -38,7 +38,7 @@ from scipy import pi, log
 from scipy.linalg import cho_factor, cho_solve
 
 from kernels import Kernel
-from transforms import BaseTransform
+from transforms import BaseTransform, Logarithm, Probit, ProbitBeta, Logit
 from multi_newton import MD_Newton
 
 HLOG2PI = 0.5*log(2.0*pi)
@@ -161,15 +161,8 @@ class GPP:
         self.Rdd = self._radius(self.Xd, self.Xd)
         if (self.kernel.Nhp > 0):
             self.maximize_hyper_posterior()
-        
         self.Kdd = self.kernel(self.Rdd, data=True)
-        try:
-            self.LKdd = cho_factor_gen(self.Kdd)
-        except LinAlgError as e:
-            print ("GPP method __init__ failed to factor data kernel." +
-                   "This often indicates that Xd has near duplicates or " +
-                   "the noise kernel has too small of weight.")
-            raise e
+        self.LKdd = cho_factor_gen(self.Kdd)
         self.invKdd_Yd = cho_solve_gen(self.LKdd, self.Yd)
         if self.basis is not None:
                 self.invKdd_Hd = cho_solve_gen(self.LKdd, self.Hd)
@@ -501,7 +494,13 @@ def cho_factor_gen(A, lower=False, **others):
     if A.size == 0:
         return empty(A.shape), lower
     else:
-        return cho_factor(A, lower=lower, **others)
+        try:
+            return cho_factor(A, lower=lower, **others)
+        except LinAlgError as e:
+            print ("GPP method __init__ failed to factor data kernel." +
+                   "This often indicates that X has near duplicates or " +
+                   "the noise kernel has too small of weight.")
+            raise e
         
 def cho_solve_gen(C, b, **others):
     """Generalize scipy's cho_solve to handle arrays of lenth zero."""
@@ -560,7 +559,7 @@ if __name__ == "__main__":
     Xd2 = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
                  [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
-    K2 =  RatQuad(w=0.6, l=LogNormal(guess=0.3, std=.25), alpha=1.0)
+    K2 =  RatQuad(w=0.6, l=LogNormal(guess=0.3, std=0.25), alpha=1.0)
     myGPP2 = GPP(Xd2, Yd2, K2, explicit_basis=[0, 1], transform='Probit')
     #print 'Optimized value of the hyper-parameters:', param
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])

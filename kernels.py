@@ -9,7 +9,7 @@ from abc import ABCMeta, abstractmethod
 from collections import OrderedDict as odict
 from numbers import Number
 
-from numpy import (empty, zeros, ones, eye, sum, prod,
+from numpy import (empty, zeros, ones, eye, sum, prod, abs,
                    ix_, expand_dims, tile, hstack)
 from scipy import exp, log
 
@@ -440,11 +440,12 @@ class GammaExp(Kernel):
     def __call__(self, Rk, grad=False, **kwargs):
         w, l, g = self.p['w'], self.p['l'], self.p['gamma']
         if not isinstance(l, list):
-            Rglg = sum(Rk**2,2)/l**2
+            Rl = abs(Rk/l)
         else:
-            Rglg = zeros(Rk.shape[:2])
+            Rl = empty(Rk.shape)
             for k in xrange(Rk.shape[2]):
-                Rglg += (Rk[:,:,k]/l[k])**g
+                Rl[:,:,k] = abs(Rk[:,:,k]/l[k])
+        Rglg = sum(Rl**g, 2)
         w2 = w**2
         K0 = exp(-Rglg)
         if not grad:
@@ -458,15 +459,15 @@ class GammaExp(Kernel):
                 Kgrad[:,:,i] = 2.0*w*K0
             elif h == 'l':
                 # dK/dl
-                Kgrad[:,:,i] = g*w2*Rglg/l*K0
+                Kgrad[:,:,i] = g*w2*Rglg / l*K0
             elif isinstance(h, int):
                 # dK/dl_h
-                Kgrad[:,:,i] = g*w2*(Rk[:,:,h]/l[h])**g/l[h]*K0
+                Kgrad[:,:,i] = g*w2*Rl[:,:,h]**g / l[h]*K0
             elif h == 'gamma':
                 # dK/dgamma
-                gamma_tmp = zeros(Rk.shape[:2])
-                for k in xrange(Rk.shape[2]):
-                    gamma_tmp += (Rk[:,:,k]/l[k])**g * log(Rk[:,:,k]/l[k])
+                tmp1 = zeros(Rk.shape)
+                tmp1[Rl > 0] = Rl[Rl>0]**g * log(Rl[Rl>0.0])
+                gamma_tmp = sum(tmp1, 2)
                 Kgrad[:,:,i] = -w2*gamma_tmp*K0
         if grad != 'Hess':
             return w2*K0, Kgrad
@@ -483,7 +484,7 @@ class GammaExp(Kernel):
                     Khess[:,:,j,i] = Khess[:,:,i,j]
                 elif h1 == 'w' and isinstance(h2, int):
                     # d^2K/dwdl_h
-                    Khess[:,:,i,j] = 2.0*g*w*(Rk[:,:,h2]/l[h2])**g/l[h2]*K0
+                    Khess[:,:,i,j] = 2.0*g*w*Rl[:,:,h2]**g/l[h2]*K0
                     Khess[:,:,j,i] = Khess[:,:,i,j]
                 elif h1 == 'w' and h2 == 'gamma':
                     # d^2K/dwdgamma
@@ -498,21 +499,23 @@ class GammaExp(Kernel):
                     Khess[:,:,j,i] = Khess[:,:,i,j]
                 elif isinstance(h1, int) and isinstance(h2, int) and h1 == h2:
                     # d^2K/dl_h^2
-                    Khess[:,:,i,j] = ( g*w2*Rk[:,:h1]**g/l**(g+2.0)*
-                                      (g*(Rk[:,:,h1]/l)**g-(g+1.0))*K0 )
+                    Khess[:,:,i,j] = ( g*w2*Rl[:,:,h1]**g/l[h1]**2 *
+                                       (g*Rl[:,:,h1]**g-(g+1.0))*K0 )
                 elif isinstance(h1, int) and isinstance(h2, int):
                     # d^2K/dl_h1 dl_h2
-                    Khess[:,:,i,j] = ( g**2*w2*(Rk[:,:,h1]*Rk[:,:,h2])**g/
-                                      (l[h1]*l[h2])**(g+1.0)*K0 )
+                    Khess[:,:,i,j] = ( g**2*w2*(Rl[:,:,h1]*Rl[:,:,h2])**g /
+                                      (l[h1]*l[h2])*K0 )
                     Khess[:,:,j,i] = Khess[:,:,i,j]
                 elif isinstance(h1, int) and h2 == 'gamma':
-                    # d^2K/dl_h dgamma
-                    Khess[:,:,i,j] = ( w2*Rk[:,:,h1]**g/l**(g+1.0)*
-                                      (1.0+g*log(Rk[:,:,h1]/l)+g*gamma_tmp)*K0 )
+                    # d^2K/dl_h1 dgamma
+                    Khess[:,:,i,j] = ( w2 * (g*tmp1[:,:,h1]/l[h1] +
+                                   Rl[:,:,h1]**g/l[h1]*(1.0-g*gamma_tmp))*K0 )
                     Khess[:,:,j,i] = Khess[:,:,i,j]
                 elif h1 == 'gamma' and h2 == 'gamma':
                     # d^2K/dgamma^2
-                    Khess[:,:,i,j] = w2*gamma_tmp*(gamma_tmp-1.0)*K0
+                    tmp2 = zeros(Rk.shape)
+                    tmp2[Rl > 0] = tmp1[Rl > 0] * log(Rl[Rl>0.0])
+                    Khess[:,:,i,j] = w2*(gamma_tmp**2 - sum(tmp2, 2))*K0
         return w2*K0, Kgrad, Khess
 
 class RatQuad(Kernel):

@@ -12,7 +12,7 @@ from numpy.random import randn
 from pyregress import *
 
 Nx = 10
-dx = 1e-3  # This doesn't seem to behave well smaller than 1e-4.
+dx = 1e-4  # This doesn't seem to behave well smaller than 1e-4.
 
 def test_func(X, aniso=None):
     Nx, Ndim = X.shape[0], X.shape[1]
@@ -38,7 +38,7 @@ X = randn(Nx, 2)
 Rk = radius(X, X)
 
 #my_kernel = Noise(w=Constant(guess=1.5))
-#my_kernel = SquareExp(w=Constant(guess=1.5), l=2.0)
+my_kernel = SquareExp(w=Constant(guess=1.5), l=2.0)
 #my_kernel = SquareExp(w=1.5, l=Constant(guess=2.0))
 #my_kernel = SquareExp(w=Constant(guess=1.5), l=[2.0, 2.5])
 #my_kernel = SquareExp(w=1.5, l=[Constant(guess=2.0), 2.5])
@@ -47,7 +47,23 @@ Rk = radius(X, X)
 #my_kernel = SquareExp(w=Constant(guess=1.5), l=[Constant(guess=2.0), 2.5])
 #my_kernel = SquareExp(w=Constant(guess=1.5), l=[2.0, Constant(guess=2.5)])
 #my_kernel = SquareExp(w=1.5, l=[Constant(guess=2.0), Constant(guess=2.5)])
-my_kernel = Noise(w=Constant(guess=0.5)) + SquareExp(w=1.5, l=Constant(guess=2.0))
+#my_kernel = GammaExp(w=Constant(guess=1.5), l=2.0, gamma=1.5)
+#my_kernel = GammaExp(w=1.5, l=Constant(guess=2.0), gamma=1.5)
+#my_kernel = GammaExp(w=Constant(guess=1.5), l=[2.0, 2.5], gamma=1.5)
+#my_kernel = GammaExp(w=1.5, l=[Constant(guess=2.0), 2.5], gamma=1.5)
+#my_kernel = GammaExp(w=1.5, l=[2.0, Constant(guess=2.5)], gamma=1.5)
+#my_kernel = GammaExp(w=1.5, l=2.0, gamma=Constant(guess=1.5))
+#my_kernel = GammaExp(w=1.5, l=[2.0, 2.5], gamma=Constant(guess=1.5))
+#my_kernel = GammaExp(w=Constant(guess=1.5), l=Constant(guess=2.0), gamma=1.5)
+#my_kernel = GammaExp(w=Constant(guess=1.5), l=[Constant(guess=2.0), 2.5], gamma=1.5)
+#my_kernel = GammaExp(w=Constant(guess=1.5), l=[2.0, Constant(guess=2.5)], gamma=1.5)
+#my_kernel = GammaExp(w=Constant(guess=1.5), l=2.0, gamma=Constant(guess=1.5))
+#my_kernel = GammaExp(w=Constant(guess=1.5), l=[2.0, 2.5], gamma=Constant(guess=1.5))
+#my_kernel = GammaExp(w=1.5, l=[Constant(guess=2.0), Constant(guess=2.5)], gamma=1.5)
+#my_kernel = GammaExp(w=1.5, l=Constant(guess=2.0), gamma=Constant(guess=1.5))
+#my_kernel = GammaExp(w=1.5, l=[Constant(guess=2.0), 2.5], gamma=Constant(guess=1.5))
+#my_kernel = GammaExp(w=1.5, l=[2.5, Constant(guess=2.5)], gamma=Constant(guess=1.5))
+#my_kernel = Noise(w=Constant(guess=0.5)) + SquareExp(w=1.5, l=Constant(guess=2.0))
 
 my_hyper, hyper_bounds = my_kernel._map_hyper()
 my_gpr = GPP(X, test_func(X), my_kernel)
