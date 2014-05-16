@@ -9,7 +9,7 @@ from abc import ABCMeta, abstractmethod
 from collections import OrderedDict as odict
 from numbers import Number
 
-from numpy import (empty, zeros, ones, eye, sum, prod, abs,
+from numpy import (empty, zeros, ones, eye, sum, abs,
                    ix_, expand_dims, tile, hstack)
 from scipy import exp, log
 
@@ -264,14 +264,14 @@ class KernelSum(Kernel):
                 hn = h + kern.Nhp
                 Kt, Kgrad[:,:,h:hn], Khess[:,:,h:hn,h:hn] = kern(Rk, grad, **kwargs)
                 K += Kt
-                h  = hn
+                h = hn
             return (K, Kgrad, Khess)
 
 class KernelProd(Kernel):
     """Modified Kernel class that holds the product of Kernel objects."""
     def __init__(self, k1, k2):
         self.terms = [k1, k2]
-        self.Np, self.Nhp = k1.Np + k2.Np, k1.Nhp + k1.Nhp
+        self.Np, self.Nhp = k1.Np + k2.Np, k1.Nhp + k2.Nhp
     
     def __mul__(self, other, self_on_right=False):
         if isinstance(other, KernelProd):
@@ -287,36 +287,40 @@ class KernelProd(Kernel):
     
     def __call__(self, Rk, grad=False, **kwargs):
         if not grad:
-            return prod([kern(Rk, **kwargs) for kern in self.terms])
+            K = ones(Rk.shape[:2])
+            for kern in self.terms:
+                K *= kern(Rk, **kwargs)
+            return K
         elif grad != 'Hess':
-            K = zeros(Rk.shape[:2])
+            K = ones(Rk.shape[:2])
             Kgrad = ones((Rk.shape[0], Rk.shape[1], self.Nhp))
             h = 0
             for kern in self.terms:
-                (Kt, Kgt) = kern(Rk, grad, **kwargs)
+                Kt, Kgt = kern(Rk, grad, **kwargs)
                 K *= Kt
                 irange = range(h, h+kern.Nhp)
                 iother = range(0, h) + range(h+kern.Nhp, self.Nhp)
                 Kgrad[:,:,irange] *= Kgt
-                Kgrad[:,:,iother] *= tile(Kt, (1, 1, len(iother)))
+                Kgrad[:,:,iother] *= tile(expand_dims(Kt, 2), (1, 1, len(iother)))
                 h += kern.Nhp
             return K, Kgrad
         else:
-            K = zeros(Rk.shape[:2])
-            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-            Khess = zeros((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
+            K = ones(Rk.shape[:2])
+            Kgrad = ones((Rk.shape[0], Rk.shape[1], self.Nhp))
+            Khess = ones((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
             h = 0
             for kern in self.terms:
                 Kt, Kgt, Kht = kern(Rk, grad, **kwargs)
                 K *= Kt
-                irange = range(h, h+kern.Nhp)
-                iother = range(0, h) + range(h+kern.Nhp, self.Nhp)
+                hn = h + kern.Nhp
+                irange = range(h, hn)
+                iother = range(0, h) + range(hn, self.Nhp)
                 Kgrad[:,:,irange] *= Kgt
-                Kgrad[:,:,iother] *= tile(Kt, (1, 1, len(iother)))
-                Khess[:,:,ix_(irange,irange)] *= Kht
-                Khess[:,:,ix_(irange,iother)] *= tile(Kgt, (1,1,1,len(iother)))
-                Khess[:,:,ix_(iother,irange)] *= tile(expand_dims(Kgt,2), (1,1,len(iother),1))
-                Khess[:,:,ix_(iother,iother)] *= tile(Kt, (1,1,len(iother),len(iother)))
+                Kgrad[:,:,iother] *= tile(expand_dims(Kt, 2), (1, 1, len(iother)))
+                Khess[ix_(range(0,Rk.shape[0]), range(0,Rk.shape[1]), irange, irange)] *= Kht
+                Khess[ix_(range(0,Rk.shape[0]), range(0,Rk.shape[1]), irange, iother)] *= tile(expand_dims(Kgt,3), (1,1,1,len(iother)))
+                Khess[ix_(range(0,Rk.shape[0]), range(0,Rk.shape[1]), iother, irange)] *= tile(expand_dims(Kgt,2), (1,1,len(iother),1))
+                Khess[ix_(range(0,Rk.shape[0]), range(0,Rk.shape[1]), iother, iother)] *= tile(expand_dims(expand_dims(Kt,2),3), (1,1,len(iother),len(iother)))
                 h += kern.Nhp
             return (K, Kgrad, Khess)
 
