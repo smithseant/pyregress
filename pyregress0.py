@@ -416,9 +416,9 @@ class GPP:
         if self.prior_mean is not None:
             Yi_mean = self.prior_mean(Xi).reshape((-1, 1))
             if self.trans is None or not untransform:
-                post_mean = resize(post_mean,shape(Yi_mean)) + Yi_mean
+                post_mean = resize(post_mean, Yi_mean.shape) + Yi_mean
             else:
-                post_mean = (resize(post_mean,shape(Yi_mean)) + 
+                post_mean = (resize(post_mean, Yi_mean.shape) + 
                             self.trans(Yi_mean))
         
         # Inference of posterior covariance
@@ -476,9 +476,9 @@ class GPP:
             an exception is thrown for incompatible format of any inputs.
         """
         Nx = Xs.shape[0]
-        (Ys_post, Cov) = self.inference(Xs, infer_std='covar', data=data)
+        Ys_post, Cov = self.inference(Xs, infer_std='covar', data=data)
         Z = randn(Nx, Nsamples)
-        (U,S,V) = svd(Cov)
+        U,S,V = svd(Cov)
         sig = U.dot(diag(sqrt(S)))
         Ys = empty((Nx, Nsamples))
         for i in xrange(Nsamples):

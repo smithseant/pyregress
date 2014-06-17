@@ -14,7 +14,7 @@ plt.close('all')
 
 # Setup the source GP with any single hyper-parameter
 Nt = Nd = 5*2**1
-Xd =  2.0*(random(Nd)).reshape((-1,1))
+Xd =  2.0*(random(Nd)).reshape((-1, 1))
 
 def prior_mean(inputs):
     return 2.0*(inputs/5.0 - 0.5)
@@ -22,33 +22,32 @@ def prior_mean(inputs):
 myK = RatQuad(w=1.0, l=0.5, alpha=1.0)
 #myK = SquareExp(w=1.0, l=0.5) 
 
-# Generate the testing data from the source GP
-sourceGP = GPR(zeros((0,0)), zeros(0), myK, y_mean=prior_mean)
+# Generate the testing data from a source GP
+sourceGP = GPP(zeros((0, 1)), zeros(0), myK, Ymean=prior_mean)
 Yd = sourceGP.sample(Xd).reshape(shape(Xd))
-(Xt, Yt) = (Xd.reshape(Nt), Yd.reshape(Nt))
+Xt, Yt = Xd.reshape(Nt), Yd.reshape(Nt)
 
-# Setup the GPR object
-myK = RatQuad(w=1.0, l=0.5, alpha=LogNormal(guess=.5,std=.2)) + Noise(w=0.1)
-#myK = SquareExp(w=1.0, l=LogNormal(guess=0.3,std=.1)) + Noise(w=0.1)
-
-myGPR = GPR(Xd, Yd, myK, y_mean=prior_mean)
-param, bounds = myGPR.kernel._map_hyper(unmap=True)
-(hopt_post, hopt_grad) = myGPR.hyper_posterior(param)
+# Setup the GPP object
+myK = RatQuad(w=1.0, l=0.5, alpha=LogNormal(guess=.5, std=.2)) + Noise(w=0.1)
+#myK = SquareExp(w=1.0, l=LogNormal(guess=0.3, std=.1)) + Noise(w=0.1)
+myGP = GPP(Xd, Yd, myK, Ymean=prior_mean)
+param, bounds = myGP.kernel._map_hyper(unmap=True)
+hopt_post, hopt_grad = myGP.hyper_posterior(param)
 
 # Inference over the entire domain
 Ni = 100
 Xi = linspace(0.0, 2.0, Ni).reshape((-1,1))
-(post_mean, post_std) = myGPR.inference(Xi, infer_std=True)
+post_mean, post_std = myGP.inference(Xi, infer_std=True)
 Xi = Xi.reshape(-1)
-(post_mean, post_std) = (post_mean.reshape(-1), post_std.reshape(-1))
+post_mean, post_std = post_mean.reshape(-1), post_std.reshape(-1)
 
 # Check that the posterior and its gradient are consistent
-test_hyper,bounds = myGPR.kernel._map_hyper()    
+test_hyper,bounds = myGP.kernel._map_hyper()    
 test_hyper[:] = 0.9
-(h_post_t0, h_grad_t0) = myGPR.hyper_posterior(test_hyper)
+h_post_t0, h_grad_t0 = myGP.hyper_posterior(test_hyper)
 delta = 1e-5
 test_hyper += delta
-(h_post_t1, h_grad_t1) = myGPR.hyper_posterior(test_hyper)
+h_post_t1, h_grad_t1 = myGP.hyper_posterior(test_hyper)
 grad = 0.5*(h_grad_t0[0] + h_grad_t1[0])
 finite_diff = (h_post_t1[0,0] - h_post_t0[0,0])/delta
 print 'Gradient:    ', grad
@@ -63,7 +62,7 @@ h_post = empty(shape(hyper))
 h_grad = empty(shape(hyper))
 for i in xrange(len(hyper)):
     test_hyper[:] = hyper[i:i+1]
-    (h_post[i], h_grad[i]) = myGPR.hyper_posterior(test_hyper)
+    h_post[i], h_grad[i] = myGP.hyper_posterior(test_hyper)
 
 
 # Visualize

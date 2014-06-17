@@ -16,9 +16,9 @@ Xs = linspace(0.0, 2.0, points).reshape((-1, 1))  # Evenly spaced points
 
 fig1 = plt.figure(figsize=(10, 8), dpi=150)
 fig1.subplots_adjust(left=0.08, right=0.95,
-                     bottom=0.08,top=0.90,
+                     bottom=0.08, top=0.90,
                      hspace=0.30, wspace=0.20)
-plt.subplot(2,2,1)
+plt.subplot(2, 2, 1)
 myK = SquareExp(w=2.0, l=0.25) 
 sourceGP1 = GPP(zeros((0, 1)), zeros(0), myK)
 Ys1 = sourceGP1.sample(Xs, Nsamples=samples)
@@ -39,9 +39,9 @@ Ys3 = sourceGP3.sample(Xs, Nsamples=samples)
 plt.plot(Xs, Ys3, '.-', markersize=6)
 plt.title('Rational Quad - w=0.6, l=0.3, alpha=1.0', fontsize=10)
 
-plt.subplot(2,2,4)
+plt.subplot(2, 2, 4)
 myK = GammaExp(w=0.6, l=0.3, gamma=1.5) 
-sourceGP4 = GPP(zeros((0,1)), zeros(0), myK)
+sourceGP4 = GPP(zeros((0, 1)), zeros(0), myK)
 Ys4 = sourceGP4.sample(Xs, Nsamples=samples)
 plt.plot(Xs, Ys4, '.-', markersize=6)
 plt.title('Gamma Exp - w=0.5, l=1.0, gamma=1.5', fontsize=10)

@@ -16,42 +16,42 @@ plt.close('all')
 
 # Setup the source sGP with exactly two hyper-parameters
 Nt = Nd = 5*2**4
-Xd = 8.0*(random(2*Nd)).reshape((-1,2))
+Xd = 8.0*(random(2*Nd)).reshape((-1, 2))
 
-myK = Noise(w=0.1) + SquareExp(w=1.0, l=[0.7,1.1])
+myK = Noise(w=0.1) + SquareExp(w=1.0, l=[0.7, 1.1])
 
-# Generate the testing data from the source GP
-sourceGPR = GPR(zeros((0,0)), zeros(0), myK)
-Yd = sourceGPR.sample(Xd)
-(Xt, Yt) = (Xd.T, Yd.reshape(Nt))
+# Generate the testing data from a source GP
+sourceGP = GPP(zeros((0, 2)), zeros(0), myK)
+Yd = sourceGP.sample(Xd)
+Xt, Yt = (Xd.T, Yd.reshape(Nt))
 
-# Setup the GPR object
-myK = SquareExp(w=1.0, l=[LogNormal(guess=.4,std=.25),
-                          LogNormal(guess=1.4,std=.25)]) + Noise(w=0.1)
-myGPR = GPR(Xd, Yd, myK)
+# Setup the GPP object
+myK = SquareExp(w=1.0, l=[LogNormal(guess=.4, std=.25),
+                          LogNormal(guess=1.4, std=.25)]) + Noise(w=0.1)
+myGP = GPP(Xd, Yd, myK)
 
 # Inference over the entire domain
 Ni = (75, 75)
-(xi1, xi2) = (linspace(0.0, 8.0, Ni[0]), linspace(0.0, 8.0, Ni[1]))
-(Xi1, Xi2) = meshgrid(xi1, xi2, indexing='ij')
+xi1, xi2 = linspace(0.0, 8.0, Ni[0]), linspace(0.0, 8.0, Ni[1])
+Xi1, Xi2 = meshgrid(xi1, xi2, indexing='ij')
 Xi = hstack([Xi1.reshape((-1,1)), Xi2.reshape((-1,1))])
-post_mean = myGPR.inference(Xi, infer_std=False)
+post_mean = myGP.inference(Xi, infer_std=False)
 post_mean = post_mean.reshape(Ni)
 
-## Maximize the hyper-parameter posterior
-param, bounds = myGPR.kernel._map_hyper(unmap=True)
-(hopt_post, hopt_grad) = myGPR.hyper_posterior(param)
+# Maximize the hyper-parameter posterior
+param, bounds = myGP.kernel._map_hyper(unmap=True)
+hopt_post, hopt_grad = myGP.hyper_posterior(param)
 
 # Check that the posterior and its gradient are consistent
-test_hyper, bounds = myGPR.kernel._map_hyper()    
+test_hyper, bounds = myGP.kernel._map_hyper()    
 test_hyper[:] = array([0.9, 0.9])
 delta = 1e-5
-(d1, d2) = (array([delta, 0.0]), array([0.0, delta]))
-(h_post_t0, h_grad_t0) = myGPR.hyper_posterior(test_hyper)
+d1, d2 = array([delta, 0.0]), array([0.0, delta])
+h_post_t0, h_grad_t0 = myGP.hyper_posterior(test_hyper)
 test_hyper += d1
-(h_post_t1, h_grad_t1) = myGPR.hyper_posterior(test_hyper)
+h_post_t1, h_grad_t1 = myGP.hyper_posterior(test_hyper)
 test_hyper += d2 - d1
-(h_post_t2, h_grad_t2) = myGPR.hyper_posterior(test_hyper)
+h_post_t2, h_grad_t2 = myGP.hyper_posterior(test_hyper)
 grad = 0.5*array([h_grad_t0[0] + h_grad_t1[0], h_grad_t0[1] + h_grad_t2[1]])
 finite_diff = array([h_post_t1[0,0] - h_post_t0[0,0], h_post_t2[0,0] - h_post_t0[0,0]])/delta
 print 'Gradient:    ', grad
@@ -64,14 +64,14 @@ print ' '
 
 # Posterior of the hyper-parameter
 Nh = (60, 60)
-(hyper1, hyper2) = (linspace(0.2, 2.0, Nh[0]), linspace(0.2, 2.0, Nh[1]))
+hyper1, hyper2 = linspace(0.2, 2.0, Nh[0]), linspace(0.2, 2.0, Nh[1])
 h_post = empty(Nh)
-(h_grad1, h_grad2) = (empty(Nh), empty(Nh))
+h_grad1, h_grad2 = empty(Nh), empty(Nh)
 for i in xrange(Nh[0]):
     for j in xrange(Nh[1]):
         test_hyper[:] = array([hyper1[i], hyper2[j]])
-        (h_post[i,j], h_grad) = myGPR.hyper_posterior(test_hyper)
-        (h_grad1[i,j], h_grad2[i,j]) = (h_grad[0], h_grad[1])
+        h_post[i,j], h_grad = myGP.hyper_posterior(test_hyper)
+        h_grad1[i,j], h_grad2[i,j] = h_grad[0], h_grad[1]
 
 
 # Visualize
