@@ -62,11 +62,12 @@ class LogNormal(HyperPrior):
         self._mu = log(mean**2/(std**2 + mean**2))
         self._sigma = sqrt(log(1 + std**2/mean**2))
         
-    def __call__(self, x, grad=False):
+    def __call__(self, x=None, grad=False):
         # TODO: if mean and std not defined, use auto_fill with Rk2      
         #if not hasattr(self,'mu'):
-        #   self.auto_fill(self.Rk2)        
-        
+        #   self.auto_fill(self.Rk2) 
+        if x == None:
+            x = self.guess
         twosigsqr = 2.0*self._sigma**2
         lnpdf = (-log(self._sigma*x)-0.5*log(2.0*pi)- 
                     (log(x)-self._mu)**2/twosigsqr)
@@ -85,7 +86,9 @@ class Jeffreys(HyperPrior):
     """Jefferys' distribution class for hyper-parameter priors.
         Non informative prior
         f(x) = 1/x"""
-    def __call__(self, x, grad=False):
+    def __call__(self, x=None, grad=False):
+        if x == None:
+            x = self.guess
         lnpdf = -log(x)
         if not grad:
             return lnpdf
@@ -99,13 +102,15 @@ class Jeffreys(HyperPrior):
 class Constant(HyperPrior):
     """Constant class for hyper-parameter
        f = const"""
-    def __call__(self, x, grad=False):
+    def __call__(self, x=None, grad=False):
+        if x == None:
+            x = self.guess
         if not grad:
-            return array([1.0])
+            return array([0.0])
         if grad == True:
-            return array([1.0]),array([0.0])
+            return array([0.0]),array([0.0])
         if grad == 'Hess': 
-            return array([1.0]),array([0.0]),array([0.0])
+            return array([0.0]),array([0.0]),array([0.0])
             
 class Beta(HyperPrior):
     """Beta distribution class for hyper-parameter priors.
@@ -116,7 +121,9 @@ class Beta(HyperPrior):
         self._a = a
         self._b = b
         
-    def __call__(self, x, grad=False):
+    def __call__(self, x=None, grad=False):
+        if x == None:
+            x = self.guess
         x = x/2.
         a = self._a-1.
         b = self._b-1.
@@ -139,7 +146,9 @@ class Gamma(HyperPrior):
         self._theta = theta
         self._demonenator = k*log(theta) +  log(gamma(k))
         
-    def __call__(self, x, grad=False):
+    def __call__(self, x=None, grad=False):
+        if x == None:
+            x = self.guess
         k = self._k - 1.
         lnpdf = k*log(x) -x/self._theta - self._demonenator
         if not grad:

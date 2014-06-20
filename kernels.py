@@ -120,7 +120,7 @@ class Kernel:
         #return (self, hp_mapped)
         return hp_mapped, bounds_mapped
 
-    def _ln_priors(self, params, grad=False):
+    def _ln_priors(self, params=None, grad=False):       
         """
         Calculate log of prior distributions for hyper-parameters.
         
@@ -143,12 +143,25 @@ class Kernel:
         d2lnprior: array-2D
             matrix where diagonal is 2nd derivatives of log prior probabilities
             evaluated at values provided by params
-        """
-        lnprior = 0.0
-        if not grad:
+        """ 
+        if params == None:
+            params = zeros(self.Nhp)
             i = 0
             if isinstance(self, KernelSum) or isinstance(self, KernelProd):
                 for kern in self.terms:
+                    for hp in kern.hp:
+                        params[i] = hp.guess
+                        i += 1
+            else:
+                for hp in self.hp:
+                    params[i] = hp.guess
+                    i += 1
+            
+        lnprior = 0.0
+        if not grad:
+            if isinstance(self, KernelSum) or isinstance(self, KernelProd):
+                for kern in self.terms:
+                    i = 0
                     for f_prior in kern.hp:
                         lnprior += f_prior(params[i])
                         i += 1
@@ -159,9 +172,9 @@ class Kernel:
             
         elif grad == True:
             dlnprior = empty(self.Nhp)
-            i = 0
             if isinstance(self, KernelSum) or isinstance(self, KernelProd):
                 for kern in self.terms:
+                    i = 0
                     for f_prior in kern.hp:
                         (lnp, dlnp) = f_prior(params[i], grad)
                         lnprior += lnp
@@ -177,9 +190,9 @@ class Kernel:
         elif grad == 'Hess':
             dlnprior = empty(self.Nhp)
             d2lnprior = zeros((self.Nhp, self.Nhp))
-            i = 0
             if isinstance(self, KernelSum) or isinstance(self, KernelProd):
                 for kern in self.terms:
+                    i = 0
                     for f_prior in kern.hp:
                         lnp, dlnp, d2lnp = f_prior(params[i], grad)
                         lnprior += lnp
@@ -193,6 +206,29 @@ class Kernel:
                     dlnprior[i] = dlnp
                     d2lnprior[i, i] = d2lnp
             return lnprior, dlnprior, d2lnprior
+            
+    def print_optimial_p(self):
+        """
+        Print the current optimial hyper parameter values
+        
+        Returns
+        -------
+        opt_p: array-1D,
+                current values in hyper parameter guess values
+                (after minimization is run these should be optimized values)
+        """
+        opt_p = zeros(self.Nhp)
+        i = 0
+        if isinstance(self, KernelSum) or isinstance(self, KernelProd):
+            for kern in self.terms:
+                for hp in kern.hp:
+                    opt_p[i] = hp.guess
+                    i += 1
+        else:
+            for hp in self.hp:
+                opt_p[i] = hp.guess
+                i += 1
+        return opt_p
 
     @abstractmethod
     def __call__(self, Rk, grad=False, **kwargs):

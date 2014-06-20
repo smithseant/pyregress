@@ -39,8 +39,8 @@ post_mean = myGP.inference(Xi, infer_std=False)
 post_mean = post_mean.reshape(Ni)
 
 # Maximize the hyper-parameter posterior
-param, bounds = myGP.kernel._map_hyper(unmap=True)
-hopt_post, hopt_grad = myGP.hyper_posterior(param)
+hopt_post, hopt_grad = myGP.hyper_posterior()
+param = myGP.kernel.print_optimial_p()
 
 # Check that the posterior and its gradient are consistent
 test_hyper, bounds = myGP.kernel._map_hyper()    

@@ -31,7 +31,7 @@ __all__ = ['GPP']
 
 #from termcolor import colored  # may not work on windows
 from numpy import (ndarray, array, empty, ones, eye, tile,
-                   maximum, diag, sum, sqrt, resize, std)
+                   maximum, diag, sum, sqrt, resize, std, shape)
 from numpy.linalg.linalg import LinAlgError, svd
 from numpy.random import randn
 from scipy import pi, log
@@ -215,7 +215,7 @@ class GPP:
                 Rk[:, :, k] /= self.xscale[k]
         return Rk
     
-    def hyper_posterior(self, params, grad=True):
+    def hyper_posterior(self, params=None, grad=True):
         """
         Negative log of the hyper-parameter posterior & its gradient.
         
@@ -237,7 +237,7 @@ class GPP:
             gradient of lnP_neg with respect to each hyper-parameter.
         lnP_hess:  array-2D (optional - depending on argument grad),
             Hessian matrix (2nd derivatives) of lnP_neg.
-        """
+        """   
         Nd, Nhp = self.Nd, self.kernel.Nhp
         if not grad:
             K = self.kernel(self.Rdd, grad=False, data=True)
@@ -561,7 +561,7 @@ if __name__ == "__main__":
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
     K2 =  RatQuad(w=0.6, l=LogNormal(guess=0.3, std=0.25), alpha=1.0)
     myGPP2 = GPP(Xd2, Yd2, K2, explicit_basis=[0, 1], transform='Probit')
-    #print 'Optimized value of the hyper-parameters:', param
+    print 'Optimized value of the hyper-parameters:', myGPP2.kernel.print_optimial_p()
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
     yi2 = myGPP2( xi2 )
     print 'Example 2:'

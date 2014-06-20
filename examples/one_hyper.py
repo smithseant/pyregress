@@ -31,8 +31,8 @@ Xt, Yt = Xd.reshape(Nt), Yd.reshape(Nt)
 myK = RatQuad(w=1.0, l=0.5, alpha=LogNormal(guess=.5, std=.2)) + Noise(w=0.1)
 #myK = SquareExp(w=1.0, l=LogNormal(guess=0.3, std=.1)) + Noise(w=0.1)
 myGP = GPP(Xd, Yd, myK, Ymean=prior_mean)
-param, bounds = myGP.kernel._map_hyper(unmap=True)
-hopt_post, hopt_grad = myGP.hyper_posterior(param)
+hopt_post, hopt_grad = myGP.hyper_posterior()
+param = myGP.kernel.print_optimial_p()
 
 # Inference over the entire domain
 Ni = 100
@@ -42,7 +42,7 @@ Xi = Xi.reshape(-1)
 post_mean, post_std = post_mean.reshape(-1), post_std.reshape(-1)
 
 # Check that the posterior and its gradient are consistent
-test_hyper,bounds = myGP.kernel._map_hyper()    
+test_hyper, bounds = myGP.kernel._map_hyper()   
 test_hyper[:] = 0.9
 h_post_t0, h_grad_t0 = myGP.hyper_posterior(test_hyper)
 delta = 1e-5
