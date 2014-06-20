@@ -106,11 +106,11 @@ class Constant(HyperPrior):
         if x == None:
             x = self.guess
         if not grad:
-            return array([0.0])
+            return array([1.0])
         if grad == True:
-            return array([0.0]),array([0.0])
+            return array([1.0]),array([0.0])
         if grad == 'Hess': 
-            return array([0.0]),array([0.0]),array([0.0])
+            return array([1.0]),array([0.0]),array([0.0])
             
 class Beta(HyperPrior):
     """Beta distribution class for hyper-parameter priors.
