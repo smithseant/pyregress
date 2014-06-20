@@ -90,7 +90,7 @@ class GPP:
             prior mean of the dependent variable at Xd & Xi. It must accpet
             input in form of Xd, and must provide output the same shape as Yd.
             If omitted, a prior mean of zero is assumed.
-        explicit_basis:  list (optional),
+        explicit_basis:  list of ints (optional),
             explicit basis functions are specified by any combination of the
             integers: 0, 1, 2 - each corresponding to its polynomial order.
         transform:  string or BaseTransform object (optional)
@@ -161,7 +161,7 @@ class GPP:
         self.Rdd = self._radius(self.Xd, self.Xd)
         if (self.kernel.Nhp > 0):
             self.maximize_hyper_posterior()
-        self.Kdd = self.kernel(self.Rdd, data=True)
+        self.Kdd = self.kernel(self.Rdd, block_diag=True)
         self.LKdd = cho_factor_gen(self.Kdd)
         self.invKdd_Yd = cho_solve_gen(self.LKdd, self.Yd)
         if self.basis is not None:
@@ -330,11 +330,10 @@ class GPP:
         
         Arguments
         ---------
-        hyper_params:  list [possibly nested] (optional),
-            list of bools and functions where the nested structure corresponds 
-            to the argument Cov from __init__, and each bool or function
-            indicates which kernel parameters are hyper-parameters and if they
-            are, what is their prior.
+        hyper_params:  list of bools & HyperPriors, possibly nested (optional),
+            indicates which kernel parameters are hyper-parameters by
+            inputting thier prior. The nested structure corresponds to
+            that from the argument Cov in GPP.__init__.
         """
 
         # Setup hyper-parameters & map values from a single array
@@ -353,10 +352,11 @@ class GPP:
         return self, all_hyper
     
     
-    def inference(self, Xi, infer_std=False, untransform=True, data=False):
+    def inference(self, Xi, infer_std=False, untransform=True, sum_terms=True,
+                  exclude_mean=False):
         """
         Make inferences (interpolation or regression) at specified locations.
-        Limited to a single value for any hyper-parameters.
+        Limited to a single value of each hyper-parameters.
         This method is invoked when the GPP object is called as a function.
         
         Arguments
@@ -370,8 +370,12 @@ class GPP:
             if 'covar', return the full posterior covariance matrix.
         untransform:  bool (optional),
             if False, any inverse transformation is suppressed.
-        data: bool (optional),
-            if True, inferred points also include the Noise contribution.
+        sum_terms:  bool, int or list of ints (optional),
+            if int or list of ints, then use only this subset of terms of the
+            sum kernel, by index (Cov in GPP.__init__ must be a KernelSum).
+            If True, all terms are included.
+        exclude_mean:  bool (optional),
+            if False include prior mean and basis functions, otherwise don't.
         
         Returns
         -------
@@ -404,8 +408,8 @@ class GPP:
         
         # Mixed i-d kernel & inference of posterior mean
         Rid = self._radius(Xi, self.Xd)
-        Kid = self.kernel(Rid)
-        if self.basis is None:
+        Kid = self.kernel(Rid, block_diag=False, sum_terms=sum_terms)
+        if self.basis is None or exclude_mean:
             post_mean = Kid.dot(self.invKdd_Yd)
         else:
             post_mean = Kid.dot(self.invKdd_Yd - self.invKdd_HdTh)
@@ -413,7 +417,7 @@ class GPP:
             post_mean += Hi.dot(self.Th)
         
         # Dependent variable
-        if self.prior_mean is not None:
+        if self.prior_mean is not None and not exclude_mean:
             Yi_mean = self.prior_mean(Xi).reshape((-1, 1))
             if self.trans is None or not untransform:
                 post_mean = resize(post_mean, Yi_mean.shape) + Yi_mean
@@ -424,7 +428,7 @@ class GPP:
         # Inference of posterior covariance
         if infer_std:
             Rii = self._radius(Xi, Xi)
-            Kii = self.kernel(Rii, data=data)
+            Kii = self.kernel(Rii, block_diag=True, sum_terms=sum_terms)
             post_covar = Kii - Kid.dot(cho_solve_gen(self.LKdd, Kid.T))
             if self.basis is not None:
                 A = Hi - Kid.dot(self.invKdd_Hd)
@@ -450,7 +454,7 @@ class GPP:
             return post_mean, post_std
     
     
-    def sample(self, Xs, Nsamples=1, data=True):
+    def sample(self, Xs, Nsamples=1, sum_terms=True, exclude_mean=False):
         """
         Sample the Gassian process at specified locations.
         
@@ -459,11 +463,16 @@ class GPP:
         Xs:  array-2D,
             independent variables - where to sample. First dimension is for
             multiple inferences, and second dimension mustmatch the second
-            dimension of the argurment Xd from __init__.
+            dimension of the argurment Xd from GPP.__init__.
         Nsamples: int (optional),
             allows the calculation of multiple samples at once.
-        data: bool (optional),
-            if True, inferred points also include the Noise contribution.
+        sum_terms:  bool, int or list of ints (optional),
+            if int or list of ints, then use only this subset of terms of the
+            sum kernel, by index (Cov in GPP.__init__ must be a KernelSum).
+            For regression, standard use includes all terms except the noise.
+            If True, all terms are included.
+        exclude_mean:  bool (optional),
+            if False include prior mean and basis functions, otherwise don't.
         
         Returns
         -------
@@ -476,7 +485,8 @@ class GPP:
             an exception is thrown for incompatible format of any inputs.
         """
         Nx = Xs.shape[0]
-        Ys_post, Cov = self.inference(Xs, infer_std='covar', data=data)
+        Ys_post, Cov = self.inference(Xs, infer_std='covar',
+                                sum_terms=sum_terms, exclude_mean=exclude_mean)
         Z = randn(Nx, Nsamples)
         U,S,V = svd(Cov)
         sig = U.dot(diag(sqrt(S)))
@@ -548,7 +558,7 @@ if __name__ == "__main__":
     # Simple case, 1D with three data points and one regression point
     Xd1 = array([[0.1], [0.3], [0.6]])
     Yd1 = array([[0.0], [1.0], [0.5]])
-    myGPP1 = GPP( Xd1, Yd1, Noise(w=0.05) + SquareExp(w=0.75, l=0.25) )
+    myGPP1 = GPP( Xd1, Yd1, Noise(w=0.1) + SquareExp(w=0.75, l=0.25) )
     xi1 = array([[0.2]])
     yi1 = myGPP1( xi1 )
     print 'Example 1:'
@@ -571,7 +581,7 @@ if __name__ == "__main__":
     # Figures to support the examples
     # fig. example 1
     Xi1 = linspace(0.0, 0.75, 200)
-    Yi1, Yi1std = myGPP1(Xi1, infer_std=True)
+    Yi1, Yi1std = myGPP1(Xi1, infer_std=True, sum_terms=1)
     Yi1, Yi1std = Yi1.reshape(-1), Yi1std.reshape(-1)
     
     fig1 = plt.figure(figsize=(5, 3), dpi=150)

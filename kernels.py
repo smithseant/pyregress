@@ -209,26 +209,26 @@ class Kernel:
             
     def get_hp(self):
         """
-        Print the current optimial hyper parameter values
+        Return the current hyper parameter values.
         
         Returns
         -------
-        opt_p: array-1D,
-                current values in hyper parameter guess values
-                (after minimization is run these should be optimized values)
+        all_hp:  array-1D,
+            current values, for each hyper parameter, from HyperPrior.guess
+            (after minimization is run these should be optimized values).
         """
-        opt_p = zeros(self.Nhp)
+        all_hp = zeros(self.Nhp)
         i = 0
         if isinstance(self, KernelSum) or isinstance(self, KernelProd):
             for kern in self.terms:
                 for hp in kern.hp:
-                    opt_p[i] = hp.guess
+                    all_hp[i] = hp.guess
                     i += 1
         else:
             for hp in self.hp:
-                opt_p[i] = hp.guess
+                all_hp[i] = hp.guess
                 i += 1
-        return opt_p
+        return all_hp
 
     @abstractmethod
     def __call__(self, Rk, grad=False, **kwargs):
@@ -259,7 +259,7 @@ class Kernel:
 
 
 class KernelSum(Kernel):
-    """Modified Kernel class that holds the sum of Kernel objects."""
+    """Provide a class that lists kernels to be added at evaluation."""
     def __init__(self, k1, k2):
         self.terms = [k1, k2]
         self.Np, self.Nhp = k1.Np + k2.Np, k1.Nhp + k2.Nhp
@@ -268,7 +268,10 @@ class KernelSum(Kernel):
         if isinstance(other, KernelSum):
             self.terms += other.terms
         elif isinstance(other, Kernel):
-            self.terms += [other]
+            if self_on_right:
+                self.terms = [other] + self.terms
+            else:
+                self.terms += [other]
         else:
             # TODO: throw an error!
             pass
@@ -277,16 +280,23 @@ class KernelSum(Kernel):
         return self
     
     def __call__(self, Rk, grad=False, **kwargs):
+        if  kwargs.has_key('sum_terms') and not kwargs['sum_terms'] is True:
+            if type(kwargs['sum_terms']) is list:
+                terms = [self.terms[i] for i in kwargs['sum_terms']]
+            elif type(kwargs['sum_terms']) is int:
+                terms = [self.terms[kwargs['sum_terms']]]
+        else:
+            terms = self.terms
         if not grad:
             K = zeros(Rk.shape[:2])
-            for kern in self.terms:
+            for kern in terms:
                 K += kern(Rk, **kwargs)
             return K
         elif grad != 'Hess':
             K = zeros(Rk.shape[:2])
             Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
             h = 0
-            for kern in self.terms:
+            for kern in terms:
                 K_t, Kgrad[:,:,h:h+kern.Nhp] = kern(Rk, grad, **kwargs)
                 K += K_t
                 h += kern.Nhp
@@ -296,7 +306,7 @@ class KernelSum(Kernel):
             Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
             Khess = zeros((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
             h = 0
-            for kern in self.terms:
+            for kern in terms:
                 hn = h + kern.Nhp
                 Kt, Kgrad[:,:,h:hn], Khess[:,:,h:hn,h:hn] = kern(Rk, grad, **kwargs)
                 K += Kt
@@ -304,7 +314,7 @@ class KernelSum(Kernel):
             return (K, Kgrad, Khess)
 
 class KernelProd(Kernel):
-    """Modified Kernel class that holds the product of Kernel objects."""
+    """Provide a class that lists kernels to be multiplied at evaluation."""
     def __init__(self, k1, k2):
         self.terms = [k1, k2]
         self.Np, self.Nhp = k1.Np + k2.Np, k1.Nhp + k2.Nhp
@@ -375,7 +385,7 @@ class Noise(Kernel):
     def __call__(self, Rk, grad=False, **kwargs):
         w = self.p['w']
         w2 = w**2
-        if kwargs.has_key('data') and kwargs['data']==True:
+        if kwargs.has_key('block_diag') and kwargs['block_diag']==True:
                 K0 = eye(Rk.shape[0], Rk.shape[1])
         else:
             K0 = zeros(Rk.shape[:2])
