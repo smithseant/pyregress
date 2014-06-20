@@ -32,7 +32,7 @@ myK = RatQuad(w=1.0, l=0.5, alpha=LogNormal(guess=.5, std=.2)) + Noise(w=0.1)
 #myK = SquareExp(w=1.0, l=LogNormal(guess=0.3, std=.1)) + Noise(w=0.1)
 myGP = GPP(Xd, Yd, myK, Ymean=prior_mean)
 hopt_post, hopt_grad = myGP.hyper_posterior()
-param = myGP.kernel.print_optimial_p()
+param = myGP.kernel.get_hp()
 
 # Inference over the entire domain
 Ni = 100

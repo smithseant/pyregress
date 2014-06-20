@@ -561,7 +561,7 @@ if __name__ == "__main__":
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
     K2 =  RatQuad(w=0.6, l=LogNormal(guess=0.3, std=0.25), alpha=1.0)
     myGPP2 = GPP(Xd2, Yd2, K2, explicit_basis=[0, 1], transform='Probit')
-    print 'Optimized value of the hyper-parameters:', myGPP2.kernel.print_optimial_p()
+    print 'Optimized value of the hyper-parameters:', myGPP2.kernel.get_hp()
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
     yi2 = myGPP2( xi2 )
     print 'Example 2:'

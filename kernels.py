@@ -207,7 +207,7 @@ class Kernel:
                     d2lnprior[i, i] = d2lnp
             return lnprior, dlnprior, d2lnprior
             
-    def print_optimial_p(self):
+    def get_hp(self):
         """
         Print the current optimial hyper parameter values
         

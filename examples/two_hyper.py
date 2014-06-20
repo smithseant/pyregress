@@ -40,7 +40,7 @@ post_mean = post_mean.reshape(Ni)
 
 # Maximize the hyper-parameter posterior
 hopt_post, hopt_grad = myGP.hyper_posterior()
-param = myGP.kernel.print_optimial_p()
+param = myGP.kernel.get_hp()
 
 # Check that the posterior and its gradient are consistent
 test_hyper, bounds = myGP.kernel._map_hyper()    
