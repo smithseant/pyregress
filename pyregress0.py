@@ -159,8 +159,8 @@ class GPP:
         # Do as many calculations as possible in preparation for the inference
         # -- Create a separate function for the following? --
         self.Rdd = self._radius(self.Xd, self.Xd)
-        if (self.kernel.Nhp > 0):
-            self.maximize_hyper_posterior()
+        #if (self.kernel.Nhp > 0):
+        #    self.maximize_hyper_posterior()
         self.Kdd = self.kernel(self.Rdd, block_diag=True)
         self.LKdd = cho_factor_gen(self.Kdd)
         self.invKdd_Yd = cho_solve_gen(self.LKdd, self.Yd)
@@ -240,15 +240,15 @@ class GPP:
         """   
         Nd, Nhp = self.Nd, self.kernel.Nhp
         if not grad:
-            K = self.kernel(self.Rdd, grad=False, data=True)
+            K = self.kernel(self.Rdd, data=True)
             lnprior = self.kernel._ln_priors(params)
         elif grad != 'Hess':
-            K, Kp = self.kernel(self.Rdd, grad=True, data=True)
-            lnprior, dlnprior = self.kernel._ln_priors(params, grad=True)
+            K, Kp = self.kernel(self.Rdd, grad_hp=grad, data=True)
+            lnprior, dlnprior = self.kernel._ln_priors(params, grad=grad)
         else:
-            K, Kp, Kpp = self.kernel(self.Rdd, grad='Hess', data=True)
+            K, Kp, Kpp = self.kernel(self.Rdd, grad_hp=grad, data=True)
             lnprior, dlnprior, d2lnprior = \
-                        self.kernel._ln_priors(params, grad='Hess')
+                        self.kernel._ln_priors(params, grad=grad)
         try:
             LK = cho_factor(K)
         except LinAlgError as e:

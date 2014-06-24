@@ -231,7 +231,7 @@ class Kernel:
         return all_hp
 
     @abstractmethod
-    def __call__(self, Rk, grad=False, **kwargs):
+    def __call__(self, Rk, grad_hp=False, grad_r=False, **kwargs):
         """
         Calculate and return kernel values given the radius array.
         
@@ -239,8 +239,13 @@ class Kernel:
         ---------
         Rk: array-3D,
             directional radius matrix (difference between points).
-        grad: bool (optional),
-            when grad is True also return Kgrad, and when grad is 'Hess'
+        grad_hp: bool (optional),
+            gradients with respect to hyper parameters,
+            when grad_hp is True also return Kgrad, and when grad_hp is 'Hess'
+            also return Khess.
+        grad_r: bool (optional),
+            gradients with respect to radius,
+            when grad_r is True also return Kgrad, and when grad_r is 'Hess'
             also return Khess.
         kwargs: any additional options (opt_name=opt_value),
             specific options for specific kernels, otherwise ignored.
@@ -279,7 +284,7 @@ class KernelSum(Kernel):
         self.Nhp += other.Nhp
         return self
     
-    def __call__(self, Rk, grad=False, **kwargs):
+    def __call__(self, Rk, grad_hp=False, grad_r=False, **kwargs):
         if  kwargs.has_key('sum_terms') and not kwargs['sum_terms'] is True:
             if type(kwargs['sum_terms']) is list:
                 terms = [self.terms[i] for i in kwargs['sum_terms']]
@@ -287,20 +292,21 @@ class KernelSum(Kernel):
                 terms = [self.terms[kwargs['sum_terms']]]
         else:
             terms = self.terms
-        if not grad:
+        if not grad_hp:
             K = zeros(Rk.shape[:2])
             for kern in terms:
                 K += kern(Rk, **kwargs)
             return K
-        elif grad != 'Hess':
+        elif grad_hp != 'Hess':
             K = zeros(Rk.shape[:2])
             Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
             h = 0
             for kern in terms:
-                K_t, Kgrad[:,:,h:h+kern.Nhp] = kern(Rk, grad, **kwargs)
+                K_t, Kgrad[:,:,h:h+kern.Nhp] = kern(Rk, grad_hp=grad_hp,
+                                                 **kwargs)
                 K += K_t
                 h += kern.Nhp
-            return (K, Kgrad)
+            return K, Kgrad
         else:
             K = zeros(Rk.shape[:2])
             Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
@@ -308,10 +314,11 @@ class KernelSum(Kernel):
             h = 0
             for kern in terms:
                 hn = h + kern.Nhp
-                Kt, Kgrad[:,:,h:hn], Khess[:,:,h:hn,h:hn] = kern(Rk, grad, **kwargs)
+                Kt, Kgrad[:,:,h:hn], Khess[:,:,h:hn,h:hn] = kern(Rk, 
+                                                    grad_hp=grad_hp, **kwargs)
                 K += Kt
                 h = hn
-            return (K, Kgrad, Khess)
+            return K, Kgrad, Khess
 
 class KernelProd(Kernel):
     """Provide a class that lists kernels to be multiplied at evaluation."""
@@ -331,18 +338,18 @@ class KernelProd(Kernel):
         self.Nhp += other.Nhp
         return self
     
-    def __call__(self, Rk, grad=False, **kwargs):
-        if not grad:
+    def __call__(self, Rk, grad_hp=False, grad_r=False, **kwargs):
+        if not grad_hp:
             K = ones(Rk.shape[:2])
             for kern in self.terms:
                 K *= kern(Rk, **kwargs)
             return K
-        elif grad != 'Hess':
+        elif grad_hp != 'Hess':
             K = ones(Rk.shape[:2])
             Kgrad = ones((Rk.shape[0], Rk.shape[1], self.Nhp))
             h = 0
             for kern in self.terms:
-                Kt, Kgt = kern(Rk, grad, **kwargs)
+                Kt, Kgt = kern(Rk, grad_hp='True', **kwargs)
                 K *= Kt
                 irange = range(h, h+kern.Nhp)
                 iother = range(0, h) + range(h+kern.Nhp, self.Nhp)
@@ -356,7 +363,7 @@ class KernelProd(Kernel):
             Khess = ones((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
             h = 0
             for kern in self.terms:
-                Kt, Kgt, Kht = kern(Rk, grad, **kwargs)
+                Kt, Kgt, Kht = kern(Rk, grad_hp='Hess', **kwargs)
                 K *= Kt
                 hn = h + kern.Nhp
                 irange = range(h, hn)
@@ -368,7 +375,7 @@ class KernelProd(Kernel):
                 Khess[ix_(range(0,Rk.shape[0]), range(0,Rk.shape[1]), iother, irange)] *= tile(expand_dims(Kgt,2), (1,1,len(iother),1))
                 Khess[ix_(range(0,Rk.shape[0]), range(0,Rk.shape[1]), iother, iother)] *= tile(expand_dims(expand_dims(Kt,2),3), (1,1,len(iother),len(iother)))
                 h += kern.Nhp
-            return (K, Kgrad, Khess)
+            return K, Kgrad, Khess
 
 
 class Noise(Kernel):
@@ -382,27 +389,37 @@ class Noise(Kernel):
     def __init__(self, **params):
         p_bounds = odict([('w', (0.0, None))])
         super(Noise, self).__init__(params, p_bounds)
-    def __call__(self, Rk, grad=False, **kwargs):
+    def __call__(self, Rk, grad_hp=False, grad_r=False, **kwargs):
         w = self.p['w']
         w2 = w**2
         if kwargs.has_key('block_diag') and kwargs['block_diag']==True:
                 K0 = eye(Rk.shape[0], Rk.shape[1])
         else:
             K0 = zeros(Rk.shape[:2])
-        if not grad:
+        if (not grad_hp) and (not grad_r):
             # K = w2*K0
             return w2*K0
-        Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-        if 'w' in self.hp_id:
-            # dK/dw
-            Kgrad[:,:,0] = 2.0*w*K0
-        if grad != 'Hess':
-            return w2*K0, Kgrad
-        Khess = empty((Rk.shape[0], Rk.shape[1], self.Np, self.Np))
-        if 'w' in self.hp_id:
-            # d^2K/dw^2
-            Khess[:,:,0,0] = 2.0*K0
-        return w2*K0, Kgrad, Khess
+        if grad_hp is not False:
+            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
+            if 'w' in self.hp_id:
+                # dK/dw
+                Kgrad[:,:,0] = 2.0*w*K0                      
+            if grad_hp != 'Hess':
+                return w2*K0, Kgrad
+            Khess = empty((Rk.shape[0], Rk.shape[1], self.Np, self.Np))
+            if 'w' in self.hp_id:
+                # d^2K/dw^2
+                Khess[:,:,0,0] = 2.0*K0
+            return w2*K0, Kgrad, Khess
+        
+        if grad_r is not False:
+            #Kgrad = zeros((Rk.shape[0], Rk.shape[1]))
+            Kgrad = zeros(Rk.shape)
+            if grad_r != 'Hess':
+                return w2*K0, Kgrad
+            Khess = zeros((Rk.shape[0], Rk.shape[1], Rk.shape[2], Rk.shape[2]))
+            return w2*K0, Kgrad, Khess
+
 
 class SquareExp(Kernel):
     r"""
@@ -417,7 +434,7 @@ class SquareExp(Kernel):
     def __init__(self, **params):
         p_bounds = odict([('w', (0.0, None)), ('l', (0.0, None))])
         super(SquareExp, self).__init__(params, p_bounds)
-    def __call__(self, Rk, grad=False, **kwargs):
+    def __call__(self, Rk, grad_hp=False, grad_r=False, **kwargs):
         w, l = self.p['w'], self.p['l']
         if not isinstance(l, list):
             R2l2 = sum(Rk**2,2)/l**2
@@ -427,51 +444,80 @@ class SquareExp(Kernel):
                 R2l2 += (Rk[:,:,k]/l[k])**2
         w2 = w**2
         K0 = exp(-0.5*R2l2)
-        if not grad:
+        if (not grad_hp) and (not grad_r):
             # K = w2*K0
             return w2*K0
-        # First derivatives:
-        Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-        for (i, h) in zip(range(self.Nhp), self.hp_id):
-            if h == 'w':
-                # dK/dw
-                Kgrad[:,:,i] = 2.0*w*K0
-            elif h == 'l':
-                # dK/dl
-                Kgrad[:,:,i] = w2*R2l2/l*K0
-            elif isinstance(h, int):
-                # dK/dl_h
-                Kgrad[:,:,i] = w2*Rk[:,:,h]**2/l[h]**3*K0
-        if grad != 'Hess':
-            return w2*K0, Kgrad
-        # Second derivatives:
-        Khess = empty((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
-        for i, h1 in zip(xrange(self.Nhp), self.hp_id):
-            for j, h2 in zip(xrange(i, self.Nhp+1), self.hp_id[i:]):
-                if h1 == 'w' and h2 == 'w':
-                    # d^2K/dw^2
-                    Khess[:,:,i,j] = 2.0*K0
-                elif h1 == 'w' and h2 == 'l':
-                    # d^2K/dwdl
-                    Khess[:,:,i,j] = 2.0*w*R2l2/l*K0
-                    Khess[:,:,j,i] = Khess[:,:,i,j]
-                elif h1 == 'w' and isinstance(h2, int):
-                    # d^2K/dwdl_i
-                    Khess[:,:,i,j] =  2.0*w * Rk[:,:,h2]**2/l[h2]**3 * K0
-                    Khess[:,:,j,i] = Khess[:,:,i,j]
-                elif h1 == 'l' and h2 == 'l':
-                    # d^2K/dl^2
-                    Khess[:,:,i,j] = w2*R2l2/l**2*(R2l2-3.0)*K0
-                elif isinstance(h1, int) and isinstance(h2, int) and h1 == h2:
-                    # d^2K/dl_i^2
-                    Khess[:,:,i,j] = ( w2*Rk[:,:,h1]**2/l[h1]**4 *
-                                      ((Rk[:,:,h1]/l[h1])**2 - 3.0)*K0 )
-                elif isinstance(h1, int) and isinstance(h2, int):
-                    # d^2K/dl_i dl_j
-                    Khess[:,:,i,j] = (w2 * (Rk[:,:,h1]*Rk[:,:,h2])**2/
-                                      (l[h1]*l[h2])**3 * K0)
-                    Khess[:,:,j,i] = Khess[:,:,i,j]
-        return w2*K0, Kgrad, Khess
+        if grad_hp is not False:
+            # First derivatives:
+            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
+            for (i, h) in zip(range(self.Nhp), self.hp_id):
+                if h == 'w':
+                    # dK/dw
+                    Kgrad[:,:,i] = 2.0*w*K0
+                elif h == 'l':
+                    # dK/dl
+                    Kgrad[:,:,i] = w2*R2l2/l*K0
+                elif isinstance(h, int):
+                    # dK/dl_h
+                    Kgrad[:,:,i] = w2*Rk[:,:,h]**2/l[h]**3*K0
+            if grad_hp != 'Hess':
+                return w2*K0, Kgrad
+            # Second derivatives:
+            Khess = empty((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
+            for i, h1 in zip(xrange(self.Nhp), self.hp_id):
+                for j, h2 in zip(xrange(i, self.Nhp+1), self.hp_id[i:]):
+                    if h1 == 'w' and h2 == 'w':
+                        # d^2K/dw^2
+                        Khess[:,:,i,j] = 2.0*K0
+                    elif h1 == 'w' and h2 == 'l':
+                        # d^2K/dwdl
+                        Khess[:,:,i,j] = 2.0*w*R2l2/l*K0
+                        Khess[:,:,j,i] = Khess[:,:,i,j]
+                    elif h1 == 'w' and isinstance(h2, int):
+                        # d^2K/dwdl_i
+                        Khess[:,:,i,j] =  2.0*w * Rk[:,:,h2]**2/l[h2]**3 * K0
+                        Khess[:,:,j,i] = Khess[:,:,i,j]
+                    elif h1 == 'l' and h2 == 'l':
+                        # d^2K/dl^2
+                        Khess[:,:,i,j] = w2*R2l2/l**2*(R2l2-3.0)*K0
+                    elif isinstance(h1, int) and isinstance(h2, int) and h1 == h2:
+                        # d^2K/dl_i^2
+                        Khess[:,:,i,j] = ( w2*Rk[:,:,h1]**2/l[h1]**4 *
+                                          ((Rk[:,:,h1]/l[h1])**2 - 3.0)*K0 )
+                    elif isinstance(h1, int) and isinstance(h2, int):
+                        # d^2K/dl_i dl_j
+                        Khess[:,:,i,j] = (w2 * (Rk[:,:,h1]*Rk[:,:,h2])**2/
+                                          (l[h1]*l[h2])**3 * K0)
+                        Khess[:,:,j,i] = Khess[:,:,i,j]
+            return w2*K0, Kgrad, Khess
+            
+        if grad_r is not False:
+            # First derivatives:
+            #Kgrad = empty((Rk.shape[0], Rk.shape[1]))
+            Kgrad = empty(Rk.shape)
+            for i in xrange(Rk.shape[2]):
+                if isinstance(l, list):
+                    Kgrad[:,:,i] = -w2*Rk[:,:,i]/l[i]**2 * K0
+                else:
+                    Kgrad[:,:,i] = -w2*Rk[:,:,i]/l**2 * K0
+            if grad_r != 'Hess':
+                return w2*K0, Kgrad
+            # Second derivatives:
+            #Khess = empty((Rk.shape[0], Rk.shape[1]))
+            Khess = empty((Rk.shape[0], Rk.shape[1], Rk.shape[2], Rk.shape[2]))
+            for i in xrange(Rk.shape[2]):
+                for j in xrange(Rk.shape[2]):
+                    if i == j:
+                        if isinstance(l, list):
+                            Khess[:,:,i,j] = w2/l[i]**2 * (Rk[:,:,i]**2/l[i]**2 - 1.0)*K0
+                        else:
+                            Khess[:,:,i,j] = w2/l**2 * (Rk[:,:,i]**2/l**2 - 1.0)*K0
+                    else:
+                        if isinstance(l, list):
+                            Khess[:,:,i,j] = w2*Rk[:,:,i]*Rk[:,:,j] / (l[i]**2 * l[j]**2)*K0 
+                        else:
+                            Khess[:,:,i,j] = w2*Rk[:,:,i]*Rk[:,:,j] / (l**4)*K0 
+            return w2*K0, Kgrad, Khess
 
 class GammaExp(Kernel):
     r"""
@@ -487,7 +533,7 @@ class GammaExp(Kernel):
         p_bounds = odict([('w', (0.0, None)), ('l', (0.0, None)),
                           ('gamma', (0.0, 2.0))])
         super(GammaExp, self).__init__(params, p_bounds)
-    def __call__(self, Rk, grad=False, **kwargs):
+    def __call__(self, Rk, grad_hp=False, grad_r=False, **kwargs):
         w, l, g = self.p['w'], self.p['l'], self.p['gamma']
         if not isinstance(l, list):
             Rl = abs(Rk/l)
@@ -498,75 +544,111 @@ class GammaExp(Kernel):
         Rglg = sum(Rl**g, 2)
         w2 = w**2
         K0 = exp(-Rglg)
-        if not grad:
+        if (not grad_hp) and (not grad_r):
             # K = w2*K0
             return w2*K0
-        # First derivatives:
-        Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-        for i, h in zip(range(self.Nhp), self.hp_id):
-            if h == 'w':
-                # dK/dw
-                Kgrad[:,:,i] = 2.0*w*K0
-            elif h == 'l':
-                # dK/dl
-                Kgrad[:,:,i] = g*w2*Rglg / l*K0
-            elif isinstance(h, int):
-                # dK/dl_h
-                Kgrad[:,:,i] = g*w2*Rl[:,:,h]**g / l[h]*K0
-            elif h == 'gamma':
-                # dK/dgamma
-                tmp1 = zeros(Rk.shape)
-                tmp1[Rl > 0] = Rl[Rl>0]**g * log(Rl[Rl>0.0])
-                gamma_tmp = sum(tmp1, 2)
-                Kgrad[:,:,i] = -w2*gamma_tmp*K0
-        if grad != 'Hess':
-            return w2*K0, Kgrad
-        # Second derivatives:
-        Khess = empty((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
-        for i, h1 in zip(xrange(self.Nhp), self.hp_id):
-            for j, h2 in zip(xrange(i, self.Nhp), self.hp_id[i:]):
-                if h1 == 'w' and h2 == 'w':
-                    # d^2K/dw^2
-                    Khess[:,:,i,j] = 2.0*K0
-                elif h1 == 'w' and h2 == 'l':
-                    # d^2K/dwdl
-                    Khess[:,:,i,j] = 2.0*g*w*Rglg/l*K0
-                    Khess[:,:,j,i] = Khess[:,:,i,j]
-                elif h1 == 'w' and isinstance(h2, int):
-                    # d^2K/dwdl_h
-                    Khess[:,:,i,j] = 2.0*g*w*Rl[:,:,h2]**g/l[h2]*K0
-                    Khess[:,:,j,i] = Khess[:,:,i,j]
-                elif h1 == 'w' and h2 == 'gamma':
-                    # d^2K/dwdgamma
-                    Khess[:,:,i,j] = -2.0*w*gamma_tmp*K0
-                    Khess[:,:,j,i] = Khess[:,:,i,j]
-                elif h1 == 'l' and h2 == 'l':
-                    # d^2K/dl^2
-                    Khess[:,:,i,j] = g*w2*Rglg/l**2*(g*Rglg-(g+1.0))*K0
-                elif h1 == 'l' and h2 == 'gamma':
-                    # d^2K/dldgamma
-                    Khess[:,:,i,j] = w2/l*(Rglg + g*(1.0-Rglg)*gamma_tmp)*K0
-                    Khess[:,:,j,i] = Khess[:,:,i,j]
-                elif isinstance(h1, int) and isinstance(h2, int) and h1 == h2:
-                    # d^2K/dl_h^2
-                    Khess[:,:,i,j] = ( g*w2*Rl[:,:,h1]**g/l[h1]**2 *
-                                       (g*Rl[:,:,h1]**g-(g+1.0))*K0 )
-                elif isinstance(h1, int) and isinstance(h2, int):
-                    # d^2K/dl_h1 dl_h2
-                    Khess[:,:,i,j] = ( g**2*w2*(Rl[:,:,h1]*Rl[:,:,h2])**g /
-                                      (l[h1]*l[h2])*K0 )
-                    Khess[:,:,j,i] = Khess[:,:,i,j]
-                elif isinstance(h1, int) and h2 == 'gamma':
-                    # d^2K/dl_h1 dgamma
-                    Khess[:,:,i,j] = ( w2 * (g*tmp1[:,:,h1]/l[h1] +
-                                   Rl[:,:,h1]**g/l[h1]*(1.0-g*gamma_tmp))*K0 )
-                    Khess[:,:,j,i] = Khess[:,:,i,j]
-                elif h1 == 'gamma' and h2 == 'gamma':
-                    # d^2K/dgamma^2
-                    tmp2 = zeros(Rk.shape)
-                    tmp2[Rl > 0] = tmp1[Rl > 0] * log(Rl[Rl>0.0])
-                    Khess[:,:,i,j] = w2*(gamma_tmp**2 - sum(tmp2, 2))*K0
-        return w2*K0, Kgrad, Khess
+        if grad_hp is not False:
+            # First derivatives:
+            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
+            for i, h in zip(range(self.Nhp), self.hp_id):
+                if h == 'w':
+                    # dK/dw
+                    Kgrad[:,:,i] = 2.0*w*K0
+                elif h == 'l':
+                    # dK/dl
+                    Kgrad[:,:,i] = g*w2*Rglg / l*K0
+                elif isinstance(h, int):
+                    # dK/dl_h
+                    Kgrad[:,:,i] = g*w2*Rl[:,:,h]**g / l[h]*K0
+                elif h == 'gamma':
+                    # dK/dgamma
+                    tmp1 = zeros(Rk.shape)
+                    tmp1[Rl > 0] = Rl[Rl>0]**g * log(Rl[Rl>0.0])
+                    gamma_tmp = sum(tmp1, 2)
+                    Kgrad[:,:,i] = -w2*gamma_tmp*K0
+            if grad_hp != 'Hess':
+                return w2*K0, Kgrad
+            # Second derivatives:
+            Khess = empty((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
+            for i, h1 in zip(xrange(self.Nhp), self.hp_id):
+                for j, h2 in zip(xrange(i, self.Nhp), self.hp_id[i:]):
+                    if h1 == 'w' and h2 == 'w':
+                        # d^2K/dw^2
+                        Khess[:,:,i,j] = 2.0*K0
+                    elif h1 == 'w' and h2 == 'l':
+                        # d^2K/dwdl
+                        Khess[:,:,i,j] = 2.0*g*w*Rglg/l*K0
+                        Khess[:,:,j,i] = Khess[:,:,i,j]
+                    elif h1 == 'w' and isinstance(h2, int):
+                        # d^2K/dwdl_h
+                        Khess[:,:,i,j] = 2.0*g*w*Rl[:,:,h2]**g/l[h2]*K0
+                        Khess[:,:,j,i] = Khess[:,:,i,j]
+                    elif h1 == 'w' and h2 == 'gamma':
+                        # d^2K/dwdgamma
+                        Khess[:,:,i,j] = -2.0*w*gamma_tmp*K0
+                        Khess[:,:,j,i] = Khess[:,:,i,j]
+                    elif h1 == 'l' and h2 == 'l':
+                        # d^2K/dl^2
+                        Khess[:,:,i,j] = g*w2*Rglg/l**2*(g*Rglg-(g+1.0))*K0
+                    elif h1 == 'l' and h2 == 'gamma':
+                        # d^2K/dldgamma
+                        Khess[:,:,i,j] = w2/l*(Rglg + g*(1.0-Rglg)*gamma_tmp)*K0
+                        Khess[:,:,j,i] = Khess[:,:,i,j]
+                    elif isinstance(h1, int) and isinstance(h2, int) and h1 == h2:
+                        # d^2K/dl_h^2
+                        Khess[:,:,i,j] = ( g*w2*Rl[:,:,h1]**g/l[h1]**2 *
+                                           (g*Rl[:,:,h1]**g-(g+1.0))*K0 )
+                    elif isinstance(h1, int) and isinstance(h2, int):
+                        # d^2K/dl_h1 dl_h2
+                        Khess[:,:,i,j] = ( g**2*w2*(Rl[:,:,h1]*Rl[:,:,h2])**g /
+                                          (l[h1]*l[h2])*K0 )
+                        Khess[:,:,j,i] = Khess[:,:,i,j]
+                    elif isinstance(h1, int) and h2 == 'gamma':
+                        # d^2K/dl_h1 dgamma
+                        Khess[:,:,i,j] = ( w2 * (g*tmp1[:,:,h1]/l[h1] +
+                                       Rl[:,:,h1]**g/l[h1]*(1.0-g*gamma_tmp))*K0 )
+                        Khess[:,:,j,i] = Khess[:,:,i,j]
+                    elif h1 == 'gamma' and h2 == 'gamma':
+                        # d^2K/dgamma^2
+                        tmp2 = zeros(Rk.shape)
+                        tmp2[Rl > 0] = tmp1[Rl > 0] * log(Rl[Rl>0.0])
+                        Khess[:,:,i,j] = w2*(gamma_tmp**2 - sum(tmp2, 2))*K0
+            return w2*K0, Kgrad, Khess
+        if grad_r is not False:
+            # First derivatives:
+            #Kgrad = empty((Rk.shape[0], Rk.shape[1]))
+            Kgrad = empty(Rk.shape)
+            for i in xrange(Rk.shape[2]):
+                if isinstance(l, list):
+                    Kgrad[:,:,i] = -g*w2*Rk[:,:,i]**(g-1.0)/l[i]**g * K0
+                else:
+                    Kgrad[:,:,i] = -g*w2*Rk[:,:,i]**(g-1.0)/l**g * K0
+            if grad_r != 'Hess':
+                return w2*K0, Kgrad
+            # Second derivatives:
+            #Khess = empty((Rk.shape[0], Rk.shape[1]))
+            Khess = empty((Rk.shape[0], Rk.shape[1], Rk.shape[2], Rk.shape[2]))
+            for i in xrange(Rk.shape[2]):
+                for j in xrange(Rk.shape[2]):
+                    if i == j:    
+                        if isinstance(l, list):
+                            Khess[:,:,i,j] = (g*w2*(g*Rk[:,:,i]**(2.0*(g-1.0))/
+                                        l[i]**(2.0*g) - (g-1.0) * 
+                                        Rk[:,:,i]**(g-2.0)/l[i]**g)*K0)
+                        else:
+                            Khess[:,:,i,j] = (g*w2*(g*Rk[:,:,i]**(2.0*(g-1.0))/
+                                        l**(2.0*g) - (g-1.0) * 
+                                        Rk[:,:,i]**(g-2.0)/l**g)*K0)          
+                    else:
+                        if isinstance(l, list):
+                            Khess[:,:,i,j] = (g**2 * w2*Rk[:,:,i]**(g-1.0)/
+                                            l[i]**g *Rk[:,:,j]**(g-1.0)/
+                                            l[j]**g * K0)
+                        else:
+                            Khess[:,:,i,j] = (g**2 *w2*Rk[:,:,i]**(g-1.0)*
+                                            Rk[:,:,j]**(g-1.0) /l**(2.0*g) *K0)               
+            return w2*K0, Kgrad, Khess
+
 
 class RatQuad(Kernel):
     r"""
@@ -583,7 +665,7 @@ class RatQuad(Kernel):
         p_bounds = odict([('w', (0.0, None)), ('l', (0.0, None)),
                           ('alpha', (0.0, None))])
         super(RatQuad, self).__init__(params, p_bounds)
-    def __call__(self, Rk, grad=False, **kwargs):
+    def __call__(self, Rk, grad_hp=False, grad_r=False, **kwargs):
         w, l, a = self.p['w'], self.p['l'], self.p['alpha']
         if not isinstance(l, list):
             R2l2 = sum(Rk**2,2)/l**2
@@ -594,65 +676,102 @@ class RatQuad(Kernel):
         w2 = w**2
         all_tmp = 1.0 + R2l2/(2.0*a)
         K0 = all_tmp**(-a)
-        if not grad:
+        if (not grad_hp) and (not grad_r):
             return w2*K0
-        # First derivatives:
-        Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-        for i, h in zip(range(self.Nhp), self.hp_id):
-            if h == 'w':
-                # dK/dw
-                Kgrad[:,:,i] = 2.0*w*K0
-            elif h == 'l':
-                # dK/dl
-                Kgrad[:,:,i] = w2*R2l2/(l*all_tmp)*K0
-            elif isinstance(h, int):
-                # dK/dl_h
-                Kgrad[:,:,i] = w2*Rk[:,:,h]**2/(l[h]**3*all_tmp)*K0
-            elif h == 'alpha':
-                # dK/dalpha
-                alpha_tmp = (all_tmp-1)/all_tmp - log(all_tmp)
-                Kgrad[:,:,i] = w2*alpha_tmp*K0  
-        if grad != 'Hess':
-            return w2*K0, Kgrad
-        # Second derivatives:
-        Khess = empty((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
-        for i, h1 in zip(xrange(self.Nhp), self.hp_id):
-            for j, h2 in zip(xrange(i, self.Nhp), self.hp_id[i:]):
-                if h1 == 'w' and h2 == 'w':
-                    # d^2K/dw^2
-                    Khess[:,:,i,j] = 2.0*K0
-                elif h1 == 'w' and h2 == 'l':
-                    # d^2K/dwdl
-                    Khess[:,:,i,j] = 2.0*w*R2l2/(l*all_tmp)*K0
-                    Khess[:,:,j,i] = Khess[:,:,i,j]
-                elif h1 == 'w' and isinstance(h2, int):
-                    # d^2K/dwdl_h
-                    Khess[:,:,i,j] = 2.0*w*Rk[:,:,h]**2/(l[h]**3*all_tmp)*K0
-                    Khess[:,:,j,i] = Khess[:,:,i,j]
-                elif h1 == 'w' and h2 == 'alpha':
-                    # d^2K/dwdalpha
-                    Khess[:,:,i,j] = 2.0*w*alpha_tmp*K0 
-                    Khess[:,:,j,i] = Khess[:,:,i,j]
-                elif h1 == 'l' and h2 == 'l':
-                    # d^2K/dl^2
-                    Khess[:,:,i,j] = w2*R2l2/l**2*((a+1.0)/a*R2l2/all_tmp - 3.0)/all_tmp*K0
-                elif h1 == 'l' and h2 == 'alpha':
-                    # d^2K/dldalpha
-                    Khess[:,:,i,j] = w2*R2l2/l*((a+1.0)/a*(all_tmp-1.0)/all_tmp - log(all_tmp))/all_tmp*K0
-                    Khess[:,:,j,i] = Khess[:,:,i,j]
-                elif isinstance(h1, int) and isinstance(h2, int) and h1 == h2:
-                    # d^2K/dl_h^2
-                    Khess[:,:,i,j] = w2*Rk[:,:,h1]**2/l[h1]**4*((a+1.0)/a*(Rk[:,:,h1]/l[h1])**2/all_tmp - 3.0)/all_tmp*K0
-                elif isinstance(h1, int) and isinstance(h2, int):
-                    # d^2K/dl_h1 dl_h2
-                    Khess[:,:,i,j] = (a+1.0)/a *w2*(Rk[:,:,h1]*Rk[:,:,h2]/all_tmp)**2/(l[h1]*l[h2])**3*K0
-                    Khess[:,:,j,i] = Khess[:,:,i,j]
-                elif isinstance(h1, int) and h2 == 'alpha':
-                    # d^2K/dl_h dalpha
-                    Khess[:,:,i,j] = ( w2*Rk[:,:,h1]**2/l[h1]**3*((a+1.0)/a*(all_tmp-1.0)/all_tmp - log(all_tmp) ) /all_tmp*K0 )
-                    Khess[:,:,j,i] = Khess[:,:,i,j]
-                elif h1 == 'alpha' and h2 == 'alpha':
-                    # d^2K/dalpha^2
-                    Khess[:,:,i,j] = ( w2*(R2l2**2/(4.0*a**3*all_tmp**2)+
-                                           alpha_tmp**2)*K0 )
-        return w2*K0, Kgrad, Khess
+        if grad_hp is not False:
+            # First derivatives:
+            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
+            for i, h in zip(range(self.Nhp), self.hp_id):
+                if h == 'w':
+                    # dK/dw
+                    Kgrad[:,:,i] = 2.0*w*K0
+                elif h == 'l':
+                    # dK/dl
+                    Kgrad[:,:,i] = w2*R2l2/(l*all_tmp)*K0
+                elif isinstance(h, int):
+                    # dK/dl_h
+                    Kgrad[:,:,i] = w2*Rk[:,:,h]**2/(l[h]**3*all_tmp)*K0
+                elif h == 'alpha':
+                    # dK/dalpha
+                    alpha_tmp = (all_tmp-1)/all_tmp - log(all_tmp)
+                    Kgrad[:,:,i] = w2*alpha_tmp*K0  
+            if grad_hp != 'Hess':
+                return w2*K0, Kgrad
+            # Second derivatives:
+            Khess = empty((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
+            for i, h1 in zip(xrange(self.Nhp), self.hp_id):
+                for j, h2 in zip(xrange(i, self.Nhp), self.hp_id[i:]):
+                    if h1 == 'w' and h2 == 'w':
+                        # d^2K/dw^2
+                        Khess[:,:,i,j] = 2.0*K0
+                    elif h1 == 'w' and h2 == 'l':
+                        # d^2K/dwdl
+                        Khess[:,:,i,j] = 2.0*w*R2l2/(l*all_tmp)*K0
+                        Khess[:,:,j,i] = Khess[:,:,i,j]
+                    elif h1 == 'w' and isinstance(h2, int):
+                        # d^2K/dwdl_h
+                        Khess[:,:,i,j] = 2.0*w*Rk[:,:,h]**2/(l[h]**3*all_tmp)*K0
+                        Khess[:,:,j,i] = Khess[:,:,i,j]
+                    elif h1 == 'w' and h2 == 'alpha':
+                        # d^2K/dwdalpha
+                        Khess[:,:,i,j] = 2.0*w*alpha_tmp*K0 
+                        Khess[:,:,j,i] = Khess[:,:,i,j]
+                    elif h1 == 'l' and h2 == 'l':
+                        # d^2K/dl^2
+                        Khess[:,:,i,j] = w2*R2l2/l**2*((a+1.0)/a*R2l2/all_tmp - 3.0)/all_tmp*K0
+                    elif h1 == 'l' and h2 == 'alpha':
+                        # d^2K/dldalpha
+                        Khess[:,:,i,j] = w2*R2l2/l*((a+1.0)/a*(all_tmp-1.0)/all_tmp - log(all_tmp))/all_tmp*K0
+                        Khess[:,:,j,i] = Khess[:,:,i,j]
+                    elif isinstance(h1, int) and isinstance(h2, int) and h1 == h2:
+                        # d^2K/dl_h^2
+                        Khess[:,:,i,j] = w2*Rk[:,:,h1]**2/l[h1]**4*((a+1.0)/a*(Rk[:,:,h1]/l[h1])**2/all_tmp - 3.0)/all_tmp*K0
+                    elif isinstance(h1, int) and isinstance(h2, int):
+                        # d^2K/dl_h1 dl_h2
+                        Khess[:,:,i,j] = (a+1.0)/a *w2*(Rk[:,:,h1]*Rk[:,:,h2]/all_tmp)**2/(l[h1]*l[h2])**3*K0
+                        Khess[:,:,j,i] = Khess[:,:,i,j]
+                    elif isinstance(h1, int) and h2 == 'alpha':
+                        # d^2K/dl_h dalpha
+                        Khess[:,:,i,j] = ( w2*Rk[:,:,h1]**2/l[h1]**3*((a+1.0)/a*(all_tmp-1.0)/all_tmp - log(all_tmp) ) /all_tmp*K0 )
+                        Khess[:,:,j,i] = Khess[:,:,i,j]
+                    elif h1 == 'alpha' and h2 == 'alpha':
+                        # d^2K/dalpha^2
+                        Khess[:,:,i,j] = ( w2*(R2l2**2/(4.0*a**3*all_tmp**2)+
+                                               alpha_tmp**2)*K0 )
+            return w2*K0, Kgrad, Khess
+        if grad_r is not False:
+            # First derivatives:
+            #Kgrad = empty((Rk.shape[0], Rk.shape[1]))
+            Kgrad = empty(Rk.shape)
+            for i in xrange(Rk.shape[2]):
+                if isinstance(l, list):
+                    Kgrad[:,:,i] = -w2*Rk[:,:,i]/l[i]**2 * all_tmp**(-(a+1.0))
+                else:
+                    Kgrad[:,:,i] = -w2*Rk[:,:,i]/l**2 * all_tmp**(-(a+1.0))
+            if grad_r != 'Hess':
+                return w2*K0, Kgrad
+            #Khess = empty((Rk.shape[0], Rk.shape[1]))
+            Khess = empty((Rk.shape[0], Rk.shape[1], Rk.shape[2], Rk.shape[2]))
+            for i in xrange(Rk.shape[0]):
+                for j in xrange(Rk.shape[1]):                    
+                    if i == j:
+                        if isinstance(l, list):
+                            Khess[:,:,i,j] = ( w2/l[i]**2 * (( (a+1.0)/a * 
+                                        Rk[:,:,i]**2/l[i]**2 )/
+                                        (1.0 + R2l2/(2.0*a)) - 1.0) *
+                                        all_tmp**(-(a+1.0)) )
+                        else:
+                            Khess[:,:,i,j] = ( w2/l**2 * (( (a+1.0)/a * 
+                                        Rk[:,:,i]**2/l**2 )/ 
+                                        (1.0 + R2l2/(2.0*a)) -1.0) *
+                                        all_tmp**(-(a+1.0)) )
+                    else:
+                        if isinstance(l, list):
+                            Khess[:,:,i,j] = ((a+1.0)/a * (w2*Rk[:,:,i] * 
+                                        Rk[:,:,j] / (l[i]**2 * l[j]**2) *
+                                        all_tmp**(-(a+2.0))) )
+                        else:
+                            Khess[:,:,i,j] = ( (a+1.0)/a * (w2*Rk[:,:,i] * 
+                                        Rk[:,:,j] / l**4 * 
+                                        all_tmp**(-(a+2.0))) )
+            return w2*K0, Kgrad, Khess
