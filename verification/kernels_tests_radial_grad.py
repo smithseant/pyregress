@@ -57,21 +57,21 @@ Rk = radius(X, X)
 #my_kernel = RatQuad(w=1.5, l=[2.5, Constant(guess=2.5)], alpha=Constant(guess=1.5))
 
  # sum and prod not set up yet
-#my_kernel = SquareExp(w=1.5, l=Constant(guess=0.8)) + SquareExp(w=1.5, l=[2.0, Constant(guess=2.5)])
+my_kernel = SquareExp(w=1.5, l=Constant(guess=0.8)) + SquareExp(w=1.5, l=[2.0, Constant(guess=2.5)])
 #my_kernel = SquareExp(w=1.5, l=Constant(guess=0.8)) * SquareExp(w=1.5, l=[Constant(guess=2.0), Constant(guess=2.5)])
 
 my_hyper, hyper_bounds = my_kernel._map_hyper()
 my_gpr = GPP(X, test_func(X), my_kernel)
 my_gpb = GPP(X, test_func(X), my_kernel, explicit_basis=[0, 1])
 
-K, Kp, Kpp = my_kernel(Rk, grad_r='Hess', data=True)
+K, Kp, Kpp = my_kernel(Rk, grad_r='Hess')
 
 Rk += dx
-Kplus = my_kernel(Rk, data=True)
+Kplus = my_kernel(Rk)
 Rk -= dx
 
 Rk -= dx 
-Kminus = my_kernel(Rk, data=True)
+Kminus = my_kernel(Rk)
 Rk += dx
 
 Kd = (Kplus - Kminus)/(2.0*dx)

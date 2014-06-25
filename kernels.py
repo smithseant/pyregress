@@ -292,34 +292,56 @@ class KernelSum(Kernel):
                 terms = [self.terms[kwargs['sum_terms']]]
         else:
             terms = self.terms
-        if not grad_hp:
+        if (not grad_hp) and (not grad_r):
             K = zeros(Rk.shape[:2])
             for kern in terms:
                 K += kern(Rk, **kwargs)
             return K
-        elif grad_hp != 'Hess':
-            K = zeros(Rk.shape[:2])
-            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-            h = 0
-            for kern in terms:
-                K_t, Kgrad[:,:,h:h+kern.Nhp] = kern(Rk, grad_hp=grad_hp,
-                                                 **kwargs)
-                K += K_t
-                h += kern.Nhp
-            return K, Kgrad
-        else:
-            K = zeros(Rk.shape[:2])
-            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-            Khess = zeros((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
-            h = 0
-            for kern in terms:
-                hn = h + kern.Nhp
-                Kt, Kgrad[:,:,h:hn], Khess[:,:,h:hn,h:hn] = kern(Rk, 
-                                                    grad_hp=grad_hp, **kwargs)
-                K += Kt
-                h = hn
-            return K, Kgrad, Khess
-
+        if grad_hp is not False:
+            if grad_hp != 'Hess':
+                K = zeros(Rk.shape[:2])
+                Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
+                h = 0
+                for kern in terms:
+                    K_t, Kgrad[:,:,h:h+kern.Nhp] = kern(Rk, grad_hp=grad_hp,
+                                                     **kwargs)
+                    K += K_t
+                    h += kern.Nhp
+                return K, Kgrad
+            else:
+                K = zeros(Rk.shape[:2])
+                Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
+                Khess = zeros((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
+                h = 0
+                for kern in terms:
+                    hn = h + kern.Nhp
+                    Kt, Kgrad[:,:,h:hn], Khess[:,:,h:hn,h:hn] = kern(Rk, 
+                                                        grad_hp=grad_hp, **kwargs)
+                    K += Kt
+                    h = hn
+                return K, Kgrad, Khess
+        if grad_r is not False:
+            if grad_r != 'Hess':
+                K = zeros(Rk.shape[:2])
+                Kgrad = empty(Rk.shape)
+                h = 0
+                for kern in terms:
+                    Kt, Ktgrad = kern(Rk, grad_r=grad_r, **kwargs)
+                    K += Kt
+                    Kgrad += Ktgrad
+                return K, Kgrad
+            else:
+                K = zeros(Rk.shape[:2])
+                Kgrad = empty(Rk.shape)
+                Khess = zeros((Rk.shape[0],Rk.shape[1],Rk.shape[2],Rk.shape[2]))
+                h = 0
+                for kern in terms:
+                    Kt, Ktgrad, Kthess = kern(Rk, grad_r=grad_r, **kwargs)
+                    K += Kt
+                    Kgrad += Ktgrad
+                    Khess += Kthess
+                return K, Kgrad, Khess
+                
 class KernelProd(Kernel):
     """Provide a class that lists kernels to be multiplied at evaluation."""
     def __init__(self, k1, k2):
@@ -339,6 +361,10 @@ class KernelProd(Kernel):
         return self
     
     def __call__(self, Rk, grad_hp=False, grad_r=False, **kwargs):
+        if grad_r is not False:
+            raise InputError("Kernel products do not currently support" + 
+                             " radial gradients.  If desired, feel free" + 
+                             " to implement")
         if not grad_hp:
             K = ones(Rk.shape[:2])
             for kern in self.terms:
