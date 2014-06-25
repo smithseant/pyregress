@@ -349,7 +349,7 @@ class KernelProd(Kernel):
             Kgrad = ones((Rk.shape[0], Rk.shape[1], self.Nhp))
             h = 0
             for kern in self.terms:
-                Kt, Kgt = kern(Rk, grad_hp='True', **kwargs)
+                Kt, Kgt = kern(Rk, grad_hp=grad_hp, **kwargs)
                 K *= Kt
                 irange = range(h, h+kern.Nhp)
                 iother = range(0, h) + range(h+kern.Nhp, self.Nhp)
@@ -363,7 +363,7 @@ class KernelProd(Kernel):
             Khess = ones((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
             h = 0
             for kern in self.terms:
-                Kt, Kgt, Kht = kern(Rk, grad_hp='Hess', **kwargs)
+                Kt, Kgt, Kht = kern(Rk, grad_hp=grad_hp, **kwargs)
                 K *= Kt
                 hn = h + kern.Nhp
                 irange = range(h, hn)
@@ -413,13 +413,9 @@ class Noise(Kernel):
             return w2*K0, Kgrad, Khess
         
         if grad_r is not False:
-            #Kgrad = zeros((Rk.shape[0], Rk.shape[1]))
-            Kgrad = zeros(Rk.shape)
-            if grad_r != 'Hess':
-                return w2*K0, Kgrad
-            Khess = zeros((Rk.shape[0], Rk.shape[1], Rk.shape[2], Rk.shape[2]))
-            return w2*K0, Kgrad, Khess
-
+            raise InputError("Noise Kernel is not differentiable, need" + 
+                             " to separate kernels if differntiation is" + 
+                             " desired")
 
 class SquareExp(Kernel):
     r"""
@@ -493,7 +489,6 @@ class SquareExp(Kernel):
             
         if grad_r is not False:
             # First derivatives:
-            #Kgrad = empty((Rk.shape[0], Rk.shape[1]))
             Kgrad = empty(Rk.shape)
             for i in xrange(Rk.shape[2]):
                 if isinstance(l, list):
@@ -503,7 +498,6 @@ class SquareExp(Kernel):
             if grad_r != 'Hess':
                 return w2*K0, Kgrad
             # Second derivatives:
-            #Khess = empty((Rk.shape[0], Rk.shape[1]))
             Khess = empty((Rk.shape[0], Rk.shape[1], Rk.shape[2], Rk.shape[2]))
             for i in xrange(Rk.shape[2]):
                 for j in xrange(Rk.shape[2]):
@@ -615,40 +609,9 @@ class GammaExp(Kernel):
                         Khess[:,:,i,j] = w2*(gamma_tmp**2 - sum(tmp2, 2))*K0
             return w2*K0, Kgrad, Khess
         if grad_r is not False:
-            # First derivatives:
-            #Kgrad = empty((Rk.shape[0], Rk.shape[1]))
-            Kgrad = empty(Rk.shape)
-            for i in xrange(Rk.shape[2]):
-                if isinstance(l, list):
-                    Kgrad[:,:,i] = -g*w2*Rk[:,:,i]**(g-1.0)/l[i]**g * K0
-                else:
-                    Kgrad[:,:,i] = -g*w2*Rk[:,:,i]**(g-1.0)/l**g * K0
-            if grad_r != 'Hess':
-                return w2*K0, Kgrad
-            # Second derivatives:
-            #Khess = empty((Rk.shape[0], Rk.shape[1]))
-            Khess = empty((Rk.shape[0], Rk.shape[1], Rk.shape[2], Rk.shape[2]))
-            for i in xrange(Rk.shape[2]):
-                for j in xrange(Rk.shape[2]):
-                    if i == j:    
-                        if isinstance(l, list):
-                            Khess[:,:,i,j] = (g*w2*(g*Rk[:,:,i]**(2.0*(g-1.0))/
-                                        l[i]**(2.0*g) - (g-1.0) * 
-                                        Rk[:,:,i]**(g-2.0)/l[i]**g)*K0)
-                        else:
-                            Khess[:,:,i,j] = (g*w2*(g*Rk[:,:,i]**(2.0*(g-1.0))/
-                                        l**(2.0*g) - (g-1.0) * 
-                                        Rk[:,:,i]**(g-2.0)/l**g)*K0)          
-                    else:
-                        if isinstance(l, list):
-                            Khess[:,:,i,j] = (g**2 * w2*Rk[:,:,i]**(g-1.0)/
-                                            l[i]**g *Rk[:,:,j]**(g-1.0)/
-                                            l[j]**g * K0)
-                        else:
-                            Khess[:,:,i,j] = (g**2 *w2*Rk[:,:,i]**(g-1.0)*
-                                            Rk[:,:,j]**(g-1.0) /l**(2.0*g) *K0)               
-            return w2*K0, Kgrad, Khess
-
+            raise InputError("Gamma Exponential Kernel is not differentiable," +
+                             " need to separate kernels if differntiation is" +
+                             " desired")
 
 class RatQuad(Kernel):
     r"""
@@ -741,7 +704,6 @@ class RatQuad(Kernel):
             return w2*K0, Kgrad, Khess
         if grad_r is not False:
             # First derivatives:
-            #Kgrad = empty((Rk.shape[0], Rk.shape[1]))
             Kgrad = empty(Rk.shape)
             for i in xrange(Rk.shape[2]):
                 if isinstance(l, list):
@@ -750,10 +712,9 @@ class RatQuad(Kernel):
                     Kgrad[:,:,i] = -w2*Rk[:,:,i]/l**2 * all_tmp**(-(a+1.0))
             if grad_r != 'Hess':
                 return w2*K0, Kgrad
-            #Khess = empty((Rk.shape[0], Rk.shape[1]))
             Khess = empty((Rk.shape[0], Rk.shape[1], Rk.shape[2], Rk.shape[2]))
-            for i in xrange(Rk.shape[0]):
-                for j in xrange(Rk.shape[1]):                    
+            for i in xrange(Rk.shape[2]):
+                for j in xrange(Rk.shape[2]):                    
                     if i == j:
                         if isinstance(l, list):
                             Khess[:,:,i,j] = ( w2/l[i]**2 * (( (a+1.0)/a * 
@@ -775,3 +736,24 @@ class RatQuad(Kernel):
                                         Rk[:,:,j] / l**4 * 
                                         all_tmp**(-(a+2.0))) )
             return w2*K0, Kgrad, Khess
+            
+class Error(Exception):
+    """Base class for exceptions in the kernels module."""
+    pass
+
+class InputError(Error):  # -- not a ValueError? --
+    """Exception raised for errors in input arguments."""
+    def __init__(self, msg, input_argument=None):
+        """
+        Initialize an InputError.
+        
+        Arguments
+        ---------
+            msg:  string,
+                explanation of the error.
+            input_argument:  any (optional),
+                input argument that is the source of error. Provided so
+                the value can be reported when the error is caught.
+        """
+        self.args = (msg,)
+        self.input_argument = input_argument
