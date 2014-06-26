@@ -30,8 +30,8 @@ Reading the code and development:
 __all__ = ['GPP']
 
 #from termcolor import colored  # may not work on windows
-from numpy import (ndarray, array, empty, ones, eye, tile,
-                   maximum, diag, sum, sqrt, resize, std, shape)
+from numpy import (ndarray, array, empty, ones, eye, tile, hstack,
+                   maximum, diag, sum, sqrt, resize, std, shape, zeros)
 from numpy.linalg.linalg import LinAlgError, svd
 from numpy.random import randn
 from scipy import pi, log
@@ -159,8 +159,8 @@ class GPP:
         # Do as many calculations as possible in preparation for the inference
         # -- Create a separate function for the following? --
         self.Rdd = self._radius(self.Xd, self.Xd)
-        #if (self.kernel.Nhp > 0):
-        #    self.maximize_hyper_posterior()
+        if (self.kernel.Nhp > 0):
+            self.maximize_hyper_posterior()
         self.Kdd = self.kernel(self.Rdd, block_diag=True)
         self.LKdd = cho_factor_gen(self.Kdd)
         self.invKdd_Yd = cho_solve_gen(self.LKdd, self.Yd)
@@ -172,36 +172,63 @@ class GPP:
                 HdTh = self.Hd.dot(self.Th)
                 self.invKdd_HdTh = cho_solve_gen(self.LKdd, HdTh)           
     
-    
-    def _basis(self, X):
+    def _basis(self, X, grad=False):
         """Calculate the basis functions given independent variables."""
-        if ( isinstance(self.basis, list) and
-             sum(self.basis.count(i) for i in [0, 1, 2]) > 0 ):
-            N = X.shape[0]
-            Nth = sum( self.Nx**array(self.basis) )
-            H = empty((N, Nth))
-            j = 0
-            if self.basis.count(0):
-                H[:, j] = 1.0
-                j += 1
-            if self.basis.count(1):
-                H[:, j:j+self.Nx] = X
-                j += self.Nx
-            if self.basis.count(2):
-                for ix in xrange(self.Nx):
-                    for jx in xrange(self.Nx):
-                        H[:, j] = X[:,ix]*X[:,jx]
-                        j += 1
-        # TODO: add a base class or abtract interface for the basis functions.
-        #     http://dirtsimple.org/2004/12/python-interfaces-are-not-java.html
-        #elif isinstance(self.basis,basis_callable):
-        #    H = self.basis(X)
-        #    self.Nth = H.shape[1]
-        else:
-            # TODO: check that there is more data than degrees of freedom.
+        if not ( isinstance(self.basis, list) and
+                 all([[0, 1, 2].count(entry) == 1 for entry in self.basis]) ):
+        # TODO: also check if there is less data than degrees of freedom.
             raise InputError("GPP argument explicit_basis must be a list " +
-                             "with: 0, 1, and/or 2.", self.basis)
-        return Nth, H
+                         "with: 0, 1, and/or 2.", self.basis)
+        # TODO: implement an interface for user defined basis functions.
+        #elif isinstance(self.basis, basis_callable):
+        # H = self.basis(X)
+        # Nth = H.shape[1]
+        N = X.shape[0]
+        Nth = sum( self.Nx**array(self.basis) )
+        H = empty((N, Nth))
+        j = 0
+        if self.basis.count(0):
+            H[:, j] = 1.0
+            j += 1
+        if self.basis.count(1):
+            H[:, j:j+self.Nx] = X
+            j += self.Nx
+        if self.basis.count(2):
+            for ix in xrange(self.Nx):
+                for jx in xrange(self.Nx):
+                    H[:, j] = X[:, ix]*X[:, jx]
+                    j += 1
+        if not grad:
+            return Nth, H
+
+        Hp = zeros((N, self.Nx, Nth))
+        j = 0
+        if self.basis.count(0):
+            j += 1
+        if self.basis.count(1):
+            for ix in xrange(self.Nx):
+                Hp[:, ix, j+ix] = 1.0
+                j += 1
+        if self.basis.count(2):
+            for ix in xrange(self.Nx):
+                for jx in xrange(self.Nx):
+                    Hp[:, ix, j] += X[:, jx]
+                    Hp[:, jx, j] += X[:, ix]
+                    j += 1
+        if not grad == 'Hess':
+            return Nth, H, Hp
+
+        Hpp = zeros((N, self.Nx, self.Nx, Nth))
+        j = 0
+        if self.basis.count(0):
+            j += 1
+        if self.basis.count(1):
+            j += self.Nx
+        if self.basis.count(2):
+            for ix in xrange(self.Nx):
+                Hpp[:, ix, ix, j] = 2.0
+                j += self.Nx + 1
+        return Nth, H, Hp, Hpp
     
     def _radius(self, X, Y):
         """Calculate the distance matrix (radius)."""
@@ -427,14 +454,14 @@ class GPP:
             post_mean += Hi.dot(self.Th)
             
         if (grad is True) or (grad is 'Hess'):
-            post_mean_grad = empty((Rid.shape[2],Rid.shape[2]))
+            post_mean_grad = empty((Rid.shape[0],Rid.shape[2]))
             for i in xrange(Rid.shape[2]):
-                post_mean_grad[:,i] = Kid_grad[:,:,i].dot(self.invKdd_Yd).reshape(Rid.shape[2])
+                post_mean_grad[:,i] = Kid_grad[:,:,i].dot(self.invKdd_Yd).reshape(-1)
         if grad is 'Hess':
-            post_mean_hess = empty((Rid.shape[2],Rid.shape[2],Rid.shape[2]))
+            post_mean_hess = empty((Rid.shape[0],Rid.shape[2],Rid.shape[2]))
             for i in xrange(Rid.shape[2]):
                 for j in xrange(Rid.shape[2]):
-                    post_mean_hess[i,j] = Kid_hess[:,:,i,j].dot(self.invKdd_Yd)
+                    post_mean_hess[:,i,j] = Kid_hess[:,:,i,j].dot(self.invKdd_Yd).reshape(-1)
         
         # Dependent variable
         if self.prior_mean is not None and not exclude_mean:
@@ -603,6 +630,7 @@ if __name__ == "__main__":
     yi1, yi1_grad = myGPP1( xi1, grad=True )
     print 'Example 1:'
     print 'x = ', xi1, ',  y = ', yi1
+    yi1_, yi1_grad_, yi1_hess_ = myGPP1( Xd1, grad='Hess' )
     
     # Example 2:
     # 2D with six data points and two regression points
@@ -613,8 +641,7 @@ if __name__ == "__main__":
     myGPP2 = GPP(Xd2, Yd2, K2, explicit_basis=[0, 1], transform='Probit')
     print 'Optimized value of the hyper-parameters:', myGPP2.kernel.get_hp()
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
-    #yi2 = myGPP2( xi2 )    
-    yi2, yi2_grad = myGPP2( xi2, grad=True )
+    yi2, yi2_grad = myGPP2( xi2, grad=True )  
     print 'Example 2:'
     print 'x = ', xi2
     print 'y = ', yi2
@@ -625,8 +652,17 @@ if __name__ == "__main__":
     Yi1, Yi1std = myGPP1(Xi1, infer_std=True, sum_terms=1)
     Yi1, Yi1std = Yi1.reshape(-1), Yi1std.reshape(-1)
     
-    Xs1 = (xi1 + 0.05*array([-1.0, 1.0])).reshape(-1,1)
-    Ys1 = (yi1 + yi1_grad*0.05*array([-1.0, 1.0])).reshape(-1,1)
+    Xig1 = (xi1 + 0.025*array([-1.0, 1.0])).reshape(-1,1)
+    Yig1 = (yi1 + yi1_grad*0.025*array([-1.0, 1.0])).reshape(-1,1)
+    Xdg1 = Xd1 + 0.025*array([-1.0, 1.0])
+    Ydg1 = yi1_ + yi1_grad_*0.025*array([-1.0, 1.0])
+    
+    Xig2_d1 = xi2[0,1] + 0.025*array([-1.0, 1.0])
+    Xig2_d1 = hstack((Xig2_d1.reshape(-1,1), array([[xi2[1,1]], [xi2[1,1]]])))
+    Xig2_d2 = xi2[1,1] + 0.025*array([-1.0, 1.0])
+    Xig2_d2 = hstack((array([[xi2[0,1]], [xi2[0,1]]]), Xig2_d2.reshape(-1,1)))
+    Yig2 = yi2[1] + yi2_grad[1,:].reshape(-1,1)*0.025*array([-1.0, 1.0])
+    
     
     fig1 = plt.figure(figsize=(5, 3), dpi=150)
     p1, = plt.plot(Xd1, Yd1, 'ko', label='Data')
@@ -635,7 +671,9 @@ if __name__ == "__main__":
     p3 = plt.Rectangle((0.0, 0.0), 1.0, 1.0, facecolor='blue',
                        alpha=0.25, label='Uncertainty (one std.)')
     p4, = plt.plot(xi1, yi1, 'ro', label='Example regression point')
-    p5 = plt.plot(Xs1, Ys1, 'r-', linewidth=3.0, label='Inferred slope') 
+    p5 = plt.plot(Xig1, Yig1, 'r-', linewidth=3.0, label='Inferred slope') 
+    p6 = plt.plot(Xdg1[0,:], Ydg1[0,:], 'r-', Xdg1[1,:], Ydg1[1,:], 'r-', 
+                  Xdg1[2,:], Ydg1[2,:], 'r-', linewidth=3.0)
     fig1.subplots_adjust(left=0.15, right=0.95, bottom=0.15, top=0.9)
     plt.title('Example 1', fontsize=16)
     plt.xlabel('Independent Variable, X', fontsize=12)
@@ -659,6 +697,8 @@ if __name__ == "__main__":
     ax.plot_surface(Xi_1, Xi_2, reshape(Yi2-Yi2std[1], Ni), alpha=0.25,
                     linewidth=0.25, color='black', rstride=1, cstride=1)
     ax.scatter(Xd2[:, 0], Xd2[:, 1], Yd2, c='black', s=35)
+    ax.plot(Xig2_d1[0,:], Xig2_d1[1,:], Yig2[0,:], 'r-', linewidth=3.0)
+    ax.plot(Xig2_d2[0,:], Xig2_d2[1,:], Yig2[1,:], 'r-', linewidth=3.0)
     ax.set_zlim([0.0, 1.0])
     ax.set_title('Example 2', fontsize=16)
     ax.set_xlabel('Independent Variable, X1', fontsize=12)
