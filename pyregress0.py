@@ -353,7 +353,7 @@ class GPP:
     
     
     def inference(self, Xi, infer_std=False, untransform=True, sum_terms=True,
-                  exclude_mean=False):
+                  exclude_mean=False, grad=False):
         """
         Make inferences (interpolation or regression) at specified locations.
         Limited to a single value of each hyper-parameters.
@@ -397,7 +397,7 @@ class GPP:
             will also be applied to Xi data.
         """
         
-        # TODO: calculation of the posterior mean of gradient and Hessian.
+        # TODO: calculation of the posterior mean of gradient and Hessian.        
         
         # Independent variables
         if Xi.ndim == 1:
@@ -408,13 +408,33 @@ class GPP:
         
         # Mixed i-d kernel & inference of posterior mean
         Rid = self._radius(Xi, self.Xd)
-        Kid = self.kernel(Rid, block_diag=False, sum_terms=sum_terms)
+        
+        if grad is False:
+            Kid = self.kernel(Rid, block_diag=False, sum_terms=sum_terms)
+        elif grad is True:
+            Kid, Kid_grad = self.kernel(Rid, block_diag=False, 
+                                        sum_terms=sum_terms, grad_r=grad)
+        else:
+            Kid, Kid_grad, Kid_hess = self.kernel(Rid, block_diag=False, 
+                                                  sum_terms=sum_terms, 
+                                                  grad_r=grad)
+        
         if self.basis is None or exclude_mean:
             post_mean = Kid.dot(self.invKdd_Yd)
         else:
             post_mean = Kid.dot(self.invKdd_Yd - self.invKdd_HdTh)
             Nth, Hi = self._basis(Xi)
             post_mean += Hi.dot(self.Th)
+            
+        if (grad is True) or (grad is 'Hess'):
+            post_mean_grad = empty((Rid.shape[2],Rid.shape[2]))
+            for i in xrange(Rid.shape[2]):
+                post_mean_grad[:,i] = Kid_grad[:,:,i].dot(self.invKdd_Yd).reshape(Rid.shape[2])
+        if grad is 'Hess':
+            post_mean_hess = empty((Rid.shape[2],Rid.shape[2],Rid.shape[2]))
+            for i in xrange(Rid.shape[2]):
+                for j in xrange(Rid.shape[2]):
+                    post_mean_hess[i,j] = Kid_hess[:,:,i,j].dot(self.invKdd_Yd)
         
         # Dependent variable
         if self.prior_mean is not None and not exclude_mean:
@@ -446,15 +466,21 @@ class GPP:
             else:
                 post_mean = self.trans(post_mean, inverse=True)
         
+        if grad is True:
+            post_mean = post_mean, post_mean_grad
+        if grad is 'Hess':
+            post_mean = post_mean, post_mean_grad, post_mean_hess
+        
         if not infer_std:
             return post_mean
         elif infer_std == 'covar':
             return post_mean, post_covar
         else:
             return post_mean, post_std
+                
     
-    
-    def sample(self, Xs, Nsamples=1, sum_terms=True, exclude_mean=False):
+    def sample(self, Xs, Nsamples=1, sum_terms=True, exclude_mean=False, 
+               grad=False):
         """
         Sample the Gassian process at specified locations.
         
@@ -486,7 +512,14 @@ class GPP:
         """
         Nx = Xs.shape[0]
         Ys_post, Cov = self.inference(Xs, infer_std='covar',
-                                sum_terms=sum_terms, exclude_mean=exclude_mean)
+                                sum_terms=sum_terms, exclude_mean=exclude_mean,
+                                grad=grad)
+        if grad is True:
+            Ys_post, Ys_post_grad = Ys_post
+        if grad is 'Hess':
+            Ys_post, Ys_post_grad, Ys_post_hess = Ys_post
+        
+        
         Z = randn(Nx, Nsamples)
         U,S,V = svd(Cov)
         sig = U.dot(diag(sqrt(S)))
@@ -496,7 +529,12 @@ class GPP:
             Ys[:, i] += Ys_post[:, 0]
         if self.trans is not None:
             Ys = self.trans(Ys, inverse=True)
-        return Ys
+        if grad is False:
+            return Ys
+        if grad is True:
+            return Ys, Ys_post_grad
+        if grad is 'Hess':
+            return Ys, Ys_post_grad, Ys_post_hess
 
 
 def cho_factor_gen(A, lower=False, **others):
@@ -558,9 +596,11 @@ if __name__ == "__main__":
     # Simple case, 1D with three data points and one regression point
     Xd1 = array([[0.1], [0.3], [0.6]])
     Yd1 = array([[0.0], [1.0], [0.5]])
-    myGPP1 = GPP( Xd1, Yd1, Noise(w=0.1) + SquareExp(w=0.75, l=0.25) )
+    #myGPP1 = GPP( Xd1, Yd1, Noise(w=0.1) + SquareExp(w=0.75, l=0.25) )
+    myGPP1 = GPP( Xd1, Yd1, SquareExp(w=0.75, l=0.25) )
     xi1 = array([[0.2]])
-    yi1 = myGPP1( xi1 )
+    #yi1 = myGPP1( xi1 )
+    yi1, yi1_grad = myGPP1( xi1, grad=True )
     print 'Example 1:'
     print 'x = ', xi1, ',  y = ', yi1
     
@@ -573,7 +613,8 @@ if __name__ == "__main__":
     myGPP2 = GPP(Xd2, Yd2, K2, explicit_basis=[0, 1], transform='Probit')
     print 'Optimized value of the hyper-parameters:', myGPP2.kernel.get_hp()
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
-    yi2 = myGPP2( xi2 )
+    #yi2 = myGPP2( xi2 )    
+    yi2, yi2_grad = myGPP2( xi2, grad=True )
     print 'Example 2:'
     print 'x = ', xi2
     print 'y = ', yi2
@@ -584,19 +625,22 @@ if __name__ == "__main__":
     Yi1, Yi1std = myGPP1(Xi1, infer_std=True, sum_terms=1)
     Yi1, Yi1std = Yi1.reshape(-1), Yi1std.reshape(-1)
     
+    Xs1 = (xi1 + 0.05*array([-1.0, 1.0])).reshape(-1,1)
+    Ys1 = (yi1 + yi1_grad*0.05*array([-1.0, 1.0])).reshape(-1,1)
+    
     fig1 = plt.figure(figsize=(5, 3), dpi=150)
-    p1, = plt.plot(Xd1, Yd1, 'ko')
-    p2, = plt.plot(Xi1, Yi1, 'b-', linewidth=2.0)
+    p1, = plt.plot(Xd1, Yd1, 'ko', label='Data')
+    p2, = plt.plot(Xi1, Yi1, 'b-', linewidth=2.0, label='Inferred mean')
     plt.fill_between(Xi1, Yi1-Yi1std, Yi1+Yi1std, alpha=0.25)
-    p3 = plt.Rectangle((0.0, 0.0), 1.0, 1.0, facecolor='blue', alpha=0.25)
-    p4, = plt.plot(xi1, yi1, 'ro')
+    p3 = plt.Rectangle((0.0, 0.0), 1.0, 1.0, facecolor='blue',
+                       alpha=0.25, label='Uncertainty (one std.)')
+    p4, = plt.plot(xi1, yi1, 'ro', label='Example regression point')
+    p5 = plt.plot(Xs1, Ys1, 'r-', linewidth=3.0, label='Inferred slope') 
     fig1.subplots_adjust(left=0.15, right=0.95, bottom=0.15, top=0.9)
     plt.title('Example 1', fontsize=16)
     plt.xlabel('Independent Variable, X', fontsize=12)
     plt.ylabel('Dependent Variable, Y', fontsize=12)
-    plt.legend([p1, p2, p3, p4], ('Data', 'Inferred mean',
-               'Uncertainty (one std.)', 'Example regression point'),
-               numpoints=1, loc='best', prop={'size':8})
+    plt.legend(loc='best', numpoints=1, prop={'size':8})
 
     # fig. example 2
     Ni = (30, 30)
@@ -605,7 +649,7 @@ if __name__ == "__main__":
     Xi_1, Xi_2 = meshgrid(xi_1, xi_2, indexing='ij')
     Xi2 = hstack([Xi_1.reshape((-1, 1)), Xi_2.reshape((-1, 1))])
     Yi2, Yi2std = myGPP2.inference(Xi2, infer_std=True)
-    
+        
     fig = plt.figure(figsize=(7, 5), dpi=150)
     ax = fig.gca(projection='3d')
     ax.plot_surface(Xi_1, Xi_2, Yi2.reshape(Ni), alpha=0.75,
