@@ -450,18 +450,42 @@ class GPP:
             post_mean = Kid.dot(self.invKdd_Yd)
         else:
             post_mean = Kid.dot(self.invKdd_Yd - self.invKdd_HdTh)
-            Nth, Hi = self._basis(Xi)
+            if grad is False:
+                Nth, Hi = self._basis(Xi)
+            elif grad is True:
+                Nth, Hi, Hpi = self._basis(Xi, grad=grad)
+            else:
+                Nth, Hi, Hpi, Hppi = self._basis(Xi, grad=grad)
+                
             post_mean += Hi.dot(self.Th)
             
         if (grad is True) or (grad is 'Hess'):
             post_mean_grad = empty((Rid.shape[0],Rid.shape[2]))
-            for i in xrange(Rid.shape[2]):
-                post_mean_grad[:,i] = Kid_grad[:,:,i].dot(self.invKdd_Yd).reshape(-1)
+            if self.basis is None or exclude_mean:            
+                for i in xrange(Rid.shape[2]):
+                    post_mean_grad[:,i] = \
+                        Kid_grad[:,:,i].dot(self.invKdd_Yd).reshape(-1)
+            else:
+                for i in xrange(Rid.shape[2]):
+                    post_mean_grad[:,i] = \
+                        Kid_grad[:,:,i].dot(self.invKdd_Yd-
+                                            self.invKdd_HdTh).reshape(-1)
+                post_mean_grad += Hpi.dot(self.Th)
+                        
         if grad is 'Hess':
             post_mean_hess = empty((Rid.shape[0],Rid.shape[2],Rid.shape[2]))
-            for i in xrange(Rid.shape[2]):
-                for j in xrange(Rid.shape[2]):
-                    post_mean_hess[:,i,j] = Kid_hess[:,:,i,j].dot(self.invKdd_Yd).reshape(-1)
+            if self.basis is None or exclude_mean:            
+                for i in xrange(Rid.shape[2]):
+                    for j in xrange(Rid.shape[2]):
+                        post_mean_hess[:,i,j] = \
+                            Kid_hess[:,:,i,j].dot(self.invKdd_Yd).reshape(-1)
+            else:
+                for i in xrange(Rid.shape[2]):
+                    for j in xrange(Rid.shape[2]):
+                        post_mean_hess[:,i,j] = \
+                            Kid_hess[:,:,i,j].dot(self.invKdd_Yd - 
+                                                self.invKdd_HdTh).reshape(-1)
+                post_mean_hess += Hppi.dot(self.Th)
         
         # Dependent variable
         if self.prior_mean is not None and not exclude_mean:
