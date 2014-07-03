@@ -30,15 +30,15 @@ Reading the code and development:
 __all__ = ['GPP']
 
 #from termcolor import colored  # may not work on windows
-from numpy import (ndarray, array, empty, ones, eye, tile, hstack,
-                   maximum, diag, sum, sqrt, resize, std, shape, zeros)
+from numpy import (array, diag, empty, eye, hstack, maximum, ndarray, ones,
+                   resize, shape, sqrt, std, sum, tile, zeros)                   
 from numpy.linalg.linalg import LinAlgError, svd
 from numpy.random import randn
-from scipy import pi, log
+from scipy import log, pi
 from scipy.linalg import cho_factor, cho_solve
 
 from kernels import Kernel
-from transforms import BaseTransform, Logarithm, Probit, ProbitBeta, Logit
+from transforms import BaseTransform, Logarithm, Logit,  Probit, ProbitBeta
 from multi_newton import MD_Newton
 
 HLOG2PI = 0.5*log(2.0*pi)
@@ -207,7 +207,7 @@ class GPP:
             j += 1
         if self.basis.count(1):
             for ix in xrange(self.Nx):
-                Hp[:, ix, j+ix] = 1.0
+                Hp[:, ix, j] = 1.0
                 j += 1
         if self.basis.count(2):
             for ix in xrange(self.Nx):
@@ -370,11 +370,9 @@ class GPP:
             for i in xrange(len(bounds)/2)]
         
         # Perform minimization
-        MD_Newton(self.hyper_posterior, all_hyper, args='Hess',
+        MD_Newton(self.hyper_posterior, all_hyper,
                   options={'tol':1e-6, 'maxiter':200, 'bounds':(lo, hi)})
-        #multi_Dimensional_Newton(self.hyper_posterior, all_hyper, args='Hess',
-        #                         options={'tol':1e-3, 'maxiter':200})
-
+        
         all_hyper, bounds = self.kernel._map_hyper(all_hyper, unmap=True)
         return self, all_hyper
     
@@ -470,7 +468,8 @@ class GPP:
                     post_mean_grad[:,i] = \
                         Kid_grad[:,:,i].dot(self.invKdd_Yd-
                                             self.invKdd_HdTh).reshape(-1)
-                post_mean_grad += Hpi.dot(self.Th)
+                post_mean_grad[:,:] += \
+                    Hpi.dot(self.Th).reshape(shape(post_mean_grad))
                         
         if grad is 'Hess':
             post_mean_hess = empty((Rid.shape[0],Rid.shape[2],Rid.shape[2]))
@@ -485,7 +484,8 @@ class GPP:
                         post_mean_hess[:,i,j] = \
                             Kid_hess[:,:,i,j].dot(self.invKdd_Yd - 
                                                 self.invKdd_HdTh).reshape(-1)
-                post_mean_hess += Hppi.dot(self.Th)
+                post_mean_hess[:,:,:] += \
+                            Hppi.dot(self.Th).reshape(shape(post_mean_hess))
         
         # Dependent variable
         if self.prior_mean is not None and not exclude_mean:
@@ -661,7 +661,7 @@ if __name__ == "__main__":
     Xd2 = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
                  [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
-    K2 =  RatQuad(w=0.6, l=LogNormal(guess=0.3, std=0.25), alpha=1.0)
+    K2 =  RatQuad(w=0.6, l=LogNormal(guess=0.3, std=0.25),alpha=1.0)
     myGPP2 = GPP(Xd2, Yd2, K2, explicit_basis=[0, 1], transform='Probit')
     print 'Optimized value of the hyper-parameters:', myGPP2.kernel.get_hp()
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
@@ -681,11 +681,11 @@ if __name__ == "__main__":
     Xdg1 = Xd1 + 0.025*array([-1.0, 1.0])
     Ydg1 = yi1_ + yi1_grad_*0.025*array([-1.0, 1.0])
     
-    Xig2_d1 = xi2[0,1] + 0.025*array([-1.0, 1.0])
-    Xig2_d1 = hstack((Xig2_d1.reshape(-1,1), array([[xi2[1,1]], [xi2[1,1]]])))
-    Xig2_d2 = xi2[1,1] + 0.025*array([-1.0, 1.0])
-    Xig2_d2 = hstack((array([[xi2[0,1]], [xi2[0,1]]]), Xig2_d2.reshape(-1,1)))
-    Yig2 = yi2[1] + yi2_grad[1,:].reshape(-1,1)*0.025*array([-1.0, 1.0])
+    #Xig2_d1 = xi2[0,1] + 0.025*array([-1.0, 1.0])
+    #Xig2_d1 = hstack((Xig2_d1.reshape(-1,1), array([[xi2[1,1]], [xi2[1,1]]])))
+    #Xig2_d2 = xi2[1,1] + 0.025*array([-1.0, 1.0])
+    #Xig2_d2 = hstack((array([[xi2[0,1]], [xi2[0,1]]]), Xig2_d2.reshape(-1,1)))
+    #Yig2 = yi2[1] + yi2_grad[1,:].reshape(-1,1)*0.025*array([-1.0, 1.0])
     
     
     fig1 = plt.figure(figsize=(5, 3), dpi=150)
@@ -721,8 +721,8 @@ if __name__ == "__main__":
     ax.plot_surface(Xi_1, Xi_2, reshape(Yi2-Yi2std[1], Ni), alpha=0.25,
                     linewidth=0.25, color='black', rstride=1, cstride=1)
     ax.scatter(Xd2[:, 0], Xd2[:, 1], Yd2, c='black', s=35)
-    ax.plot(Xig2_d1[0,:], Xig2_d1[1,:], Yig2[0,:], 'r-', linewidth=3.0)
-    ax.plot(Xig2_d2[0,:], Xig2_d2[1,:], Yig2[1,:], 'r-', linewidth=3.0)
+    #ax.plot(Xig2_d1[:,0], Xig2_d1[:,1], Yig2[0,:], 'r-', linewidth=3.0)
+    #ax.plot(Xig2_d2[:,0], Xig2_d2[:,1], Yig2[1,:], 'r-', linewidth=3.0)
     ax.set_zlim([0.0, 1.0])
     ax.set_title('Example 2', fontsize=16)
     ax.set_xlabel('Independent Variable, X1', fontsize=12)
