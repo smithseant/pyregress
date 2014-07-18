@@ -109,6 +109,7 @@ class Kernel:
                     else:
                         hp_mapped[i] = self.hp[i].guess
                         self.p[hp] = hp_mapped[i:i+1]
+                    bounds_mapped = hstack((bounds_mapped,(self.p_bounds[i])))
                 else:
                     if unmap == True:
                         self.hp[i].guess = self.p['l'][hp]
@@ -116,7 +117,13 @@ class Kernel:
                     else:
                         hp_mapped[i] = self.hp[i].guess
                         self.p['l'][hp] = hp_mapped[i:i+1]
-                bounds_mapped = hstack((bounds_mapped,(self.p_bounds[i])))
+                    if hp != 0:
+                        bounds_mapped = hstack((bounds_mapped,
+                                                (self.p_bounds[i-hp])))
+                    else:
+                        bounds_mapped = hstack((bounds_mapped,
+                                                (self.p_bounds[i])))
+
         #return (self, hp_mapped)
         return hp_mapped, bounds_mapped
 
