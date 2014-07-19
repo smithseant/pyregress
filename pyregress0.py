@@ -267,13 +267,13 @@ class GPP:
         """   
         Nd, Nhp = self.Nd, self.kernel.Nhp
         if not grad:
-            K = self.kernel(self.Rdd, data=True)
+            K = self.kernel(self.Rdd, block_diag=True)
             lnprior = self.kernel._ln_priors(params)
         elif grad != 'Hess':
-            K, Kp = self.kernel(self.Rdd, grad_hp=grad, data=True)
+            K, Kp = self.kernel(self.Rdd, grad_hp=grad, block_diag=True)
             lnprior, dlnprior = self.kernel._ln_priors(params, grad=grad)
         else:
-            K, Kp, Kpp = self.kernel(self.Rdd, grad_hp=grad, data=True)
+            K, Kp, Kpp = self.kernel(self.Rdd, grad_hp=grad, block_diag=True)
             lnprior, dlnprior, d2lnprior = \
                         self.kernel._ln_priors(params, grad=grad)
         try:
