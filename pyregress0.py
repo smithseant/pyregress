@@ -401,6 +401,9 @@ class GPP:
             If True, all terms are included.
         exclude_mean:  bool (optional),
             if False include prior mean and basis functions, otherwise don't.
+        grad:  bool or 'Hess' (optional),
+            if True or 'Hess' return the gradient of the dependent variable,
+            if 'Hess' also return the second derivatives.
         
         Returns
         -------
@@ -457,7 +460,7 @@ class GPP:
                 
             post_mean += Hi.dot(self.Th)
             
-        if (grad is True) or (grad is 'Hess'):
+        if grad is True or grad is 'Hess':
             post_mean_grad = empty((Rid.shape[0],Rid.shape[2]))
             if self.basis is None or exclude_mean:            
                 for i in xrange(Rid.shape[2]):
