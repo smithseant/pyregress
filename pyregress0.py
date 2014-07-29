@@ -67,7 +67,8 @@ class GPP:
      [ 0.78029862]]
     """
     def __init__(self, Xd, Yd, Cov, Xscaling=None,
-                 Ymean=None, explicit_basis=None, transform=None):
+                 Ymean=None, explicit_basis=None, transform=None,
+                 minimize_hp=True):
         """
         Create a GPP object and prepare for inference.
         
@@ -159,7 +160,7 @@ class GPP:
         # Do as many calculations as possible in preparation for the inference
         # -- Create a separate function for the following? --
         self.Rdd = self._radius(self.Xd, self.Xd)
-        if (self.kernel.Nhp > 0):
+        if (self.kernel.Nhp > 0 and minimize_hp is True):
             self.maximize_hyper_posterior()
         self.Kdd = self.kernel(self.Rdd, block_diag=True)
         self.LKdd = cho_factor_gen(self.Kdd)
@@ -635,7 +636,7 @@ class InputError(Error):  # -- not a ValueError? --
 
 
 if __name__ == "__main__":
-    from numpy import linspace, hstack, meshgrid, reshape
+    from numpy import linspace, hstack, meshgrid, reshape, vstack
     import matplotlib as mpl
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
@@ -650,14 +651,14 @@ if __name__ == "__main__":
     # Simple case, 1D with three data points and one regression point
     Xd1 = array([[0.1], [0.3], [0.6]])
     Yd1 = array([[0.0], [1.0], [0.5]])
-    #myGPP1 = GPP( Xd1, Yd1, Noise(w=0.1) + SquareExp(w=0.75, l=0.25) )
-    myGPP1 = GPP( Xd1, Yd1, SquareExp(w=0.75, l=0.25) )
+    myGPP1 = GPP( Xd1, Yd1, Noise(w=0.1) + SquareExp(w=0.75, l=0.25) )
+    #myGPP1 = GPP( Xd1, Yd1, SquareExp(w=0.75, l=0.25) )
     xi1 = array([[0.2]])
     #yi1 = myGPP1( xi1 )
-    yi1, yi1_grad = myGPP1( xi1, grad=True )
+    yi1, yi1_grad = myGPP1( xi1, grad=True, sum_terms=[1] )
     print 'Example 1:'
     print 'x = ', xi1, ',  y = ', yi1
-    yi1_, yi1_grad_, yi1_hess_ = myGPP1( Xd1, grad='Hess' )
+    yi1_, yi1_grad_, yi1_hess_ = myGPP1( Xd1, grad='Hess', sum_terms=[1] )
     
     # Example 2:
     # 2D with six data points and two regression points
@@ -684,11 +685,12 @@ if __name__ == "__main__":
     Xdg1 = Xd1 + 0.025*array([-1.0, 1.0])
     Ydg1 = yi1_ + yi1_grad_*0.025*array([-1.0, 1.0])
     
-    #Xig2_d1 = xi2[0,1] + 0.025*array([-1.0, 1.0])
-    #Xig2_d1 = hstack((Xig2_d1.reshape(-1,1), array([[xi2[1,1]], [xi2[1,1]]])))
-    #Xig2_d2 = xi2[1,1] + 0.025*array([-1.0, 1.0])
-    #Xig2_d2 = hstack((array([[xi2[0,1]], [xi2[0,1]]]), Xig2_d2.reshape(-1,1)))
-    #Yig2 = yi2[1] + yi2_grad[1,:].reshape(-1,1)*0.025*array([-1.0, 1.0])
+
+    #Xig2_d1 = vstack((xi2[0,1]+0.025*array([-1.0, 1.0]),
+    #                  array([xi2[1,1],xi2[1,1]])))
+    #Xig2_d2 = vstack((array([xi2[0,1],xi2[0,1]]),
+    #                  xi2[1,1]+0.025*array([-1.0, 1.0])))
+    #Yig2 = yi2[1] + yi2_grad[:,1].reshape(-1,1)*0.025*array([-1.0, 1.0])
     
     
     fig1 = plt.figure(figsize=(5, 3), dpi=150)
@@ -724,8 +726,8 @@ if __name__ == "__main__":
     ax.plot_surface(Xi_1, Xi_2, reshape(Yi2-Yi2std[1], Ni), alpha=0.25,
                     linewidth=0.25, color='black', rstride=1, cstride=1)
     ax.scatter(Xd2[:, 0], Xd2[:, 1], Yd2, c='black', s=35)
-    #ax.plot(Xig2_d1[:,0], Xig2_d1[:,1], Yig2[0,:], 'r-', linewidth=3.0)
-    #ax.plot(Xig2_d2[:,0], Xig2_d2[:,1], Yig2[1,:], 'r-', linewidth=3.0)
+    #ax.plot(Xig2_d1[0,:], Xig2_d1[1,:], Yig2[1,:], 'r-', linewidth=3.0)
+    #ax.plot(Xig2_d2[0,:], Xig2_d2[1,:], Yig2[0,:], 'r-', linewidth=3.0)
     ax.set_zlim([0.0, 1.0])
     ax.set_title('Example 2', fontsize=16)
     ax.set_xlabel('Independent Variable, X1', fontsize=12)

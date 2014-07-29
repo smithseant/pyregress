@@ -59,6 +59,7 @@ class Kernel:
             elif isinstance(val, HyperPrior):
                 self.hp += [val]
                 self.hp_id += [key]
+                self.p[key] = val.guess
             elif isinstance(val, list):
                 self.p[key] = [None]*len(val)
                 for i in range(len(val)):
@@ -307,7 +308,7 @@ class KernelSum(Kernel):
         if grad_hp is not False:
             if grad_hp != 'Hess':
                 K = zeros(Rk.shape[:2])
-                Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
+                Kgrad = zeros((Rk.shape[0], Rk.shape[1], self.Nhp))
                 h = 0
                 for kern in terms:
                     K_t, Kgrad[:,:,h:h+kern.Nhp] = kern(Rk, grad_hp=grad_hp,
@@ -317,7 +318,7 @@ class KernelSum(Kernel):
                 return K, Kgrad
             else:
                 K = zeros(Rk.shape[:2])
-                Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
+                Kgrad = zeros((Rk.shape[0], Rk.shape[1], self.Nhp))
                 Khess = zeros((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
                 h = 0
                 for kern in terms:
@@ -330,7 +331,7 @@ class KernelSum(Kernel):
         if grad_r is not False:
             if grad_r != 'Hess':
                 K = zeros(Rk.shape[:2])
-                Kgrad = empty(Rk.shape)
+                Kgrad = zeros(Rk.shape)
                 h = 0
                 for kern in terms:
                     Kt, Ktgrad = kern(Rk, grad_r=grad_r, **kwargs)
@@ -339,7 +340,7 @@ class KernelSum(Kernel):
                 return K, Kgrad
             else:
                 K = zeros(Rk.shape[:2])
-                Kgrad = empty(Rk.shape)
+                Kgrad = zeros(Rk.shape)
                 Khess = zeros((Rk.shape[0],Rk.shape[1],Rk.shape[2],Rk.shape[2]))
                 h = 0
                 for kern in terms:

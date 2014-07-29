@@ -34,15 +34,15 @@ def radius(X, Y, aniso=None):
             Rk[:, :, k] /= aniso[k]
     return Rk
 
-X = randn(Nx, 2)*5
+X = randn(Nx, 2)
 #X = hstack((linspace(0.01,1.3,10),linspace(0.05,2.3,10))).reshape(-1,2)
 Rk = radius(X, X)
 
 #my_kernel = Noise(w=Constant(guess=1.5))
 #my_kernel = SquareExp(w=Constant(guess=1.5), l=2.0)
-my_kernel = SquareExp(w=1.5, l=Constant(guess=2.0))
+#my_kernel = SquareExp(w=1.5, l=Constant(guess=2.0))
 #my_kernel = SquareExp(w=Constant(guess=1.5), l=[2.0, 2.5])
-#my_kernel = SquareExp(w=1.5, l=[Constant(guess=2.0), 2.5])
+my_kernel = SquareExp(w=1.5, l=[Constant(guess=2.0), 2.5])
 #my_kernel = SquareExp(w=1.5, l=[2.0, Constant(guess=2.5)])
 #my_kernel = SquareExp(w=Constant(guess=1.5), l=Constant(guess=2.0))
 #my_kernel = SquareExp(w=Constant(guess=1.5), l=[Constant(guess=2.0), 2.5])
@@ -83,24 +83,24 @@ my_kernel = SquareExp(w=1.5, l=Constant(guess=2.0))
 #my_kernel = SquareExp(w=1.5, l=Constant(guess=0.8)) + SquareExp(w=1.5, l=[2.0, Constant(guess=2.5)])
 #my_kernel = SquareExp(w=1.5, l=Constant(guess=0.8)) * SquareExp(w=1.5, l=[Constant(guess=2.0), Constant(guess=2.5)])
 
+#my_hyper = my_kernel.get_hp()
+my_hyper, p_bounds = my_kernel._map_hyper()
+my_gpr = GPP(X, test_func(X), my_kernel, minimize_hp=False)
+my_gpb = GPP(X, test_func(X), my_kernel, explicit_basis=[0, 1],
+             minimize_hp=False)
 
-my_hyper, hyper_bounds = my_kernel._map_hyper()
-my_gpr = GPP(X, test_func(X), my_kernel)
-my_gpb = GPP(X, test_func(X), my_kernel, explicit_basis=[0, 1])
-
-
-K, Kp, Kpp = my_kernel(Rk, grad_hp='Hess', data=True)
+K, Kp, Kpp = my_kernel(Rk, grad_hp='Hess', block_diag=True)
 P, Pp, Ppp = my_gpr.hyper_posterior(my_hyper, grad='Hess')
 B, Bp, Bpp = my_gpb.hyper_posterior(my_hyper, grad='Hess')
 
 my_hyper[0] += dx
-Kplus = my_kernel(Rk, data=True)
+Kplus = my_kernel(Rk, block_diag=True)
 Pplus = my_gpr.hyper_posterior(my_hyper, grad=False)
 Bplus = my_gpb.hyper_posterior(my_hyper, grad=False)
 my_hyper[0] -= dx
 
 my_hyper[0] -= dx
-Kminus = my_kernel(Rk, data=True)
+Kminus = my_kernel(Rk, block_diag=True)
 Pminus = my_gpr.hyper_posterior(my_hyper, grad=False)
 Bminus = my_gpb.hyper_posterior(my_hyper, grad=False)
 my_hyper[0] += dx
@@ -120,12 +120,12 @@ print 'Posterior (with basis func.) Hessian Error (1st dim.):', abs((Bdd[0,0] - 
 
 if len(my_hyper) > 1:
     my_hyper[1] += dx
-    Kplus = my_kernel(Rk, data=True)
+    Kplus = my_kernel(Rk, block_diag=True)
     Pplus = my_gpr.hyper_posterior(my_hyper, grad=False)
     my_hyper[1] -= dx
     
     my_hyper[1] -= dx
-    Kminus = my_kernel(Rk, data=True)
+    Kminus = my_kernel(Rk, block_diag=True)
     Pminus = my_gpr.hyper_posterior(my_hyper, grad=False)
     my_hyper[1] += dx
         
@@ -140,28 +140,28 @@ if len(my_hyper) > 1:
     
     my_hyper[0] += dx
     my_hyper[1] += dx
-    Kplusplus = my_kernel(Rk, data=True)
+    Kplusplus = my_kernel(Rk, block_diag=True)
     Pplusplus = my_gpr.hyper_posterior(my_hyper, grad=False)
     my_hyper[0] -= dx
     my_hyper[1] -= dx
     
     my_hyper[0] += dx
     my_hyper[1] -= dx
-    Kplusminus = my_kernel(Rk, data=True)
+    Kplusminus = my_kernel(Rk, block_diag=True)
     Pplusminus = my_gpr.hyper_posterior(my_hyper, grad=False)
     my_hyper[0] -= dx
     my_hyper[1] += dx
     
     my_hyper[0] -= dx
     my_hyper[1] += dx
-    Kminusplus = my_kernel(Rk, data=True)
+    Kminusplus = my_kernel(Rk, block_diag=True)
     Pminusplus = my_gpr.hyper_posterior(my_hyper, grad=False)
     my_hyper[0] += dx
     my_hyper[1] -= dx
     
     my_hyper[0] -= dx
     my_hyper[1] -= dx
-    Kminusminus = my_kernel(Rk, data=True)
+    Kminusminus = my_kernel(Rk, block_diag=True)
     Pminusminus = my_gpr.hyper_posterior(my_hyper, grad=False)
     my_hyper[0] += dx
     my_hyper[1] += dx
