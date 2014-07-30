@@ -53,7 +53,7 @@ class LogNormal(HyperPrior):
         self.guess = mean = guess
         if  args.has_key( "std" ):
             self._mu = log(mean**2/ 
-                        (args["std"]**2 + mean**2))
+                        sqrt(args["std"]**2 + mean**2))
             self._sigma = sqrt(log(1 + args["std"]**2/mean**2))   
     
     def auto_fill(self,Rk2):
