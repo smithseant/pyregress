@@ -117,7 +117,7 @@ class GPP:
         if not Xscaling:
             self.xscale = ones(self.Nx)
         elif Xscaling == 'range':
-            self.xscale = (Xd.max(0) - Xd.min(0))**2
+            self.xscale = Xd.max(0) - Xd.min(0)
         elif Xscaling == 'std':
             self.xscale = std(Xd, axis=0)
         elif Xscaling.shape == (self.Nx,):
