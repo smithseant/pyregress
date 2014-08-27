@@ -68,6 +68,7 @@ class Kernel:
                     elif isinstance(val[i], HyperPrior):
                         self.hp += [val[i]]
                         self.hp_id += [i]
+                        self.p[key][i] = val[i].guess
     
     def __add__(self, other):
         """Overload '+' so Kernel objects can be added."""
@@ -456,7 +457,7 @@ class SquareExp(Kernel):
     Squared-exponential kernel object.
     .. math::
         K(R; w, l) = w^2*\exp( -1/2 *(R/l)^2 ),
-    whith the parameters of weight, w, and length, l. For multiple
+    with the parameters of weight, w, and length, l. For multiple
     dimensions, the length can be a single value applied to all directions
     or it can be a list with a separate value in each direction.
     Squared-exponential is continuous and infinitely differentiable.

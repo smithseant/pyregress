@@ -140,11 +140,11 @@ class Beta(HyperPrior):
 class Gamma(HyperPrior):
     """Gamma distribution class for hyper-parameter priors
         f(x;k,theta) = x^(k-1) * exp(-x/theta)/(theta^k * Gamma(k))"""
-    def __init__(self, k, theta, guess=1.):
+    def __init__(self, mean, std, guess=1.):
         self.guess = guess
-        self._k = k
-        self._theta = theta
-        self._demonenator = k*log(theta) +  log(gamma(k))
+        self._k = (mean/std)**2
+        self._theta = std**2/mean
+        self._demonenator = self._k*log(self.theta) +  log(gamma(self._k))
         
     def __call__(self, x=None, grad=False):
         if x == None:
