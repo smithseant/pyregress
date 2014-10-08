@@ -372,7 +372,8 @@ class GPP:
         
         # Perform minimization
         MD_Newton(self.hyper_posterior, all_hyper,
-                  options={'tol':1e-6, 'maxiter':200, 'bounds':(lo, hi)})
+                  options={'tol':1e-6, 'maxiter':200, 'bounds':(lo, hi),
+                           'repress text':False})
         
         all_hyper, bounds = self.kernel._map_hyper(all_hyper, unmap=True)
         return self, all_hyper

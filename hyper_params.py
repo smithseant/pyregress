@@ -10,9 +10,9 @@ Provided prior distributions (log(P) and d_log(P))
     Marginalized class also created to hold space of hyper-parameters that are 
     not being explored.
 """
-__all__ = ['HyperPrior', 'LogNormal', 'Constant', 'Jeffreys', 'Beta', 'Gamma']
+__all__ = ['HyperPrior', 'LogNormal', 'Constant', 'Jeffreys', 'Beta', 'Gamma', 'Bounded']
 
-from numpy import array, sum, divide, concatenate, squeeze, amin, copy
+from numpy import array, sum, divide, concatenate, squeeze, amin, copy, inf
 from numpy import mean as np_mean
 from scipy import log, sqrt, pi
 from scipy.special import gamma
@@ -160,6 +160,33 @@ class Gamma(HyperPrior):
             d2lnpdf = -k/x**2
             return lnpdf, dlnpdf, d2lnpdf
             
+class Bounded(HyperPrior):
+    """Bounded class for hyper-parameter
+       f = const if inside of bounds, else no probability
+       Meant for use when optimizing likelihood is desired"""
+       
+    def __init__(self, low_b=-inf, high_b=inf, guess=1.):
+        self.low  = low_b
+        self.high = high_b
+        self.guess = guess
+    
+    def __call__(self, x=None, grad=False):
+        if x == None:
+            x = self.guess
+
+        in_bounds = x > self.low and x < self.high
+        if in_bounds:
+            val = 1.0
+        else:
+            val = -inf
+            
+        if not grad:
+            return array([val])
+        if grad == True:
+            return array([val]),array([0.0])
+        if grad == 'Hess': 
+            return array([val]),array([0.0]),array([0.0])
+            
 #-----------------------------------------------------------------
 # Additional utilities
             
@@ -169,7 +196,7 @@ class shift_to_zero:
         self._shift = 0.
         self._scale = 1.
     
-    def __call__(self,original_data,scale=False):
+    def __call__(self, original_data, scale=False):
         data = copy(original_data)
         if (data < 0.).any():
             self._shift = amin(data)

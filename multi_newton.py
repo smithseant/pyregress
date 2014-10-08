@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-from numpy import abs, array, concatenate, dot, size, squeeze
+from numpy import abs, array, concatenate, dot, size, squeeze, diag
 from scipy import identity
-from scipy.linalg import eigvals, solve
+from scipy.linalg import eigvals, solve, svd, inv, eig
 from scipy.optimize import line_search
 
 def MD_Newton(function, x, options=None):
@@ -25,6 +25,11 @@ def MD_Newton(function, x, options=None):
         history : time history of minimization (vector, optional), \n
                   also specify as True in options dictionary
 """
+
+    if options.has_key('repress text'):
+        repressText = options['repress text']
+    else:
+        repressText = False
 
     def convergence_crit(x, dx, iteration, boundscount, options=None):
         test1 = test2 = True
@@ -60,13 +65,14 @@ def MD_Newton(function, x, options=None):
          
         # check # of times bounds have been hit
         test3 = (sum(boundscount) < 20)
-            
-        if not test1: 
-            print '--- min tol reached ---'
-        if not test2: 
-            print '--- max iter reached ---' 
-        if not test3: 
-            print '--- hit bounds too many times ---'           
+        
+        if not repressText:
+            if not test1: 
+                print '--- min tol reached ---'
+            if not test2: 
+                print '--- max iter reached ---' 
+            if not test3: 
+                print '--- hit bounds too many times ---'           
         
         return test1 & test2 & test3
         
@@ -161,12 +167,12 @@ def MD_Newton(function, x, options=None):
             if high_bounds[i] == None: 
                 high_bounds[i] = 'inf'
         options['bounds']=(low_bounds,high_bounds)
-        print 'low bounds - ', low_bounds
-        print 'high bounds - ', high_bounds
+        if not repressText:
+            print 'low bounds - ', low_bounds
+            print 'high bounds - ', high_bounds
 
     # 2) Test for convergence
     while convergence_crit(x, dx, iteration, boundscount, options):
-
         # 3) Compute step direction
         f, df, d2f = func(x, grad='Hess')
         if size(df) > 1 and len(d2f) == 1:
@@ -179,13 +185,32 @@ def MD_Newton(function, x, options=None):
             # use steepest decent if Hess matrix is not pos. def.
                 # future work on forcing pos. def. needed
             if not is_pos_def(d2f):
-                beta = abs(d2f).max() * 5. 
+                
+#                U,s,V = svd(d2f)
+#                a_inv = dot(dot(V.T,inv(diag(s))),U.T)
+#                dx = -df.dot(a_inv)
+                
+                # new spectral decomp. conditioning method
+                w, v = eig(d2f) # decompose d2f
+                w = abs(w)      # convert eigenvals to positive
+                delta = 0.001   # minimal eigenval tolerated
+                for i in xrange(len(v)):
+                    if w[i] < delta: # if eigenval below tolerance
+                        w[i] = delta # set eigenval to tolerance
+                d2f = v.dot(diag(w)).dot(v.T) # reconstruct d2f, now pos. def.
+                
+                # Original methods of steepest decent                
+                #beta = abs(d2f).max() * 5. # commented out for debug
             else: 
-                beta = 1e-14 # beta value arbitrarily chosen
-            d2f = ( d2f + beta*identity(len(x)) )/(1.0 + beta)
-            dx = solve(d2f, -df) 
+                # new spectral decomp. conditioning method                
+                d2f = d2f                
+                
+                # Original methods of steepest decent
+#                beta = 1e-14 # beta value arbitrarily chosen
+#                d2f = ( d2f + beta*identity(len(x)) )/(1.0 + beta) 
+            dx = solve(d2f, -df)                               
         dx = squeeze(dx)
-        
+                
         # 4) Line search   
         # if bounds specified use own linesearch, else use scipy's version
         if options.has_key('bounds'):# and options['bounds'][0]==0.:
@@ -204,16 +229,17 @@ def MD_Newton(function, x, options=None):
         x += a*dx
         iteration += 1
         history = concatenate((history, x))
-        
-    print 'Number of iterations - ',iteration
-    print 'Minimized parameters - ',x
-    print 'Initial function value - ',f_init
-    print 'Final function value - ',f
-    print 'Total function change - ',f_init - f
-    if boundscount[0] > 0: 
-        print 'hit low bounds ', boundscount[0],' times'
-    if boundscount[1] > 0: 
-        print 'hit upper bounds ', boundscount[1],' times'
+            
+    if not repressText:   
+        print 'Number of iterations - ',iteration
+        print 'Minimized parameters - ',x
+        print 'Initial function value - ',f_init
+        print 'Final function value - ',f
+        print 'Total function change - ',f_init - f
+        if boundscount[0] > 0: 
+            print 'hit low bounds ', boundscount[0],' times'
+        if boundscount[1] > 0: 
+            print 'hit upper bounds ', boundscount[1],' times'
     if options.has_key('history'):
         history = history.reshape(-1, len(x))
         return history
