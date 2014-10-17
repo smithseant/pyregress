@@ -169,8 +169,8 @@ class Kernel:
         lnprior = 0.0
         if not grad:
             if isinstance(self, KernelSum) or isinstance(self, KernelProd):
+                i = 0                
                 for kern in self.terms:
-                    i = 0
                     for f_prior in kern.hp:
                         lnprior += f_prior(params[i])
                         i += 1
@@ -182,8 +182,8 @@ class Kernel:
         elif grad == True:
             dlnprior = empty(self.Nhp)
             if isinstance(self, KernelSum) or isinstance(self, KernelProd):
+                i = 0
                 for kern in self.terms:
-                    i = 0
                     for f_prior in kern.hp:
                         (lnp, dlnp) = f_prior(params[i], grad)
                         lnprior += lnp
@@ -200,8 +200,8 @@ class Kernel:
             dlnprior = empty(self.Nhp)
             d2lnprior = zeros((self.Nhp, self.Nhp))
             if isinstance(self, KernelSum) or isinstance(self, KernelProd):
+                i = 0                
                 for kern in self.terms:
-                    i = 0
                     for f_prior in kern.hp:
                         lnp, dlnp, d2lnp = f_prior(params[i], grad)
                         lnprior += lnp
