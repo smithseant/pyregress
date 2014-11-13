@@ -139,7 +139,7 @@ def MD_Newton(function, x, options=None):
         return alpha
         
     def is_pos_def(x):
-        return all(eigvals(x) >= 0.0)
+        return all(eigvals(x) > 0.0)
         
     def func(x_input, grad=True):
         tempHolder = x.copy()
@@ -201,9 +201,9 @@ def MD_Newton(function, x, options=None):
                 
                 # Original methods of steepest decent                
                 #beta = abs(d2f).max() * 5. # commented out for debug
-            else: 
+            #else: 
                 # new spectral decomp. conditioning method                
-                d2f = d2f                
+                #d2f = d2f                
                 
                 # Original methods of steepest decent
 #                beta = 1e-14 # beta value arbitrarily chosen
