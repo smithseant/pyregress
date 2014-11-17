@@ -12,18 +12,19 @@ H. Chen et al., "Analysis methods for computer
     Science June 29, 2014.
 """
 
-from numpy import pi, log, zeros, sqrt, abs, ones
+from numpy import pi, log, zeros, sqrt, abs, ones, max
 from numpy.random import permutation
 from pyDOE import lhs
 from pyregress import *
 
-def Borehole(mean, samples=27, permutations=1):
-    '''Borehole( mean, permutations)
+def Borehole(mean, samples=27, permutations=1, errorType='RMSE'):
+    '''Borehole( mean, samples, permutations, errprType)
     
         Input: 
             mean - basis function type ('constant' or 'fl')
             samples - number of samples in lhd
             permutations - number of permutations of lhd desired
+            errorType - type of error returned ('RMSE' or 'MAE')
             
         Output:
             error - array of errors (length = number of permutations)
@@ -145,8 +146,10 @@ def Borehole(mean, samples=27, permutations=1):
         
         # Evaluate GP at test points
         y_test = myGP( lhd_test )
-        error_return[p] = RMSE(output_test, y_test, ybar) # if RMSE desired
-        #error_return[p] = MAE(output_test, y_test, ybar) # if MAE desired
+        if errorType == 'RMSE':
+            error_return[p] = RMSE(output_test, y_test, ybar) # if RMSE desired
+        if errorType == 'MAE':
+            error_return[p] = MAE(output_test, y_test, ybar) # if MAE desired
         #print 'Completed Error Calc with Mean Type -', mean 
         #print 'Error Value - ', error_return[p]
         
@@ -163,21 +166,28 @@ if __name__ == "__main__":
     ''' 
         Can choose to make Latin Hypercube Design (LHD) 
             with 27 or 40 pts by specifying the number of samples
-        Can change the error type from Root Mean Square Error (RMSE) to 
-            maximum absolute error (MAE) within Borehole function above
+        Select from error type Root Mean Square Error (RMSE) or 
+            maximum absolute error (MAE)
     
         With 27 samples the normalized RMSE: 
-            using the constant mean value should be between 0.0 - 0.1.  
+            using the constant mean value should be between 0.0 - 0.1  
             using the full linear mean should be between    0.0 - 0.4
         With 40 samples the normalized RMSE:
             using the constant mean value should be between 0.01 - 0.04
             using the full linear mean should be between    0.01 - 0.04
+        With 27 samples the normalized MAE: 
+            using the constant mean value should be between 0.0 - 0.2  
+            using the full linear mean should be between    0.0 - 0.5
+        With 40 samples the normalized MAE:
+            using the constant mean value should be between 0.0 - 0.11
+            using the full linear mean should be between    0.0 - 0.125
     '''
     
     permutations = 25 # permutations of lhd collumns
-    samples = 40 # use either 40 or 27
+    samples = 27 # use either 40 or 27
     errors_const = zeros(permutations)
     errors_fl    = zeros(permutations)
+    error_type = 'MAE' # type of error ('RMSE' or 'MAE')
     # use constant mean
     errors_const = Borehole('constant', samples, permutations) 
     print 'Completed Constant Permutation'
@@ -185,9 +195,9 @@ if __name__ == "__main__":
     errors_fl     = Borehole('fl', samples, permutations) 
     print 'Completed Full Linear Permutation '
 
-    print 'Root Mean Square Errors Const. Mean - '
+    print '%s Const. Mean - ' %error_type
     print errors_const
-    print 'Root Mean Square Errors Full Linear Mean - '
+    print '%s Full Linear Mean - ' %error_type
     print errors_fl
     
     # Plot
@@ -198,8 +208,11 @@ if __name__ == "__main__":
     plt.xticks([1, 2], 
                ['Constant', 'Full Linear'])
     plt.xlim(0.5, 2.5)
-    plt.ylim(0, 0.1) # use (0, 0.8) for LHD-27 and (0, 0.1) for LHD-40
-    plt.ylabel('Normalized RMSE', fontsize=10) # Can Change to MAE in Borehole
+    if samples == 27: 
+        plt.ylim(0, 0.8) # for LHD-27
+    if samples == 40:
+        plt.ylim(0, 0.1) # for LHD-40
+    plt.ylabel('Normalized %s' %error_type, fontsize=10) 
     plt.title('%i-run mLHD with Gauss Kernel' %samples, fontsize=12)
     plt.show()
     
