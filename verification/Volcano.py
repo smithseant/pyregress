@@ -91,7 +91,7 @@ def Volcano(outputType, mean, errorType):
             mean = [0]
         if mean == 'fl':
             mean = [0, 1] # specified as conts + linear term for all x
-        myKernel = Noise(w=1e-7) + SquareExp(w=Constant(guess=1.0), 
+        myKernel = Noise(w=1e-5) + SquareExp(w=Constant(guess=1.0), 
                                              l=[Constant(guess=1.0),
                                                 Constant(guess=1.0)])
         myGP = GPP( trainData_x, trainData_y, myKernel, explicit_basis=mean )

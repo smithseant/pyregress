@@ -197,8 +197,9 @@ def MD_Newton(function, x, options=None):
                 for i in xrange(len(v)):
                     if w[i] < delta: # if eigenval below tolerance
                         w[i] = delta # set eigenval to tolerance
-                d2f = v.dot(diag(w)).dot(v.T) # reconstruct d2f, now pos. def.
-                
+                # reconstruct d2f, now pos. def.
+                d2f = v.dot(diag(w)).dot(v.T).real 
+
                 # Original methods of steepest decent                
                 #beta = abs(d2f).max() * 5. # commented out for debug
             #else: 
