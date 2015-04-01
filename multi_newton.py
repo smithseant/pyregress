@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from numpy import abs, array, concatenate, dot, size, squeeze, diag
+from numpy import abs, array, concatenate, dot, size, squeeze, diag, float32
 from scipy import identity
 from scipy.linalg import eigvals, solve, svd, inv, eig
 from scipy.optimize import line_search
@@ -7,9 +7,9 @@ from scipy.optimize import line_search
 def MD_Newton(function, x, options=None):
     """
     Multi-Dimensional Newton Solve
-        MD_Newton(function, guess, args, 
-                  options={'tol':1e-6, 'maxiter':200, 'bounds':(lo,hi)}) 
-    
+        MD_Newton(function, guess, args,
+                  options={'tol':1e-6, 'maxiter':200, 'bounds':(lo,hi)})
+
     Inputs:
         function : function being minimized (function), \
             must return (f(params), \
@@ -20,102 +20,105 @@ def MD_Newton(function, x, options=None):
         maxit : maximum number of iterations (int, optional) \n
         bounds : parameter bounds, specify as tuple of lists \n
                  e.i ([low_1, low_2],[high_1, high_2]) \n
-        
+
     Outputs:
         history : time history of minimization (vector, optional), \n
                   also specify as True in options dictionary
 """
 
-    if options.has_key('repress text'):
+    if 'repress text' in options:
         repressText = options['repress text']
     else:
         repressText = False
 
     def convergence_crit(x, dx, iteration, boundscount, options=None):
         test1 = test2 = True
-        # is minimum step size met?  
-        if options.has_key('tol'): 
+        # is minimum step size met?
+        if 'tol' in options:
             _tol = options['tol']
-        else: 
+        else:
             _tol = 1e-6
-        if (x != 0.0).any() or (dx != 0.0).any(): 
+        if (x != 0.0).any() or (dx != 0.0).any():
             test1 = (abs(dx/x) > _tol).any()
-        elif iteration == 0: 
+        elif iteration == 0:
             test1 = True
-        else: 
+        else:
             test1 = (abs(dx) > _tol).any()
         # is maximum number of iterations met
-        if options.has_key('maxiter'):
+        if 'maxiter' in options:
             test2 = iteration < options['maxiter']
-        else: 
+        else:
             test2 = iteration < 200
-            
+
         # trial test to keep parameters within bounds
         #  * amount parameters pushed within bounds is a bit arbitrary (0.001)
-        if options.has_key('bounds'):
+        if 'bounds' in options:
             low, high = options['bounds']
             if (x <= [float(i) for i in low]).any():
                 change = ((x - low)/abs(dx)).min()
                 boundscount[0] += 1
-                x += dx*change*(1.0 + 0.001/boundscount[0]) # *
+                x += dx*change*(1.0 + 0.001/boundscount[0])  # *
             if (x > [float(i) for i in high]).any():
-                change = ((x - high)/abs(dx)).max() 
+                change = ((x - high)/abs(dx)).max()
                 boundscount[1] += 1
-                x -= dx*change*(1.0 + 0.001/boundscount[1]) # *
-         
+                x -= dx*change*(1.0 + 0.001/boundscount[1])  # *
+
         # check # of times bounds have been hit
         test3 = (sum(boundscount) < 20)
-        
+
         if not repressText:
-            if not test1: 
+            if not test1:
                 print '--- min tol reached ---'
-            if not test2: 
-                print '--- max iter reached ---' 
-            if not test3: 
-                print '--- hit bounds too many times ---'           
-        
+            if not test2:
+                print '--- max iter reached ---'
+            if not test3:
+                print '--- hit bounds too many times ---'
+
         return test1 & test2 & test3
-        
+
     def line_search_bnd(f, x, dx, alpha=1.0, c1=1e-4, c2=0.9, bounds=False):
-        
+
         # Strong Wolfe conditions
         # 1) sufficient decrease
         #    f(x+alpha*dx) <= f(x) + c1*alpha*df(x).T*dx  ; c1 -> (0,1)
         def sufficent_decrease():
-            return ( fun_star <= fun_0 + c1*alpha*dot(dfun_0, dx) )
+            return (fun_star <= fun_0 + c1*alpha*dot(dfun_0, dx))
+
         # 2) curvature condition
         #    |df(x + alpha*dx)*dx| <= c2*|(f(x)dx|   ;   c2 -> (c1,1)
         def curvature_cond():
-            return ( abs(dot(dfun_star, dx)) <= c2*abs(dot(dfun_0, dx)) )             
+            return (abs(dot(dfun_star, dx)) <= c2*abs(dot(dfun_0, dx)))
+
         # Check that alpha value doesn't put x outside of bounds (low and high)
-        #  *  amount alpha adjusted is arbitrarily chosen (.99) 
+        #  *  amount alpha adjusted is arbitrarily chosen (.99)
         def check_low(alpha_try):
             if (x + alpha_try*dx < [float(i) for i in low]).any():
                 inv_a = abs((dx/(x-low)).min())
-                return 0.99/inv_a # *
-            else: 
+                return 0.99/inv_a  # *
+            else:
                 return alpha_try
+
         def check_high(alpha_try):
             if (x + alpha_try*dx > [float(i) for i in high]).any():
                 inv_a = abs((dx/(x-high)).min())
-                return 0.99/inv_a # *
-            else: 
+                return 0.99/inv_a  # *
+            else:
                 return alpha_try
-        
+
         # initiation of line search parameters
-        low, high = bounds                         
+        low, high = bounds
         iters = 0
         alpha = check_low(alpha)
         alpha = check_high(alpha)
-        fun = lambda a : f(x+a*dx, grad=False)      
+        fun = lambda a: f(x+a*dx, grad=False)      
         fun_star, dfun_star = f(x+alpha*dx, grad=True)
         fun_0, dfun_0 = f(x, grad=True)
         alpha_hi = 1.5
         alpha_lo = 0.75
-        
+
         # loop for adjusting percent of newton step taken wrt Wolfe cond.
-        while not ( sufficent_decrease() & curvature_cond() ):
-            # only linesearch for limited # of iterations            
+        while not (sufficent_decrease() & curvature_cond()):
+            # only linesearch for limited # of iterations
             if iters > 10:
                 alpha = 0.004
                 break
@@ -129,44 +132,44 @@ def MD_Newton(function, x, options=None):
             if (fun(alpha_hi) >= fun(alpha_lo)):
                 alpha = alpha_lo
                 alpha_lo *= .7  # *
-                alpha_hi *= .99 # *
-            else: 
+                alpha_hi *= .99  # *
+            else:
                 alpha = alpha_hi
-                alpha_lo *= 1.01 # *
+                alpha_lo *= 1.01  # *
                 alpha_hi *= 1.3  # *
             iters += 1
             fun_star, dfun_star = f(x+alpha*dx, grad=True)
         return alpha
-        
+
     def is_pos_def(x):
         return all(eigvals(x) > 0.0)
-        
+
     def func(x_input, grad=True):
         tempHolder = x.copy()
         x[:] = x_input
         output = function(x, grad=grad)
         x[:] = tempHolder
         return output
-        
+
     # 1) Initiate
     dx = x.copy()
     history = x.copy()
     iteration = a = 0
-    boundscount= array((0,0))
-    
+    boundscount = array((0, 0))
+
     # check that bounds are in form required in tests
-    if options.has_key('bounds'):
+    if 'bounds' in options:
         low_bounds, high_bounds = options['bounds']
         if not isinstance(low_bounds, list):
             low_bounds = [low_bounds]
         if not isinstance(high_bounds, list):
             high_bounds = [high_bounds]
         for i in xrange(len(low_bounds)):
-            if low_bounds[i] == None: 
+            if low_bounds[i] == None:
                 low_bounds[i] = '-inf'
-            if high_bounds[i] == None: 
+            if high_bounds[i] == None:
                 high_bounds[i] = 'inf'
-        options['bounds']=(low_bounds,high_bounds)
+        options['bounds'] = (low_bounds, high_bounds)
         if not repressText:
             print 'low bounds - ', low_bounds
             print 'high bounds - ', high_bounds
@@ -176,45 +179,48 @@ def MD_Newton(function, x, options=None):
         # 3) Compute step direction
         f, df, d2f = func(x, grad='Hess')
         if size(df) > 1 and len(d2f) == 1:
-            df, d2f = squeeze(df), squeeze(d2f) # remove empty dimensions
-        if iteration == 0: 
+            df, d2f = squeeze(df), squeeze(d2f)  # remove empty dimensions
+        if iteration == 0:
             f_init = f
-        if len(d2f) == 1: 
+        if len(d2f) == 1:
             dx = -df/d2f
         else:
             # use steepest decent if Hess matrix is not pos. def.
                 # future work on forcing pos. def. needed
             if not is_pos_def(d2f):
-                
+
 #                U,s,V = svd(d2f)
 #                a_inv = dot(dot(V.T,inv(diag(s))),U.T)
 #                dx = -df.dot(a_inv)
-                
+
                 # new spectral decomp. conditioning method
                 w, v = eig(d2f) # decompose d2f
                 w = abs(w)      # convert eigenvals to positive
                 delta = 0.001   # minimal eigenval tolerated
                 for i in xrange(len(v)):
-                    if w[i] < delta: # if eigenval below tolerance
-                        w[i] = delta # set eigenval to tolerance
+                    if w[i] < delta:  # if eigenval below tolerance
+                        w[i] = delta  # set eigenval to tolerance
                 # reconstruct d2f, now pos. def.
-                d2f = v.dot(diag(w)).dot(v.T).real 
+                d2f = v.dot(diag(w)).dot(v.T).real
 
-                # Original methods of steepest decent                
-                #beta = abs(d2f).max() * 5. # commented out for debug
-            #else: 
-                # new spectral decomp. conditioning method                
-                #d2f = d2f                
-                
                 # Original methods of steepest decent
-#                beta = 1e-14 # beta value arbitrarily chosen
-#                d2f = ( d2f + beta*identity(len(x)) )/(1.0 + beta) 
-            dx = solve(d2f, -df)                               
+                # beta = abs(d2f).max() * 5. # commented out for debug
+            # else:
+                # new spectral decomp. conditioning method
+                #d2f = d2f
+
+                # Original methods of steepest decent
+                # beta = 1e-14 # beta value arbitrarily chosen
+                # d2f = ( d2f + beta*identity(len(x)) )/(1.0 + beta)
+            try:
+                dx = solve(d2f, -df)
+            except ValueError:
+                print 'debug'
         dx = squeeze(dx)
-                
-        # 4) Line search   
+
+        # 4) Line search
         # if bounds specified use own linesearch, else use scipy's version
-        if options.has_key('bounds'):# and options['bounds'][0]==0.:
+        if 'bounds' in options:
             a = line_search_bnd(func, x, dx, bounds=options['bounds'])
         else:
             if len(x) > 1:
@@ -225,28 +231,28 @@ def MD_Newton(function, x, options=None):
                 dff = lambda x : func(x, grad=True)[1]
             alpha = line_search(ff, dff, x, dx, gfk=df, old_fval=f)
             a = squeeze(alpha[0])
-            
-        # 5) Update estimate 
+
+        # 5) Update estimate
         x += a*dx
         iteration += 1
         history = concatenate((history, x))
-            
-    if not repressText:   
-        print 'Number of iterations - ',iteration
-        print 'Minimized parameters - ',x
-        print 'Initial function value - ',f_init
-        print 'Final function value - ',f
-        print 'Total function change - ',f_init - f
-        if boundscount[0] > 0: 
-            print 'hit low bounds ', boundscount[0],' times'
-        if boundscount[1] > 0: 
-            print 'hit upper bounds ', boundscount[1],' times'
-    if options.has_key('history'):
+
+    if not repressText:
+        print 'Number of iterations - ', iteration
+        print 'Minimized parameters - ', x
+        print 'Initial function value - ', f_init
+        print 'Final function value - ', f
+        print 'Total function change - ', f_init - f
+        if boundscount[0] > 0:
+            print 'hit low bounds ', boundscount[0], ' times'
+        if boundscount[1] > 0:
+            print 'hit upper bounds ', boundscount[1], ' times'
+    if 'history' in options:
         history = history.reshape(-1, len(x))
         return history
 
 __all__ = ['MD_Newton']
-    
+
 if __name__ == "__main__":
 
     from mpl_toolkits.mplot3d import Axes3D
@@ -256,8 +262,8 @@ if __name__ == "__main__":
     from numpy import zeros_like, asarray, diag, cos, sin, exp, pi, log
     plt.close('all')
 
-    #Test Functions
-    #---------------------------------------------------
+    # Test Functions
+    # ---------------------------------------------------
     def Rosenbrock_func(x, grad=False):
         
         if len(x) == 2:
