@@ -29,9 +29,11 @@ Reading the code and development:
 # @author: Sean T. Smith
 __all__ = ['GPP']
 
+from copy import deepcopy
+from warnings import warn
 # from termcolor import colored  # may not work on windows
 from numpy import (array, diag, empty, eye, hstack, maximum, ndarray, ones,
-                   resize, shape, sqrt, std, sum, tile, zeros, rot90)        
+                   resize, shape, sqrt, std, sum, tile, zeros, rot90)
 from numpy.linalg.linalg import LinAlgError, svd
 from numpy.random import randn
 from scipy import log, pi
@@ -115,7 +117,7 @@ class GPP:
         else:
             raise InputError("GPP argument Xd must be a 2D array.", Xd)
         self.Nd, self.Nx = Xd.shape
-        if not Xscaling:
+        if Xscaling == False:
             self.xscale = ones(self.Nx)
         elif Xscaling == 'range':
             self.xscale = Xd.max(0) - Xd.min(0)
@@ -431,7 +433,7 @@ class GPP:
             will also be applied to Xi data.
         """
 
-        # TODO: calculation of the posterior mean of gradient and Hessian.      
+        # TODO: calculation of the posterior mean of gradient and Hessian.
 
         # Independent variables
         if Xi.ndim == 1:
@@ -463,12 +465,12 @@ class GPP:
                 Nth, Hi, Hpi = self._basis(Xi, grad=grad)
             else:
                 Nth, Hi, Hpi, Hppi = self._basis(Xi, grad=grad)
-                
+
             post_mean += Hi.dot(self.Th)
-            
+
         if grad is True or grad is 'Hess':
             post_mean_grad = empty((Rid.shape[0],Rid.shape[2]))
-            if self.basis is None or exclude_mean:            
+            if self.basis is None or exclude_mean:
                 for i in xrange(Rid.shape[2]):
                     post_mean_grad[:,i] = \
                         Kid_grad[:,:,i].dot(self.invKdd_Yd).reshape(-1)
@@ -479,10 +481,10 @@ class GPP:
                                             self.invKdd_HdTh).reshape(-1)
                 post_mean_grad[:,:] += \
                     Hpi.dot(self.Th).reshape(shape(post_mean_grad))
-                        
+
         if grad is 'Hess':
             post_mean_hess = empty((Rid.shape[0],Rid.shape[2],Rid.shape[2]))
-            if self.basis is None or exclude_mean:            
+            if self.basis is None or exclude_mean:
                 for i in xrange(Rid.shape[2]):
                     for j in xrange(Rid.shape[2]):
                         post_mean_hess[:,i,j] = \
@@ -491,7 +493,7 @@ class GPP:
                 for i in xrange(Rid.shape[2]):
                     for j in xrange(Rid.shape[2]):
                         post_mean_hess[:,i,j] = \
-                            Kid_hess[:,:,i,j].dot(self.invKdd_Yd - 
+                            Kid_hess[:,:,i,j].dot(self.invKdd_Yd -
                                                 self.invKdd_HdTh).reshape(-1)
                 post_mean_hess[:,:,:] += \
                             Hppi.dot(self.Th).reshape(shape(post_mean_hess))
@@ -595,6 +597,24 @@ class GPP:
         if grad is 'Hess':
             return Ys, Ys_post_grad, Ys_post_hess
 
+    def loo(self):
+        """
+        Perform a leave-one-out analysis on the currently supplied data
+        following the procedure outlined by Sacks and Welch at SAMSI 2010.
+        """
+        Xd_red, Yd_red = empty((self.Nd-1, self.Nx)), empty((self.Nd-1, 1))
+        Cov_copy = deepcopy(self.kernel)
+        Yd_pred, Yd_std = empty(self.Nd), empty(self.Nd)
+        for i in xrange(self.Nd):
+            Xd_red[:i, :], Xd_red[i:, :] = self.Xd[:i, :], self.Xd[i+1:, :]
+            Yd_red[:i, :], Yd_red[i:, :] = self.Yd[:i, :], self.Yd[i+1:, :]
+            tmpGP = GPP(Xd_red, Yd_red, Cov_copy, Xscaling=self.xscale,
+                        Ymean=self.prior_mean, explicit_basis=self.basis,
+                        transform=self.trans)
+            Yd_pred[i], Yd_std[i] = tmpGP(self.Xd[i, :], infer_std=True)
+        std_res = (self.Yd - Yd_pred) / Yd_std
+        return Yd_pred, Yd_std, std_res
+
 
 def cho_factor_gen(A, lower=False, **others):
     """Generalize scipy's cho_factor to handle arrays of lenth zero."""
@@ -697,7 +717,7 @@ if __name__ == "__main__":
     # Xig2_d2 = vstack((array([xi2[0,1],xi2[0,1]]),
     #                  xi2[1,1]+0.025*array([-1.0, 1.0])))
     # Yig2 = yi2[1] + yi2_grad[:,1].reshape(-1,1)*0.025*array([-1.0, 1.0])
-  
+
     fig1 = plt.figure(figsize=(5, 3), dpi=150)
     p1, = plt.plot(Xd1, Yd1, 'ko', label='Data')
     p2, = plt.plot(Xi1, Yi1, 'b-', linewidth=2.0, label='Inferred mean')
@@ -721,7 +741,7 @@ if __name__ == "__main__":
     Xi_1, Xi_2 = meshgrid(xi_1, xi_2, indexing='ij')
     Xi2 = hstack([Xi_1.reshape((-1, 1)), Xi_2.reshape((-1, 1))])
     Yi2, Yi2std = myGPP2.inference(Xi2, infer_std=True)
- 
+
     fig = plt.figure(figsize=(7, 5), dpi=150)
     ax = fig.gca(projection='3d')
     ax.plot_surface(Xi_1, Xi_2, Yi2.reshape(Ni), alpha=0.75,
