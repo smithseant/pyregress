@@ -112,13 +112,13 @@ class GPP:
 
         # Independent variables
         if Xd.ndim == 1:
-            self.Xd = Xd.reshape((1, -1))
+            self.Xd = Xd.reshape((-1, 1))
         elif Xd.ndim == 2:
             self.Xd = Xd
         else:
             raise InputError("GPP argument Xd must be a 2D array.", Xd)
         self.Nd, self.Nx = Xd.shape
-        if Xscaling == None:
+        if Xscaling is None:
             self.xscale = ones(self.Nx)
         elif Xscaling == 'range':
             self.xscale = Xd.max(0) - Xd.min(0)
@@ -438,7 +438,7 @@ class GPP:
 
         # Independent variables
         if Xi.ndim == 1:
-            Xi = Xi.reshape((1, -1))
+            Xi = Xi.reshape((-1, 1))
         if Xi.ndim != 2 or Xi.shape[1] != self.Nx:
             raise InputError("GPP object argument Xi must be a 2D array " +
                              "(2nd dimension must match that of Xd.)", Xi)
@@ -612,7 +612,7 @@ class GPP:
             tmpGP = GPP(Xd_red, Yd_red, Cov_copy, Xscaling=self.xscale,
                         Ymean=self.prior_mean, explicit_basis=self.basis,
                         transform=self.trans)
-            tmp_out = tmpGP(self.Xd[i, :], infer_std=True)
+            tmp_out = tmpGP(self.Xd[i, :].reshape(1, -1), infer_std=True)
             Yd_pred[i], Yd_std[i] = tmp_out[0][0], tmp_out[1][0]
         std_res = (self.Yd[:, 0] - Yd_pred) / Yd_std
         if plot_results:
