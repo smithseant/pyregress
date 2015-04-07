@@ -30,14 +30,15 @@ Reading the code and development:
 __all__ = ['GPP']
 
 from copy import deepcopy
-from warnings import warn
 # from termcolor import colored  # may not work on windows
-from numpy import (array, diag, empty, eye, hstack, maximum, ndarray, ones,
-                   resize, shape, sqrt, std, sum, tile, zeros, rot90)
+from numpy import (ndarray, array, empty, zeros, ones, eye, diag,
+                   shape, resize, tile, hstack, rot90,
+                   amin, amax, maximum, abs, sqrt, std, sum, count_nonzero)
 from numpy.linalg.linalg import LinAlgError, svd
 from numpy.random import randn
 from scipy import log, pi
 from scipy.linalg import cho_factor, cho_solve
+from matplotlib.pyplot import figure, plot, xlabel, ylabel
 
 from kernels import Kernel
 from transforms import BaseTransform, Logarithm, Logit,  Probit, ProbitBeta
@@ -111,13 +112,13 @@ class GPP:
 
         # Independent variables
         if Xd.ndim == 1:
-            self.Xd = Xd.reshape((-1, 1))
+            self.Xd = Xd.reshape((1, -1))
         elif Xd.ndim == 2:
             self.Xd = Xd
         else:
             raise InputError("GPP argument Xd must be a 2D array.", Xd)
         self.Nd, self.Nx = Xd.shape
-        if Xscaling == False:
+        if Xscaling == None:
             self.xscale = ones(self.Nx)
         elif Xscaling == 'range':
             self.xscale = Xd.max(0) - Xd.min(0)
@@ -437,7 +438,7 @@ class GPP:
 
         # Independent variables
         if Xi.ndim == 1:
-            Xi = Xi.reshape((-1, 1))
+            Xi = Xi.reshape((1, -1))
         if Xi.ndim != 2 or Xi.shape[1] != self.Nx:
             raise InputError("GPP object argument Xi must be a 2D array " +
                              "(2nd dimension must match that of Xd.)", Xi)
@@ -597,7 +598,7 @@ class GPP:
         if grad is 'Hess':
             return Ys, Ys_post_grad, Ys_post_hess
 
-    def loo(self):
+    def loo(self, return_data=False, plot_results=False):
         """
         Perform a leave-one-out analysis on the currently supplied data
         following the procedure outlined by Sacks and Welch at SAMSI 2010.
@@ -611,9 +612,40 @@ class GPP:
             tmpGP = GPP(Xd_red, Yd_red, Cov_copy, Xscaling=self.xscale,
                         Ymean=self.prior_mean, explicit_basis=self.basis,
                         transform=self.trans)
-            Yd_pred[i], Yd_std[i] = tmpGP(self.Xd[i, :], infer_std=True)
-        std_res = (self.Yd - Yd_pred) / Yd_std
-        return Yd_pred, Yd_std, std_res
+            tmp_out = tmpGP(self.Xd[i, :], infer_std=True)
+            Yd_pred[i], Yd_std[i] = tmp_out[0][0], tmp_out[1][0]
+        std_res = (self.Yd[:, 0] - Yd_pred) / Yd_std
+        if plot_results:
+            figure()
+            plot(std_res, 'o')
+            plot([0, self.Nd + 1], [-2.0, -2.0],
+                 color='orange', linestyle='--', linewidth=2.0)
+            plot([0, self.Nd + 1], [+2.0, +2.0],
+                 color='orange', linestyle='--', linewidth=2.0)
+            plot([0, self.Nd + 1], [-3.0, -3.0],
+                 color='red', linestyle='-', linewidth=2.0)
+            plot([0, self.Nd + 1], [+3.0, +3.0],
+                 color='red', linestyle='-', linewidth=2.0)
+            xlabel('Index of Provided Value')
+            ylabel('Standard Residual')
+            figure()
+            plot(self.Yd[:,0], Yd_pred, 'o')
+            plot([amin(self.Yd), amax(self.Yd)],
+                 [amin(self.Yd), amax(self.Yd)],
+                 color='black', linestyle='-', linewidth=2.0)
+            xlabel('Provided Value')
+            ylabel('Predicted Value')
+        N2 = count_nonzero(abs(std_res) > 2.0)
+        N3 = count_nonzero(abs(std_res) > 3.0)
+        if N3 > 0:
+            raise GPError("GPP object may be performing significantly" +
+                          "worse than expected - of %d cross validations,"
+                          " %d had std. res. values greater than 3.0",
+                          self.Nd, N3, N2)
+        if return_data:
+            return Yd_pred, Yd_std, std_res
+        else:
+            return None
 
 
 def cho_factor_gen(A, lower=False, **others):
@@ -659,6 +691,28 @@ class InputError(Error):  # -- not a ValueError? --
         """
         self.args = (msg,)
         self.input_argument = input_argument
+
+class GPError(Error):
+    def __init__(self, msg, Nd=None, N3=None, N2=None):
+        """
+        Initialize a GPError (interpolation or regression is failing its
+        cross validation).
+
+        Arguments
+        ---------
+            msg:  string,
+                explanation of the error.
+            Nd:  integer (optional),
+                Number of cross validation data points.
+            N3:  integer (optional),
+                Number of points that have abs(std_err) > 3.0
+            N2:  integer (optional),
+                Number of points that have abs(std_err) > 2.0
+        """
+        self.args = (msg % (Nd, N3),)
+        self.Nd = Nd  # Number of validation data points
+        self.N3 = N3  # Number of points that have abs(std_err) > 3.0
+        self.N2 = N2  # Number of points that have abs(std_err) > 2.0
 
 
 if __name__ == "__main__":

@@ -43,7 +43,7 @@ hopt_post, hopt_grad = myGP.hyper_posterior()
 param = myGP.kernel.get_hp()
 
 # Check that the posterior and its gradient are consistent
-test_hyper, bounds = myGP.kernel._map_hyper()    
+test_hyper, bounds = myGP.kernel._map_hyper()
 test_hyper[:] = array([0.9, 0.9])
 delta = 1e-5
 d1, d2 = array([delta, 0.0]), array([0.0, delta])
@@ -72,6 +72,9 @@ for i in xrange(Nh[0]):
         test_hyper[:] = array([hyper1[i], hyper2[j]])
         h_post[i,j], h_grad = myGP.hyper_posterior(test_hyper)
         h_grad1[i,j], h_grad2[i,j] = h_grad[0], h_grad[1]
+
+
+Yd_pred, Yd_std, std_res = myGP.loo(return_data=True, plot_results=True)
 
 
 # Visualize
