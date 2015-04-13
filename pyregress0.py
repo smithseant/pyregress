@@ -600,8 +600,22 @@ class GPP:
 
     def loo(self, return_data=False, plot_results=False):
         """
-        Perform a leave-one-out analysis on the currently supplied data
+        Perform a leave-one-out cross-validation analysis on the data
         following the procedure outlined by Sacks and Welch at SAMSI 2010.
+
+        Arguments
+        ---------
+        return_data:  bool (optional),
+            indicate whether the analysis results shoudl be returned
+            (predicted Y values, predicted std., standarized residuals).
+        plot_results:  bool (optional),
+            indicate whether plots of the analysis results should be created.
+
+        Raises
+        ------
+        ValidationError:
+            an esception is thrown when any standardized residules are
+            greater in magnitude than three.
         """
         Xd_red, Yd_red = empty((self.Nd-1, self.Nx)), empty((self.Nd-1, 1))
         Cov_copy = deepcopy(self.kernel)
@@ -638,10 +652,10 @@ class GPP:
         N2 = count_nonzero(abs(std_res) > 2.0)
         N3 = count_nonzero(abs(std_res) > 3.0)
         if N3 > 0:
-            raise GPError("GPP object may be performing significantly" +
-                          "worse than expected - of %d cross validations,"
-                          " %d had std. res. values greater than 3.0",
-                          self.Nd, N3, N2)
+            raise ValidationError("GPP object failed its cross validation -" +
+                                  " of %d data points, %d had std. resid." +
+                                  " values greater than 3.0",
+                                   self.Nd, N3, N2)
         if return_data:
             return Yd_pred, Yd_std, std_res
         else:
@@ -670,12 +684,12 @@ def cho_solve_gen(C, b, **others):
         return cho_solve(C, b, **others)
 
 
-class Error(Exception):
+class GPError(Exception):
     """Base class for exceptions in the pyregress module."""
     pass
 
 
-class InputError(Error):  # -- not a ValueError? --
+class InputError(GPError):  # -- not a ValueError? --
     """Exception raised for errors in input arguments."""
     def __init__(self, msg, input_argument=None):
         """
@@ -692,11 +706,11 @@ class InputError(Error):  # -- not a ValueError? --
         self.args = (msg,)
         self.input_argument = input_argument
 
-class GPError(Error):
+class ValidationError(GPError):
     def __init__(self, msg, Nd=None, N3=None, N2=None):
         """
-        Initialize a GPError (interpolation or regression is failing its
-        cross validation).
+        Initialize a ValidationError when the interpolation or regression
+        is failing its cross validation.
 
         Arguments
         ---------
@@ -710,9 +724,9 @@ class GPError(Error):
                 Number of points that have abs(std_err) > 2.0
         """
         self.args = (msg % (Nd, N3),)
-        self.Nd = Nd  # Number of validation data points
-        self.N3 = N3  # Number of points that have abs(std_err) > 3.0
-        self.N2 = N2  # Number of points that have abs(std_err) > 2.0
+        self.Nd = Nd
+        self.N3 = N3
+        self.N2 = N2
 
 
 if __name__ == "__main__":
