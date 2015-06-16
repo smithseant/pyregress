@@ -51,7 +51,7 @@ class LogNormal(HyperPrior):
                         exp(-(ln(x)-mu)^2/(2 sigma^2)) , x > 0"""
     def __init__(self, guess=1., **args):
         self.guess = mean = guess
-        if  args.has_key( "std" ):
+        if  "std" in args:
             self._mu = log(mean**2/ 
                         sqrt(args["std"]**2 + mean**2))
             self._sigma = sqrt(log(1 + args["std"]**2/mean**2))   

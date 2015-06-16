@@ -91,7 +91,7 @@ def Borehole(mean, samples=27, permutations=1, errorType='RMSE'):
     def RMSE(y_test, y_pred, y_mean):
         N = len(y_test)
         topsum = bottomsum = 0.
-        for i in xrange(N):
+        for i in range(N):
             topsum += (y_test[i] - y_pred[i])**2
             bottomsum += (y_mean - y_pred[i])**2
         return sqrt(topsum/N)/sqrt(bottomsum/N)
@@ -100,14 +100,14 @@ def Borehole(mean, samples=27, permutations=1, errorType='RMSE'):
     def MAE(y_test, y_pred, y_mean):
         N = len(y_test)
         topmax = bottommax = 0.
-        for i in xrange(N):
+        for i in range(N):
             topmax = max(abs(y_test[i] - y_pred[i]), topmax)
             bottommax = max(abs(y_mean - y_pred[i]), bottommax)
         return topmax/bottommax
     
     # Feed test parameters into function to gain corresponding outputs 
     output_test = zeros(samples_test)
-    for i in xrange(samples_test):
+    for i in range(samples_test):
         input_test = (doe_test[i,0], doe_test[i,1], doe_test[i,2], 
                       doe_test[i,3], doe_test[i,4], doe_test[i,5],
                       doe_test[i,6], doe_test[i,7])
@@ -116,11 +116,11 @@ def Borehole(mean, samples=27, permutations=1, errorType='RMSE'):
       
     # Loop over specified number of permuations of LHD
     error_return = zeros(permutations)
-    for p in xrange(permutations): 
+    for p in range(permutations): 
         
         # Feed training parameters into function to gain corresponding outputs    
         output = zeros(samples)  
-        for i in xrange(samples):
+        for i in range(samples):
             input_ = (doe[i,0], doe[i,1], doe[i,2], doe[i,3], 
                         doe[i,4], doe[i,5], doe[i,6], doe[i,7])
             output[i] = borehole_function(input_)
@@ -133,19 +133,19 @@ def Borehole(mean, samples=27, permutations=1, errorType='RMSE'):
             mean = [0]
         if mean == 'fl':
             mean = [0, 1] # specified as conts + linear term for all x
-        myKernel = SquareExp(w=Constant(guess=100.), 
-                             l=[Constant(guess=2.0),
-                                Constant(guess=2.0),
-                                Constant(guess=2.0),
-                                Constant(guess=2.0),
-                                Constant(guess=2.0),
-                                Constant(guess=2.0),
-                                Constant(guess=2.0),
-                                Constant(guess=2.0)])
+        myKernel = SquareExp(w=Jeffreys(guess=100.), 
+                             l=[Jeffreys(guess=2.0),
+                                Jeffreys(guess=2.0),
+                                Jeffreys(guess=2.0),
+                                Jeffreys(guess=2.0),
+                                Jeffreys(guess=2.0),
+                                Jeffreys(guess=2.0),
+                                Jeffreys(guess=2.0),
+                                Jeffreys(guess=2.0)])
         myGP = GPP( lhd, output, myKernel, explicit_basis=mean )
         
         # Evaluate GP at test points
-        y_test = myGP( lhd_test )
+        y_test = myGP.inference( lhd_test )
         if errorType == 'RMSE':
             error_return[p] = RMSE(output_test, y_test, ybar) # if RMSE desired
         if errorType == 'MAE':
@@ -153,7 +153,7 @@ def Borehole(mean, samples=27, permutations=1, errorType='RMSE'):
         #print 'Completed Error Calc with Mean Type -', mean 
         #print 'Error Value - ', error_return[p]
         
-        for j in xrange(lhd.shape[1]):
+        for j in range(lhd.shape[1]):
             lhd[:,j] = permutation(lhd[:,j])
         doe = scale_doe(doe, lhd)
 
@@ -190,15 +190,15 @@ if __name__ == "__main__":
     error_type = 'MAE' # type of error ('RMSE' or 'MAE')
     # use constant mean
     errors_const = Borehole('constant', samples, permutations) 
-    print 'Completed Constant Permutation'
+    print('Completed Constant Permutation')
     # use full linear mean
     errors_fl     = Borehole('fl', samples, permutations) 
-    print 'Completed Full Linear Permutation '
+    print('Completed Full Linear Permutation ')
 
-    print '%s Const. Mean - ' %error_type
-    print errors_const
-    print '%s Full Linear Mean - ' %error_type
-    print errors_fl
+    print('%s Const. Mean - ' %error_type)
+    print(errors_const)
+    print('%s Full Linear Mean - ' %error_type)
+    print(errors_fl)
     
     # Plot
     fig = plt.figure(figsize=(6, 3))
@@ -220,7 +220,7 @@ if __name__ == "__main__":
 ########################################################################    
     
      # Evaluate GP for all combinations of leaving one data point out
-    #for i in xrange(samples):
+    #for i in range(samples):
         #x_ = vstack((lhd[:i,:],lhd[i+1:,:]))
         #y_ = hstack((output[:i],output[i+1:]))
         #xout = lhd[i,:].reshape(1,-1) # data point left out

@@ -12,7 +12,6 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from pyregress import *
-plt.close('all')
 
 # Setup the source sGP with exactly two hyper-parameters
 Nt = Nd = 5*2**4
@@ -54,11 +53,11 @@ test_hyper += d2 - d1
 h_post_t2, h_grad_t2 = myGP.hyper_posterior(test_hyper)
 grad = 0.5*array([h_grad_t0[0] + h_grad_t1[0], h_grad_t0[1] + h_grad_t2[1]])
 finite_diff = array([h_post_t1[0,0] - h_post_t0[0,0], h_post_t2[0,0] - h_post_t0[0,0]])/delta
-print 'Gradient:    ', grad
-print 'Finite diff.:', finite_diff
-print 'Error (abs.):', abs(grad - finite_diff)
-print 'Error (rel.):', abs(1.0 - finite_diff/grad)
-print ' '
+print('Gradient:    ', grad)
+print('Finite diff.:', finite_diff)
+print('Error (abs.):', abs(grad - finite_diff))
+print('Error (rel.):', abs(1.0 - finite_diff/grad))
+print(' ')
 # I previously used chech_grad (from scipy.optimize import check_grad),
 # but I don't trust it anymore.
 
@@ -67,8 +66,8 @@ Nh = (60, 60)
 hyper1, hyper2 = linspace(0.2, 2.0, Nh[0]), linspace(0.2, 2.0, Nh[1])
 h_post = empty(Nh)
 h_grad1, h_grad2 = empty(Nh), empty(Nh)
-for i in xrange(Nh[0]):
-    for j in xrange(Nh[1]):
+for i in range(Nh[0]):
+    for j in range(Nh[1]):
         test_hyper[:] = array([hyper1[i], hyper2[j]])
         h_post[i,j], h_grad = myGP.hyper_posterior(test_hyper)
         h_grad1[i,j], h_grad2[i,j] = h_grad[0], h_grad[1]

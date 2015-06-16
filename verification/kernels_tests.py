@@ -8,7 +8,6 @@ For this script to work, the minimization in GPP.__init__ must be disabled!
 """
 from numpy import (ndarray, zeros, empty, tile, abs, nanmax, hstack, linspace)
 from numpy.random import randn
-
 from pyregress import *
 
 Nx = 10
@@ -28,7 +27,7 @@ def radius(X, Y, aniso=None):
     Ndim = X.shape[1]
     Nx, Ny = X.shape[0], Y.shape[0]
     Rk = empty((Nx, Ny, Ndim))
-    for k in xrange(Ndim):
+    for k in range(Ndim):
         Rk[:, :, k] = tile(X[:,[k]], (1, Ny)) - tile(Y[:,[k]].T, (Nx, 1))
         if isinstance(aniso, ndarray):
             Rk[:, :, k] /= aniso[k]
@@ -85,9 +84,9 @@ my_kernel = SquareExp(w=1.5, l=[Constant(guess=2.0), 2.5])
 
 #my_hyper = my_kernel.get_hp()
 my_hyper, p_bounds = my_kernel._map_hyper()
-my_gpr = GPP(X, test_func(X), my_kernel, minimize_hp=False)
+my_gpr = GPP(X, test_func(X), my_kernel, optimize_hp=False)
 my_gpb = GPP(X, test_func(X), my_kernel, explicit_basis=[0, 1],
-             minimize_hp=False)
+             optimize_hp=False)
 
 K, Kp, Kpp = my_kernel(Rk, grad_hp='Hess', block_diag=True)
 P, Pp, Ppp = my_gpr.hyper_posterior(my_hyper, grad='Hess')
@@ -106,17 +105,17 @@ Bminus = my_gpb.hyper_posterior(my_hyper, grad=False)
 my_hyper[0] += dx
 
 Kd = (Kplus - Kminus)/(2.0*dx)
-print 'Kernel Gradient Error (1st dim.):', nanmax(abs(Kd - Kp[:,:,0])/Kd)
+print('Kernel Gradient Error (1st dim.):', nanmax(abs(Kd - Kp[:,:,0])/Kd))
 Kdd = (Kplus - 2.0*K + Kminus)/dx**2
-print 'Kernel Hessian Error (1st dim.):', nanmax(abs(Kdd - Kpp[:,:,0,0])/Kdd)
+print('Kernel Hessian Error (1st dim.):', nanmax(abs(Kdd - Kpp[:,:,0,0])/Kdd))
 Pd = (Pplus - Pminus)/(2.0*dx)
-print 'Posterior Gradient Error (1st dim.):', abs((Pd[0,0] - Pp[0])/Pd[0,0])
+print('Posterior Gradient Error (1st dim.):', abs((Pd[0,0] - Pp[0])/Pd[0,0]))
 Pdd = (Pplus - 2.0*P + Pminus)/dx**2
-print 'Posterior Hessian Error (1st dim.):', abs((Pdd[0,0] - Ppp[0,0])/Pdd[0,0])
+print('Posterior Hessian Error (1st dim.):', abs((Pdd[0,0] - Ppp[0,0])/Pdd[0,0]))
 Bd = (Bplus - Bminus)/(2.0*dx)
-print 'Posterior (with basis func.) Gradient Error (1st dim.):', abs((Bd[0,0] - Bp[0])/Bd[0,0])
+print('Posterior (with basis func.) Gradient Error (1st dim.):', abs((Bd[0,0] - Bp[0])/Bd[0,0]))
 Bdd = (Bplus - 2.0*B + Bminus)/dx**2
-print 'Posterior (with basis func.) Hessian Error (1st dim.):', abs((Bdd[0,0] - Bpp[0,0])/Bdd[0,0])
+print('Posterior (with basis func.) Hessian Error (1st dim.):', abs((Bdd[0,0] - Bpp[0,0])/Bdd[0,0]))
 
 if len(my_hyper) > 1:
     my_hyper[1] += dx
@@ -130,13 +129,13 @@ if len(my_hyper) > 1:
     my_hyper[1] += dx
         
     Kd = (Kplus - Kminus)/(2.0*dx)
-    print 'Kernel Gradient Error (2nd dim.):', nanmax(abs(Kd - Kp[:,:,1])/Kd)
+    print ('Kernel Gradient Error (2nd dim.):', nanmax(abs(Kd - Kp[:,:,1])/Kd))
     Kdd = (Kplus - 2.0*K + Kminus)/dx**2
-    print 'Kernel Hessian Error (2nd dim.):', nanmax(abs(Kdd - Kpp[:,:,1,1])/Kdd)
+    print ('Kernel Hessian Error (2nd dim.):', nanmax(abs(Kdd - Kpp[:,:,1,1])/Kdd))
     Pd = (Pplus - Pminus)/(2.0*dx)
-    print 'Posterior Gradient Error (2nd dim.):', abs((Pd[0,0] - Pp[1])/Pd[0,0])
+    print ('Posterior Gradient Error (2nd dim.):', abs((Pd[0,0] - Pp[1])/Pd[0,0]))
     Pdd = (Pplus - 2.0*P + Pminus)/dx**2
-    print 'Posterior Hessian Error (2nd dim.):', abs((Pdd[0,0] - Ppp[1,1])/Pdd[0,0])
+    print ('Posterior Hessian Error (2nd dim.):', abs((Pdd[0,0] - Ppp[1,1])/Pdd[0,0]))
     
     my_hyper[0] += dx
     my_hyper[1] += dx
@@ -167,6 +166,6 @@ if len(my_hyper) > 1:
     my_hyper[1] += dx
     
     Kdd = (Kplusplus - Kplusminus - Kminusplus + Kminusminus)/(2.0*dx)**2
-    print 'Kernel Hessian Error (cross dim.):', nanmax(abs(Kdd - Kpp[:,:,0,1])/Kdd)
+    print ('Kernel Hessian Error (cross dim.):', nanmax(abs(Kdd - Kpp[:,:,0,1])/Kdd))
     Pdd = (Pplusplus - Pplusminus - Pminusplus + Pminusminus)/(2.0*dx)**2
-    print 'Posterior Hessian Error (cross dim.):', abs((Pdd[0,0] - Ppp[0,1])/Pdd[0,0])
+    print ('Posterior Hessian Error (cross dim.):', abs((Pdd[0,0] - Ppp[0,1])/Pdd[0,0]))

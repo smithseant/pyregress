@@ -10,7 +10,6 @@ from numpy.random import random, randn
 from numpy import zeros, linspace, empty, shape
 import matplotlib.pyplot as plt
 from pyregress import *
-plt.close('all')
 
 # Setup the source GP with any single hyper-parameter
 Nt = Nd = 5*2**1
@@ -50,17 +49,17 @@ test_hyper += delta
 h_post_t1, h_grad_t1 = myGP.hyper_posterior(test_hyper)
 grad = 0.5*(h_grad_t0[0] + h_grad_t1[0])
 finite_diff = (h_post_t1[0,0] - h_post_t0[0,0])/delta
-print 'Gradient:    ', grad
-print 'Finite diff.:', finite_diff
-print 'Error (abs.):', abs(grad - finite_diff)
-print 'Error (rel.):', abs(1.0 - finite_diff/grad)
-print ' '
+print('Gradient:    ', grad)
+print('Finite diff.:', finite_diff)
+print('Error (abs.):', abs(grad - finite_diff))
+print('Error (rel.):', abs(1.0 - finite_diff/grad))
+print(' ')
 
 ## Posterior of the hyper-parameter
 hyper = linspace(0.2, 1.9, 100)
 h_post = empty(shape(hyper))
 h_grad = empty(shape(hyper))
-for i in xrange(len(hyper)):
+for i in range(len(hyper)):
     test_hyper[:] = hyper[i:i+1]
     h_post[i], h_grad[i] = myGP.hyper_posterior(test_hyper)
 

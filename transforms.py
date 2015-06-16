@@ -5,8 +5,9 @@ Docstring for the transforms module - needs to be written
 # Created Sep 2013
 # @author: Sean T. Smith
 
-from abc import ABCMeta, abstractmethod
+__all__ = ['BaseTransform', 'Logarithm', 'Probit', 'ProbitBeta', 'Logit']
 
+from abc import ABCMeta, abstractmethod
 from numpy import sqrt, mean, var, empty, expand_dims, tile
 from scipy.special import erf, erfinv, beta, betainc, betaincinv
 from scipy import pi, exp, log
@@ -92,8 +93,8 @@ class Logarithm(BaseTransform):
         if hess_z is None:
             return y, grad_y
         hess_y = empty(hess_z.shape)
-        for i in xrange(hess_z.shape[1]):
-            for j in xrange(hess_z.shape[2]):
+        for i in range(hess_z.shape[1]):
+            for j in range(hess_z.shape[2]):
                 hess_y[:, i, j] = y * (grad_z[:, i]**2 + hess_z[:, i, j])
         return y, grad_y, hess_y
 
@@ -117,8 +118,8 @@ class Probit(BaseTransform):
         if hess_z is None:
             return y, grad_y
         hess_y = empty(hess_z.shape)
-        for i in xrange(hess_z.shape[1]):
-            for j in xrange(hess_z.shape[2]):
+        for i in range(hess_z.shape[1]):
+            for j in range(hess_z.shape[2]):
                 hess_y[:, i, j] = fz * (-z*grad_z[:, i]**2 + hess_z[:, i, j])
         return y, grad_y, hess_y
 
@@ -157,8 +158,8 @@ class ProbitBeta(BaseTransform):
         if hess_z is None:
             return y, grad_y
         hess_y = empty(hess_z.shape)
-        for i in xrange(hess_z.shape[1]):
-            for j in xrange(hess_z.shape[2]):
+        for i in range(hess_z.shape[1]):
+            for j in range(hess_z.shape[2]):
                 hess_y[:, i, j] = fz/fy * ( ((mu-z)/s2 - fz/fy*((a-1.0)/y - (b-1.0)/(1.0-y)))*grad_z[:, i]**2 + hess_z[:, i, j] )
         return y, grad_y, hess_y
 
@@ -181,7 +182,7 @@ class Logit(BaseTransform):
         if hess_z is None:
             return y, grad_y
         hess_y = empty(hess_z.shape)
-        for i in xrange(hess_z.shape[1]):
-            for j in xrange(hess_z.shape[2]):
+        for i in range(hess_z.shape[1]):
+            for j in range(hess_z.shape[2]):
                 hess_y[:, i, j] = coef * ((1.0 - 2.0/(1.0 + exp(z)))*grad_z[:, i]**2 + hess_z[:, i, j])
         return y, grad_y, hess_y

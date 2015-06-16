@@ -27,7 +27,7 @@ Reading the code and development:
 """
 # Created Sep 2013
 # @author: Sean T. Smith
-__all__ = ['GPP']
+__all__ = ['GPP', 'InputError', 'ValidationError']
 
 from copy import deepcopy
 # from termcolor import colored  # may not work on windows
@@ -39,10 +39,13 @@ from numpy.random import randn
 from scipy import log, pi
 from scipy.linalg import cho_factor, cho_solve
 from matplotlib.pyplot import figure, plot, xlabel, ylabel
+from pyregress.kernels import *
+from pyregress.transforms import *
+from pyregress.multi_newton import *
 
-from kernels import Kernel
-from transforms import BaseTransform, Logarithm, Logit,  Probit, ProbitBeta
-from multi_newton import MD_Newton
+#from kernels import Kernel
+#from transforms import BaseTransform, Logarithm, Logit,  Probit, ProbitBeta
+#from multi_newton import MD_Newton
 
 HLOG2PI = 0.5*log(2.0*pi)
 
@@ -138,7 +141,7 @@ class GPP:
         self.Yd = Yd.reshape((-1, 1)).copy()
         if transform is None:
             self.trans = None
-        elif isinstance(transform, basestring):
+        elif isinstance(transform, str):
             self.trans = eval(transform+'(self.Yd)')
             self.Yd = self.trans(self.Yd)
         elif isinstance(transform, BaseTransform):
@@ -177,6 +180,7 @@ class GPP:
                 HdTh = self.Hd.dot(self.Th)
                 self.invKdd_HdTh = cho_solve_gen(self.LKdd, HdTh)
 
+
     def _basis(self, X, grad=False):
         """Calculate the basis functions given independent variables."""
         if not (isinstance(self.basis, list) and
@@ -199,8 +203,8 @@ class GPP:
             H[:, j:j+self.Nx] = X
             j += self.Nx
         if self.basis.count(2):
-            for ix in xrange(self.Nx):
-                for jx in xrange(self.Nx):
+            for ix in range(self.Nx):
+                for jx in range(self.Nx):
                     H[:, j] = X[:, ix]*X[:, jx]
                     j += 1
         if not grad:
@@ -211,12 +215,12 @@ class GPP:
         if self.basis.count(0):
             j += 1
         if self.basis.count(1):
-            for ix in xrange(self.Nx):
+            for ix in range(self.Nx):
                 Hp[:, ix, j] = 1.0
                 j += 1
         if self.basis.count(2):
-            for ix in xrange(self.Nx):
-                for jx in xrange(self.Nx):
+            for ix in range(self.Nx):
+                for jx in range(self.Nx):
                     Hp[:, ix, j] += X[:, jx]
                     Hp[:, jx, j] += X[:, ix]
                     j += 1
@@ -230,7 +234,7 @@ class GPP:
         if self.basis.count(1):
             j += self.Nx
         if self.basis.count(2):
-            for ix in xrange(self.Nx):
+            for ix in range(self.Nx):
                 Hpp[:, ix, ix, j] = 2.0
                 j += self.Nx + 1
         return Nth, H, Hp, Hpp
@@ -241,7 +245,7 @@ class GPP:
         # which required: from scipy.spatial.distance import cdist.
         Nx, Ny = X.shape[0], Y.shape[0]
         Rk = empty((Nx, Ny, self.Nx))
-        for k in xrange(self.Nx):
+        for k in range(self.Nx):
             Rk[:, :, k] = tile(X[:, [k]], (1, Ny)) - tile(Y[:, [k]].T, (Nx, 1))
             if isinstance(self.xscale, ndarray):
                 Rk[:, :, k] /= self.xscale[k]
@@ -300,7 +304,7 @@ class GPP:
             try:
                 LSth = cho_factor(self.Hd.T.dot(beta))
             except:
-                print 'debug'
+                print('debug')
             Sth = cho_solve(LSth, eye(self.Nth))
             Th = cho_solve(LSth, self.Hd.T.dot(invK_Y))
             betaTh = beta.dot(Th)
@@ -313,11 +317,11 @@ class GPP:
         invK = cho_solve(LK, eye(Nd))
         invK_aa = invK - invK_Y.dot(invK_Y.T)
         lnP_grad = empty(Nhp)
-        for j in xrange(Nhp):
+        for j in range(Nhp):
             lnP_grad[j] = 0.5*sum(invK_aa.T * Kp[:, :, j]) - 1.0*dlnprior[j]
         if self.basis is not None:
             diff2 = betaTh.T - 2.0*invK_Y.T
-            for j in xrange(Nhp):
+            for j in range(Nhp):
                 bKpb = beta.T.dot(Kp[:, :, j]).dot(beta)
                 lnP_grad[j] -= 0.5*(sum(bKpb.T*Sth) +
                                     diff2.dot(Kp[:, :, j]).dot(betaTh))
@@ -326,13 +330,13 @@ class GPP:
 
         # grad == 'Hess':
         invK_Kp, aa_Kp = empty((Nd, Nd, Nhp)), empty((Nd, Nd, Nhp))
-        for j in xrange(Nhp):
+        for j in range(Nhp):
             invK_Kp[:, :, j] = invK.dot(Kp[:, :, j])
             a_Kp = invK_Y.T.dot(Kp[:, :, j])
             aa_Kp[:, :, j] = 2.0*invK_Y.dot(a_Kp)
         lnP_hess = empty((Nhp, Nhp))
-        for j in xrange(Nhp):
-            for i in xrange(j + 1):
+        for j in range(Nhp):
+            for i in range(j + 1):
                 lnP_hess[i, j] = 0.5*sum(
                     invK_aa.T*Kpp[:, :, i, j] -
                     invK_Kp[:, :, i].T*invK_Kp[:, :, j] +
@@ -343,13 +347,13 @@ class GPP:
             bSb_2invK = beta.dot(Sth).dot(beta.T) - 2.0*invK
             bKp, ThbKp = empty((Nth, Nd, Nhp)), empty((Nd, Nhp))
             diff1Kpb, diff2Kp = empty((Nth, Nhp)), empty((Nd, Nhp))
-            for j in xrange(Nhp):
+            for j in range(Nhp):
                 bKp[:, :, j] = beta.T.dot(Kp[:, :, j])
                 ThbKp[:, j] = betaTh.T.dot(Kp[:, :, j])
                 diff1Kpb[:, j] = diff1.dot(Kp[:, :, j]).dot(beta)
                 diff2Kp[:, j] = diff2.dot(Kp[:, :, j])
-            for j in xrange(Nhp):
-                for i in xrange(Nhp):
+            for j in range(Nhp):
+                for i in range(Nhp):
                     my_mess = (beta.T.dot(Kpp[:, :, i, j]).dot(beta) +
                                bKp[:, :, i].dot(bSb_2invK).dot(bKp[:, :, j].T))
                     lnP_hess[i, j] -= 0.5 * (sum(my_mess.T * Sth) +
@@ -371,7 +375,7 @@ class GPP:
         all_hyper, bounds = self.kernel._map_hyper()
         lo, hi = [], []
         [(lo.append(bounds[i+i]), hi.append(bounds[2*i+1]))
-            for i in xrange(len(bounds)/2)]
+            for i in range(int(len(bounds)/2))]
 
         # Perform minimization
         if optimize_hp == 'print':
@@ -472,11 +476,11 @@ class GPP:
         if grad is True or grad is 'Hess':
             post_mean_grad = empty((Rid.shape[0],Rid.shape[2]))
             if self.basis is None or exclude_mean:
-                for i in xrange(Rid.shape[2]):
+                for i in range(Rid.shape[2]):
                     post_mean_grad[:,i] = \
                         Kid_grad[:,:,i].dot(self.invKdd_Yd).reshape(-1)
             else:
-                for i in xrange(Rid.shape[2]):
+                for i in range(Rid.shape[2]):
                     post_mean_grad[:,i] = \
                         Kid_grad[:,:,i].dot(self.invKdd_Yd-
                                             self.invKdd_HdTh).reshape(-1)
@@ -486,13 +490,13 @@ class GPP:
         if grad is 'Hess':
             post_mean_hess = empty((Rid.shape[0],Rid.shape[2],Rid.shape[2]))
             if self.basis is None or exclude_mean:
-                for i in xrange(Rid.shape[2]):
-                    for j in xrange(Rid.shape[2]):
+                for i in range(Rid.shape[2]):
+                    for j in range(Rid.shape[2]):
                         post_mean_hess[:,i,j] = \
                             Kid_hess[:,:,i,j].dot(self.invKdd_Yd).reshape(-1)
             else:
-                for i in xrange(Rid.shape[2]):
-                    for j in xrange(Rid.shape[2]):
+                for i in range(Rid.shape[2]):
+                    for j in range(Rid.shape[2]):
                         post_mean_hess[:,i,j] = \
                             Kid_hess[:,:,i,j].dot(self.invKdd_Yd -
                                                 self.invKdd_HdTh).reshape(-1)
@@ -586,7 +590,7 @@ class GPP:
         U, S, V = svd(Cov)
         sig = U.dot(diag(sqrt(S)))
         Ys = empty((Nx, Nsamples))
-        for i in xrange(Nsamples):
+        for i in range(Nsamples):
             Ys[:, i] = sig.dot(Z[:, i])
             Ys[:, i] += Ys_post[:, 0]
         if self.trans is not None:
@@ -620,13 +624,13 @@ class GPP:
         Xd_red, Yd_red = empty((self.Nd-1, self.Nx)), empty((self.Nd-1, 1))
         Cov_copy = deepcopy(self.kernel)
         Yd_pred, Yd_std = empty(self.Nd), empty(self.Nd)
-        for i in xrange(self.Nd):
+        for i in range(self.Nd):
             Xd_red[:i, :], Xd_red[i:, :] = self.Xd[:i, :], self.Xd[i+1:, :]
             Yd_red[:i, :], Yd_red[i:, :] = self.Yd[:i, :], self.Yd[i+1:, :]
             tmpGP = GPP(Xd_red, Yd_red, Cov_copy, Xscaling=self.xscale,
                         Ymean=self.prior_mean, explicit_basis=self.basis,
                         transform=self.trans)
-            tmp_out = tmpGP(self.Xd[i, :].reshape(1, -1), infer_std=True)
+            tmp_out = tmpGP.inference(self.Xd[i, :].reshape(1, -1), infer_std=True)
             Yd_pred[i], Yd_std[i] = tmp_out[0][0], tmp_out[1][0]
         std_res = (self.Yd[:, 0] - Yd_pred) / Yd_std
         if plot_results:
@@ -734,10 +738,7 @@ if __name__ == "__main__":
     import matplotlib as mpl
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
-    #from pyregress import *
-    from kernels import Noise, SquareExp, RatQuad
-    from transforms import Probit
-    from hyper_params import LogNormal
+    from pyregress import *
 
     # TODO: Examples that provide verification!
 
@@ -749,10 +750,10 @@ if __name__ == "__main__":
     # myGPP1 = GPP( Xd1, Yd1, SquareExp(w=0.75, l=0.25) )
     xi1 = array([[0.2]])
     # yi1 = myGPP1( xi1 )
-    yi1, yi1_grad = myGPP1(xi1, grad=True, sum_terms=[1])
-    print 'Example 1:'
-    print 'x = ', xi1, ',  y = ', yi1
-    yi1_, yi1_grad_, yi1_hess_ = myGPP1(Xd1, grad='Hess', sum_terms=[1])
+    yi1, yi1_grad = myGPP1.inference(xi1, grad=True, sum_terms=[1])
+    print('Example 1:')
+    print('x = ', xi1, ',  y = ', yi1)
+    yi1_, yi1_grad_, yi1_hess_ = myGPP1.inference(Xd1, grad='Hess', sum_terms=[1])
 
     # Example 2:
     # 2D with six data points and two regression points
@@ -761,17 +762,17 @@ if __name__ == "__main__":
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
     K2 =  RatQuad(w=0.6, l=LogNormal(guess=0.3, std=0.25), alpha=1.0)
     myGPP2 = GPP(Xd2, Yd2, K2, explicit_basis=[0, 1], transform='Probit')
-    print 'Optimized value of the hyper-parameters:', myGPP2.kernel.get_hp()
+    print('Optimized value of the hyper-parameters:', myGPP2.kernel.get_hp())
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
-    yi2, yi2_grad = myGPP2(xi2, grad=True)
-    print 'Example 2:'
-    print 'x = ', xi2
-    print 'y = ', yi2
+    yi2, yi2_grad = myGPP2.inference(xi2, grad=True)
+    print('Example 2:')
+    print('x = ', xi2)
+    print('y = ', yi2)
 
     # Figures to support the examples
     # fig. example 1
     Xi1 = linspace(0.0, 0.75, 200)
-    Yi1, Yi1std = myGPP1(Xi1, infer_std=True, sum_terms=1)
+    Yi1, Yi1std = myGPP1.inference(Xi1, infer_std=True, sum_terms=1)
     Yi1, Yi1std = Yi1.reshape(-1), Yi1std.reshape(-1)
 
     Xig1 = (xi1 + 0.025*array([-1.0, 1.0])).reshape(-1, 1)

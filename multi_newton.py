@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+
+__all__ = ['MD_Newton']
+
 from numpy import abs, array, concatenate, dot, size, squeeze, diag, float32
 from scipy import identity
 from scipy.linalg import eigvals, solve, svd, inv, eig
@@ -68,11 +71,11 @@ def MD_Newton(function, x, options=None):
 
         if not repressText:
             if not test1:
-                print '--- min tol reached ---'
+                print('--- min tol reached ---')
             if not test2:
-                print '--- max iter reached ---'
+                print('--- max iter reached ---')
             if not test3:
-                print '--- hit bounds too many times ---'
+                print('--- hit bounds too many times ---')
 
         return test1 & test2 & test3
 
@@ -164,15 +167,15 @@ def MD_Newton(function, x, options=None):
             low_bounds = [low_bounds]
         if not isinstance(high_bounds, list):
             high_bounds = [high_bounds]
-        for i in xrange(len(low_bounds)):
+        for i in range(len(low_bounds)):
             if low_bounds[i] == None:
                 low_bounds[i] = '-inf'
             if high_bounds[i] == None:
                 high_bounds[i] = 'inf'
         options['bounds'] = (low_bounds, high_bounds)
         if not repressText:
-            print 'low bounds - ', low_bounds
-            print 'high bounds - ', high_bounds
+            print('low bounds - ', low_bounds)
+            print('high bounds - ', high_bounds)
 
     # 2) Test for convergence
     while convergence_crit(x, dx, iteration, boundscount, options):
@@ -197,7 +200,7 @@ def MD_Newton(function, x, options=None):
                 w, v = eig(d2f) # decompose d2f
                 w = abs(w)      # convert eigenvals to positive
                 delta = 0.001   # minimal eigenval tolerated
-                for i in xrange(len(v)):
+                for i in range(len(v)):
                     if w[i] < delta:  # if eigenval below tolerance
                         w[i] = delta  # set eigenval to tolerance
                 # reconstruct d2f, now pos. def.
@@ -215,7 +218,7 @@ def MD_Newton(function, x, options=None):
             try:
                 dx = solve(d2f, -df)
             except ValueError:
-                print 'debug'
+                print('debug')
         dx = squeeze(dx)
 
         # 4) Line search
@@ -238,15 +241,15 @@ def MD_Newton(function, x, options=None):
         history = concatenate((history, x))
 
     if not repressText:
-        print 'Number of iterations - ', iteration
-        print 'Minimized parameters - ', x
-        print 'Initial function value - ', f_init
-        print 'Final function value - ', f
-        print 'Total function change - ', f_init - f
+        print('Number of iterations - ', iteration)
+        print('Minimized parameters - ', x)
+        print('Initial function value - ', f_init)
+        print('Final function value - ', f)
+        print('Total function change - ', f_init - f)
         if boundscount[0] > 0:
-            print 'hit low bounds ', boundscount[0], ' times'
+            print('hit low bounds ', boundscount[0], ' times')
         if boundscount[1] > 0:
-            print 'hit upper bounds ', boundscount[1], ' times'
+            print('hit upper bounds ', boundscount[1], ' times')
     if 'history' in options:
         history = history.reshape(-1, len(x))
         return history
@@ -258,7 +261,7 @@ if __name__ == "__main__":
     from mpl_toolkits.mplot3d import Axes3D
     from matplotlib import cm
     import matplotlib.pyplot as plt
-    from numpy import amax, amin, linspace, meshgrid, array
+    from numpy import amax, amin, linspace, meshgrid
     from numpy import zeros_like, asarray, diag, cos, sin, exp, pi, log
     plt.close('all')
 
@@ -356,7 +359,7 @@ if __name__ == "__main__":
 
     #---------------------------------------------------  
     #Test 1      
-    print 'Test function 1'
+    print('Test function 1')
     #guess = array([.5,-.2])   
     guess = array([1.3,0.7,0.8,1.9,1.2,2.])
         
@@ -390,7 +393,7 @@ if __name__ == "__main__":
          
     #------------------------------------------------------               
     #Test 2 
-    print 'Test function 2'
+    print('Test function 2')
     x_range1 = linspace(-6.,6.)
     guess1 = array([4.])
     hist1 = MD_Newton(test_func1, guess1, options={'history':True,
@@ -399,10 +402,10 @@ if __name__ == "__main__":
     plt.plot(x_range1,test_func1(x_range1))
     plt.plot(hist1,test_func1(hist1),'go--')
     plt.title('Test 2', fontsize=16)  
-    print 'Real min - ', min(test_func1(x_range1))
+    print('Real min - ', min(test_func1(x_range1)))
     
     #Test 3
-    print 'Test function 3'
+    print('Test function 3')
     x_range2 = linspace(0.1,1.)
     guess2 = array([.8])
     hist2 = MD_Newton(test_func2, guess2, options={'history':True,
@@ -411,10 +414,10 @@ if __name__ == "__main__":
     plt.plot(x_range2,test_func2(x_range2))
     plt.plot(hist2,test_func2(hist2),'go--')
     plt.title('Test 3', fontsize=16)    
-    print 'Real min - ', min(test_func2(x_range2))
+    print('Real min - ', min(test_func2(x_range2)))
 
     #Test 4
-    print 'Test function 4'
+    print('Test function 4')
     x_range3 = linspace(1E-6,2.)
     guess3 = array([.6])
     hist3 = MD_Newton(test_func3, guess3, options={'history':True,
@@ -423,10 +426,10 @@ if __name__ == "__main__":
     plt.plot(x_range3,test_func3(x_range3))
     plt.plot(hist3,test_func3(hist3),'go--')
     plt.title('Test 4', fontsize=16)    
-    print 'Real min - ', min(test_func3(x_range3))
+    print('Real min - ', min(test_func3(x_range3)))
 
     #Test 5
-    print 'Test function 5'
+    print('Test function 5')
     x_range4 = linspace(1E-6,2.)
     guess4 = array([1.2])
     hist4 = MD_Newton(test_func4, guess4, options={'history':True,
@@ -435,10 +438,10 @@ if __name__ == "__main__":
     plt.plot(x_range4,test_func4(x_range4))
     plt.plot(hist4,test_func4(hist4),'go--')
     plt.title('Test 5', fontsize=16) 
-    print 'Real min - ', min(test_func4(x_range4))
+    print('Real min - ', min(test_func4(x_range4)))
 
     #Test 6
-    print 'Test function 6'
+    print('Test function 6')
     x1_range = linspace(-4.,4.)
     x2_range = linspace(-4.,4.)
     XX,YY = meshgrid(x1_range,x2_range)
@@ -453,6 +456,6 @@ if __name__ == "__main__":
     ax6 = fig6.gca(projection='3d')
     surf2 = ax6.plot_surface(XX, YY, ZZ, rstride=2, cstride=2, cmap=cm.cool)
     plt.plot(hist5[:,0],hist5[:,1],test_func5(hist5.T))
-    print 'Real min - ', ZZ.min()
+    print('Real min - ', ZZ.min())
 
     plt.show()

@@ -5,6 +5,9 @@ Docstring for the kernels module - needs to be written
 # Created Sep 2013
 # @author: Sean T. Smith
 
+__all__ = ['Kernel', 'KernelSum', 'KernelProd', 'Noise', 'RatQuad', 'SquareExp', 'GammaExp']
+
+
 from abc import ABCMeta, abstractmethod
 from collections import OrderedDict as odict
 from numbers import Number
@@ -13,12 +16,11 @@ from numpy import (empty, zeros, ones, eye, sum, abs,
                    ix_, expand_dims, tile, hstack)
 from scipy import exp, log
 
-from hyper_params import HyperPrior
+from pyregress.hyper_params import *
 
 # TODO: Add periodic, but it would require general handling of multiple Rs.
 
-
-class Kernel:
+class Kernel(metaclass=ABCMeta):
     """
     Provide methods & an interface for kernels in the GPP class.
 
@@ -27,8 +29,7 @@ class Kernel:
     class provides the abstract interface for the __call__ method and
     provides the methods: __init__, declare_hyper, and map_hyper.
     """
-    __metaclass__ = ABCMeta
-
+    
     def __init__(self, params, params_spec):
         """
         Create a Kernel object.
@@ -105,7 +106,7 @@ class Kernel:
                                     bounds_mapped, unmap=unmap)
                 i += kern.Nhp
         else:
-            for (hp, i) in zip(self.hp_id, xrange(self.Nhp)):
+            for (hp, i) in zip(self.hp_id, range(self.Nhp)):
                 if not isinstance(hp, int):
                     if unmap is True:
                         self.hp[i].guess = self.p[hp]
@@ -177,7 +178,7 @@ class Kernel:
                         lnprior += f_prior(params[i])
                         i += 1
             else:
-                for f_prior, i in zip(self.hp, xrange(self.Nhp)):
+                for f_prior, i in zip(self.hp, range(self.Nhp)):
                     lnprior += f_prior(params[i])
             return lnprior
 
@@ -192,7 +193,7 @@ class Kernel:
                         dlnprior[i] = dlnp
                         i += 1
             else:
-                for f_prior, i in zip(self.hp, xrange(self.Nhp)):
+                for f_prior, i in zip(self.hp, range(self.Nhp)):
                     lnp, dlnp = f_prior(params[i], grad)
                     lnprior += lnp
                     dlnprior[i] = dlnp
@@ -211,7 +212,7 @@ class Kernel:
                         d2lnprior[i, i] = d2lnp
                         i += 1
             else:
-                for f_prior, i in zip(self.hp, xrange(self.Nhp)):
+                for f_prior, i in zip(self.hp, range(self.Nhp)):
                     lnp, dlnp, d2lnp = f_prior(params[i], grad)
                     lnprior += lnp
                     dlnprior[i] = dlnp
@@ -488,7 +489,7 @@ class SquareExp(Kernel):
             R2l2 = sum(Rk**2, 2)/l**2
         else:
             R2l2 = zeros(Rk.shape[:2])
-            for k in xrange(Rk.shape[2]):
+            for k in range(Rk.shape[2]):
                 R2l2 += (Rk[:, :, k]/l[k])**2
         w2 = w**2
         K0 = exp(-0.5*R2l2)
@@ -512,8 +513,8 @@ class SquareExp(Kernel):
                 return w2*K0, Kgrad
             # Second derivatives:
             Khess = empty((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
-            for i, h1 in zip(xrange(self.Nhp), self.hp_id):
-                for j, h2 in zip(xrange(i, self.Nhp+1), self.hp_id[i:]):
+            for i, h1 in zip(range(self.Nhp), self.hp_id):
+                for j, h2 in zip(range(i, self.Nhp+1), self.hp_id[i:]):
                     if h1 == 'w' and h2 == 'w':
                         # d^2K/dw^2
                         Khess[:, :, i, j] = 2.0*K0
@@ -545,7 +546,7 @@ class SquareExp(Kernel):
         if grad_r is not False:
             # First derivatives:
             Kgrad = empty(Rk.shape)
-            for i in xrange(Rk.shape[2]):
+            for i in range(Rk.shape[2]):
                 if isinstance(l, list):
                     Kgrad[:, :, i] = -w2*Rk[:, :, i]/l[i]**2 * K0
                 else:
@@ -554,8 +555,8 @@ class SquareExp(Kernel):
                 return w2*K0, Kgrad
             # Second derivatives:
             Khess = empty((Rk.shape[0], Rk.shape[1], Rk.shape[2], Rk.shape[2]))
-            for i in xrange(Rk.shape[2]):
-                for j in xrange(Rk.shape[2]):
+            for i in range(Rk.shape[2]):
+                for j in range(Rk.shape[2]):
                     if i == j:
                         if isinstance(l, list):
                             Khess[:, :, i, j] = (w2/l[i]**2 *
@@ -594,7 +595,7 @@ class GammaExp(Kernel):
             Rl = abs(Rk/l)
         else:
             Rl = empty(Rk.shape)
-            for k in xrange(Rk.shape[2]):
+            for k in range(Rk.shape[2]):
                 Rl[:,:,k] = abs(Rk[:,:,k]/l[k])
         Rglg = sum(Rl**g, 2)
         w2 = w**2
@@ -625,8 +626,8 @@ class GammaExp(Kernel):
                 return w2*K0, Kgrad
             # Second derivatives:
             Khess = empty((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
-            for i, h1 in zip(xrange(self.Nhp), self.hp_id):
-                for j, h2 in zip(xrange(i, self.Nhp), self.hp_id[i:]):
+            for i, h1 in zip(range(self.Nhp), self.hp_id):
+                for j, h2 in zip(range(i, self.Nhp), self.hp_id[i:]):
                     if h1 == 'w' and h2 == 'w':
                         # d^2K/dw^2
                         Khess[:,:,i,j] = 2.0*K0
@@ -697,7 +698,7 @@ class RatQuad(Kernel):
             R2l2 = sum(Rk**2,2)/l**2
         else:
             R2l2 = zeros(Rk.shape[:2])
-            for k in xrange(Rk.shape[2]):
+            for k in range(Rk.shape[2]):
                 R2l2 += (Rk[:,:,k]/l[k])**2
         w2 = w**2
         all_tmp = 1.0 + R2l2/(2.0*a)
@@ -725,8 +726,8 @@ class RatQuad(Kernel):
                 return w2*K0, Kgrad
             # Second derivatives:
             Khess = empty((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
-            for i, h1 in zip(xrange(self.Nhp), self.hp_id):
-                for j, h2 in zip(xrange(i, self.Nhp), self.hp_id[i:]):
+            for i, h1 in zip(range(self.Nhp), self.hp_id):
+                for j, h2 in zip(range(i, self.Nhp), self.hp_id[i:]):
                     if h1 == 'w' and h2 == 'w':
                         # d^2K/dw^2
                         Khess[:,:,i,j] = 2.0*K0
@@ -777,7 +778,7 @@ class RatQuad(Kernel):
         if grad_r is not False:
             # First derivatives:
             Kgrad = empty(Rk.shape)
-            for i in xrange(Rk.shape[2]):
+            for i in range(Rk.shape[2]):
                 if isinstance(l, list):
                     Kgrad[:,:,i] = -w2*Rk[:,:,i]/l[i]**2 * all_tmp**(-(a+1.0))
                 else:
@@ -785,8 +786,8 @@ class RatQuad(Kernel):
             if grad_r != 'Hess':
                 return w2*K0, Kgrad
             Khess = empty((Rk.shape[0], Rk.shape[1], Rk.shape[2], Rk.shape[2]))
-            for i in xrange(Rk.shape[2]):
-                for j in xrange(Rk.shape[2]):                    
+            for i in range(Rk.shape[2]):
+                for j in range(Rk.shape[2]):                    
                     if i == j:
                         if isinstance(l, list):
                             Khess[:,:,i,j] = ( w2/l[i]**2 * (( (a+1.0)/a * 
