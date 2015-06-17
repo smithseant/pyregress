@@ -97,7 +97,7 @@ def Volcano(outputType, mean, errorType):
         myGP = GPP( trainData_x, trainData_y, myKernel, explicit_basis=mean )
         
         # Evaluate GP at test points
-        y_test = myGP.inference( testData_x )
+        y_test = myGP( testData_x )
         if errorType == 'RMSE':
             error_return[i] = RMSE(testData_y, y_test, ybar) # if RMSE desired
         if errorType == 'MAE':

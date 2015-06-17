@@ -36,7 +36,7 @@ param = myGP.kernel.get_hp()
 # Inference over the entire domain
 Ni = 100
 Xi = linspace(0.0, 2.0, Ni).reshape((-1,1))
-post_mean, post_std = myGP.inference(Xi, infer_std=True)
+post_mean, post_std = myGP(Xi, infer_std=True)
 Xi = Xi.reshape(-1)
 post_mean, post_std = post_mean.reshape(-1), post_std.reshape(-1)
 

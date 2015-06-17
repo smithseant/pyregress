@@ -34,7 +34,7 @@ Ni = (75, 75)
 xi1, xi2 = linspace(0.0, 8.0, Ni[0]), linspace(0.0, 8.0, Ni[1])
 Xi1, Xi2 = meshgrid(xi1, xi2, indexing='ij')
 Xi = hstack([Xi1.reshape((-1,1)), Xi2.reshape((-1,1))])
-post_mean = myGP.inference(Xi, infer_std=False)
+post_mean = myGP(Xi, infer_std=False)
 post_mean = post_mean.reshape(Ni)
 
 # Maximize the hyper-parameter posterior

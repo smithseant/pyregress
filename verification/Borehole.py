@@ -145,7 +145,7 @@ def Borehole(mean, samples=27, permutations=1, errorType='RMSE'):
         myGP = GPP( lhd, output, myKernel, explicit_basis=mean )
         
         # Evaluate GP at test points
-        y_test = myGP.inference( lhd_test )
+        y_test = myGP(lhd_test)
         if errorType == 'RMSE':
             error_return[p] = RMSE(output_test, y_test, ybar) # if RMSE desired
         if errorType == 'MAE':

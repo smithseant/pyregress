@@ -72,7 +72,7 @@ class GPP:
     >>> print myGPP( np.array([[0.10, 0.10], [0.50, 0.42]]) )
     [[ 0.22770558]
      [ 0.78029862]]
-    """
+    """   
     def __init__(self, Xd, Yd, Cov, Xscaling=None,
                  Ymean=None, explicit_basis=None, transform=None,
                  optimize_hp=True):
@@ -111,7 +111,8 @@ class GPP:
         InputError:
             an exception is thrown for incompatible format of any inputs.
         """
-        self.__call__ = self.inference
+        self.__class__ = type(self.__class__.__name__, (self.__class__,), {})
+        self.__class__.__call__ = self.inference
 
         # Independent variables
         if Xd.ndim == 1:
@@ -630,7 +631,7 @@ class GPP:
             tmpGP = GPP(Xd_red, Yd_red, Cov_copy, Xscaling=self.xscale,
                         Ymean=self.prior_mean, explicit_basis=self.basis,
                         transform=self.trans)
-            tmp_out = tmpGP.inference(self.Xd[i, :].reshape(1, -1), infer_std=True)
+            tmp_out = tmpGP(self.Xd[i, :].reshape(1, -1), infer_std=True)
             Yd_pred[i], Yd_std[i] = tmp_out[0][0], tmp_out[1][0]
         std_res = (self.Yd[:, 0] - Yd_pred) / Yd_std
         if plot_results:
@@ -750,10 +751,10 @@ if __name__ == "__main__":
     # myGPP1 = GPP( Xd1, Yd1, SquareExp(w=0.75, l=0.25) )
     xi1 = array([[0.2]])
     # yi1 = myGPP1( xi1 )
-    yi1, yi1_grad = myGPP1.inference(xi1, grad=True, sum_terms=[1])
+    yi1, yi1_grad = myGPP1(xi1, grad=True, sum_terms=[1])
     print('Example 1:')
     print('x = ', xi1, ',  y = ', yi1)
-    yi1_, yi1_grad_, yi1_hess_ = myGPP1.inference(Xd1, grad='Hess', sum_terms=[1])
+    yi1_, yi1_grad_, yi1_hess_ = myGPP1(Xd1, grad='Hess', sum_terms=[1])
 
     # Example 2:
     # 2D with six data points and two regression points
@@ -764,7 +765,7 @@ if __name__ == "__main__":
     myGPP2 = GPP(Xd2, Yd2, K2, explicit_basis=[0, 1], transform='Probit')
     print('Optimized value of the hyper-parameters:', myGPP2.kernel.get_hp())
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
-    yi2, yi2_grad = myGPP2.inference(xi2, grad=True)
+    yi2, yi2_grad = myGPP2(xi2, grad=True)
     print('Example 2:')
     print('x = ', xi2)
     print('y = ', yi2)
@@ -772,7 +773,7 @@ if __name__ == "__main__":
     # Figures to support the examples
     # fig. example 1
     Xi1 = linspace(0.0, 0.75, 200)
-    Yi1, Yi1std = myGPP1.inference(Xi1, infer_std=True, sum_terms=1)
+    Yi1, Yi1std = myGPP1(Xi1, infer_std=True, sum_terms=1)
     Yi1, Yi1std = Yi1.reshape(-1), Yi1std.reshape(-1)
 
     Xig1 = (xi1 + 0.025*array([-1.0, 1.0])).reshape(-1, 1)
@@ -809,7 +810,7 @@ if __name__ == "__main__":
     xi_2 = linspace(-0.2, 1.0, Ni[1])
     Xi_1, Xi_2 = meshgrid(xi_1, xi_2, indexing='ij')
     Xi2 = hstack([Xi_1.reshape((-1, 1)), Xi_2.reshape((-1, 1))])
-    Yi2, Yi2std = myGPP2.inference(Xi2, infer_std=True)
+    Yi2, Yi2std = myGPP2(Xi2, infer_std=True)
 
     fig = plt.figure(figsize=(7, 5), dpi=150)
     ax = fig.gca(projection='3d')
