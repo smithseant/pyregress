@@ -12,17 +12,16 @@ from numpy import sqrt, mean, var, empty, expand_dims, tile
 from scipy.special import erf, erfinv, beta, betainc, betaincinv
 from scipy import pi, exp, log
 
-class BaseTransform():
+class BaseTransform(metaclass=ABCMeta):
     """
     Provide methods & interfaces for variable transformations in the gpr class.
-    
+
     For advanced use, user-defined variable transformations will need to
     inherit this base class and define both the transfor and inv_transform
     methods in the derived class.
     This base class provides the abstract interface for the transfor and
     inv_transform methods, and it provides the methods: __init__ and __call__.
     """
-    __metaclass__ = ABCMeta
     def __init__(self, yd):
         """Create a transformation object using dependent variable data."""
         return None
@@ -32,17 +31,17 @@ class BaseTransform():
             return self.transform(x)
         else:
             return self.inv_transform(x, grad_z=grad_z, hess_z=hess_z)
-    
+
     @abstractmethod
     def transform(self, y):
         """
         Perform a variable transformation to a normally distributed variable.
-        
+
         Argument
         --------
         y:  array,
             dependent variable values to be transformed.
-        
+
         Returns
         -------
         z:  array (same shape as y),
@@ -53,7 +52,7 @@ class BaseTransform():
     def inv_transform(self, z, grad_z=None, hess_z=None):
         """
         Perform the inverse variable transformation consistent with transform.
-        
+
         Argument
         --------
         z:  array,
@@ -62,7 +61,7 @@ class BaseTransform():
             derivative of the transformed variable.
         hess_z:  array-3D (optional),
             second derivative of the transformed variable.
-        
+
         Returns
         -------
         y:  array (same shape as z),
@@ -76,7 +75,7 @@ class BaseTransform():
 
 class Logarithm(BaseTransform):
     r"""
-    Transform a variable on a semi-infinite suppot [0,\infty) to an infinite
+    Transform a variable on a semi-infinite support [0,\infty) to an infinite
     support (-\infty,\infty) using the logarithm transformation.
     .. math::
         z = \log(y),
@@ -99,7 +98,7 @@ class Logarithm(BaseTransform):
         return y, grad_y, hess_y
 
 class Probit(BaseTransform):
-    """
+    r"""
     Transform a variable on a finite suppot [0,1] to an infinite support
     (-\infty,\infty) using the probit transformation.
     .. math::

@@ -43,10 +43,6 @@ from pyregress.kernels import *
 from pyregress.transforms import *
 from pyregress.multi_newton import *
 
-#from kernels import Kernel
-#from transforms import BaseTransform, Logarithm, Logit,  Probit, ProbitBeta
-#from multi_newton import MD_Newton
-
 HLOG2PI = 0.5*log(2.0*pi)
 
 
@@ -72,7 +68,7 @@ class GPP:
     >>> print myGPP( np.array([[0.10, 0.10], [0.50, 0.42]]) )
     [[ 0.22770558]
      [ 0.78029862]]
-    """   
+    """
     def __init__(self, Xd, Yd, Cov, Xscaling=None,
                  Ymean=None, explicit_basis=None, transform=None,
                  optimize_hp=True):
@@ -111,8 +107,8 @@ class GPP:
         InputError:
             an exception is thrown for incompatible format of any inputs.
         """
-        self.__class__ = type(self.__class__.__name__, (self.__class__,), {})
-        self.__class__.__call__ = self.inference
+#        self.__class__ = type(self.__class__.__name__, (self.__class__,), {})
+#        self.__class__.__call__ = self.inference
 
         # Independent variables
         if Xd.ndim == 1:
@@ -143,7 +139,7 @@ class GPP:
         if transform is None:
             self.trans = None
         elif isinstance(transform, str):
-            self.trans = eval(transform+'(self.Yd)')
+            self.trans = eval(transform + '(self.Yd)')
             self.Yd = self.trans(self.Yd)
         elif isinstance(transform, BaseTransform):
             self.trans = transform
@@ -174,19 +170,23 @@ class GPP:
         self.LKdd = cho_factor_gen(self.Kdd)
         self.invKdd_Yd = cho_solve_gen(self.LKdd, self.Yd)
         if self.basis is not None:
-                self.invKdd_Hd = cho_solve_gen(self.LKdd, self.Hd)
-                LSth = cho_factor_gen(self.Hd.T.dot(self.invKdd_Hd))
-                self.Sth = cho_solve_gen(LSth, eye(self.Nth))
-                self.Th = cho_solve_gen(LSth, self.Hd.T.dot(self.invKdd_Yd))
-                HdTh = self.Hd.dot(self.Th)
-                self.invKdd_HdTh = cho_solve_gen(self.LKdd, HdTh)
+            self.invKdd_Hd = cho_solve_gen(self.LKdd, self.Hd)
+            LSth = cho_factor_gen(self.Hd.T.dot(self.invKdd_Hd))
+            self.Sth = cho_solve_gen(LSth, eye(self.Nth))
+            self.Th = cho_solve_gen(LSth, self.Hd.T.dot(self.invKdd_Yd))
+            HdTh = self.Hd.dot(self.Th)
+            self.invKdd_HdTh = cho_solve_gen(self.LKdd, HdTh)
 
+    def __call__(self, Xi, infer_std=False, untransform=True, sum_terms=True,
+                 exclude_mean=False, grad=False):
+        return self.inference(Xi, infer_std, untransform, sum_terms,
+                              exclude_mean, grad)
 
     def _basis(self, X, grad=False):
         """Calculate the basis functions given independent variables."""
         if not (isinstance(self.basis, list) and
                 all([[0, 1, 2].count(entry) == 1 for entry in self.basis])):
-        # TODO: also check if there is less data than degrees of freedom.
+            # TODO: also check if there is less data than degrees of freedom.
             raise InputError("GPP argument explicit_basis must be a list " +
                              "with: 0, 1, and/or 2.", self.basis)
         # TODO: implement an interface for user defined basis functions.
@@ -289,11 +289,11 @@ class GPP:
         try:
             LK = cho_factor(K)
         except LinAlgError as e:
-            print ("GPP method hyper_posterior failed to factor the " +
-                   "data kernel. This is most often an indication that the " +
-                   "minimization routine is not converging.")
-            print ('Current hyper-parameter values: ')
-            print (repr(params))
+            print("GPP method hyper_posterior failed to factor the " +
+                  "data kernel. This is most often an indication that the " +
+                  "minimization routine is not converging.")
+            print('Current hyper-parameter values: ')
+            print(repr(params))
             raise e
         invK_Y = cho_solve(LK, self.Yd)
         lnP_neg = (float(self.Nd)*HLOG2PI + sum(log(diag(LK[0]))) +
@@ -357,10 +357,10 @@ class GPP:
                 for i in range(Nhp):
                     my_mess = (beta.T.dot(Kpp[:, :, i, j]).dot(beta) +
                                bKp[:, :, i].dot(bSb_2invK).dot(bKp[:, :, j].T))
-                    lnP_hess[i, j] -= 0.5 * (sum(my_mess.T * Sth) +
-                        diff2.dot(Kpp[:, :, i, j]).dot(betaTh) -
-                        2.0*diff2Kp[:, i].dot(invK).dot(ThbKp[:, j].T) +
-                        2.0*diff1Kpb[:, i].dot(Sth).dot(diff1Kpb[:, j].T))
+                    lnP_hess[i, j] -= 0.5*(sum(my_mess.T * Sth) +
+                                           diff2.dot(Kpp[:, :, i, j]).dot(betaTh) -
+                                           2.0*diff2Kp[:, i].dot(invK).dot(ThbKp[:, j].T) +
+                                           2.0*diff1Kpb[:, i].dot(Sth).dot(diff1Kpb[:, j].T))
         return lnP_neg, lnP_grad, lnP_hess
 
     def maximize_hyper_posterior(self, optimize_hp):
@@ -475,34 +475,34 @@ class GPP:
             post_mean += Hi.dot(self.Th)
 
         if grad is True or grad is 'Hess':
-            post_mean_grad = empty((Rid.shape[0],Rid.shape[2]))
+            post_mean_grad = empty((Rid.shape[0], Rid.shape[2]))
             if self.basis is None or exclude_mean:
                 for i in range(Rid.shape[2]):
-                    post_mean_grad[:,i] = \
-                        Kid_grad[:,:,i].dot(self.invKdd_Yd).reshape(-1)
+                    post_mean_grad[:, i] = \
+                        Kid_grad[:, :, i].dot(self.invKdd_Yd).reshape(-1)
             else:
                 for i in range(Rid.shape[2]):
-                    post_mean_grad[:,i] = \
-                        Kid_grad[:,:,i].dot(self.invKdd_Yd-
-                                            self.invKdd_HdTh).reshape(-1)
-                post_mean_grad[:,:] += \
+                    post_mean_grad[:, i] = \
+                        Kid_grad[:, :, i].dot(self.invKdd_Yd -
+                                              self.invKdd_HdTh).reshape(-1)
+                post_mean_grad[:, :] += \
                     Hpi.dot(self.Th).reshape(shape(post_mean_grad))
 
         if grad is 'Hess':
-            post_mean_hess = empty((Rid.shape[0],Rid.shape[2],Rid.shape[2]))
+            post_mean_hess = empty((Rid.shape[0], Rid.shape[2], Rid.shape[2]))
             if self.basis is None or exclude_mean:
                 for i in range(Rid.shape[2]):
                     for j in range(Rid.shape[2]):
-                        post_mean_hess[:,i,j] = \
-                            Kid_hess[:,:,i,j].dot(self.invKdd_Yd).reshape(-1)
+                        post_mean_hess[:, i, j] = \
+                            Kid_hess[:, :, i, j].dot(self.invKdd_Yd).reshape(-1)
             else:
                 for i in range(Rid.shape[2]):
                     for j in range(Rid.shape[2]):
-                        post_mean_hess[:,i,j] = \
-                            Kid_hess[:,:,i,j].dot(self.invKdd_Yd -
-                                                self.invKdd_HdTh).reshape(-1)
-                post_mean_hess[:,:,:] += \
-                            Hppi.dot(self.Th).reshape(shape(post_mean_hess))
+                        post_mean_hess[:, i, j] = \
+                            Kid_hess[:, :, i, j].dot(self.invKdd_Yd -
+                                                     self.invKdd_HdTh).reshape(-1)
+                post_mean_hess[:, :, :] += \
+                    Hppi.dot(self.Th).reshape(shape(post_mean_hess))
 
         # Dependent variable
         if self.prior_mean is not None and not exclude_mean:
@@ -648,7 +648,7 @@ class GPP:
             xlabel('Index of Provided Value')
             ylabel('Standard Residual')
             figure()
-            plot(self.Yd[:,0], Yd_pred, 'o')
+            plot(self.Yd[:, 0], Yd_pred, 'o')
             plot([amin(self.Yd), amax(self.Yd)],
                  [amin(self.Yd), amax(self.Yd)],
                  color='black', linestyle='-', linewidth=2.0)
@@ -660,7 +660,7 @@ class GPP:
             raise ValidationError("GPP object failed its cross validation -" +
                                   " of %d data points, %d had std. resid." +
                                   " values greater than 3.0",
-                                   self.Nd, N3, N2)
+                                  self.Nd, N3, N2)
         if return_data:
             return Yd_pred, Yd_std, std_res
         else:
@@ -675,9 +675,9 @@ def cho_factor_gen(A, lower=False, **others):
         try:
             return cho_factor(A, lower=lower, **others)
         except LinAlgError as e:
-            print ("GPP method __init__ failed to factor data kernel." +
-                   "This often indicates that X has near duplicates or " +
-                   "the noise kernel has too small of weight.")
+            print("GPP method __init__ failed to factor data kernel." +
+                  "This often indicates that X has near duplicates or " +
+                  "the noise kernel has too small of weight.")
             raise e
 
 
@@ -711,6 +711,7 @@ class InputError(GPError):  # -- not a ValueError? --
         self.args = (msg,)
         self.input_argument = input_argument
 
+
 class ValidationError(GPError):
     def __init__(self, msg, Nd=None, N3=None, N2=None):
         """
@@ -735,7 +736,7 @@ class ValidationError(GPError):
 
 
 if __name__ == "__main__":
-    from numpy import linspace, hstack, meshgrid, reshape, vstack
+    from numpy import linspace, meshgrid, reshape, vstack
     import matplotlib as mpl
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
@@ -761,7 +762,7 @@ if __name__ == "__main__":
     Xd2 = array([[0.00, 0.00], [0.50, -0.10], [1.00, 0.00],
                  [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
-    K2 =  RatQuad(w=0.6, l=LogNormal(guess=0.3, std=0.25), alpha=1.0)
+    K2 = RatQuad(w=0.6, l=LogNormal(guess=0.3, std=0.25), alpha=1.0)
     myGPP2 = GPP(Xd2, Yd2, K2, explicit_basis=[0, 1], transform='Probit')
     print('Optimized value of the hyper-parameters:', myGPP2.kernel.get_hp())
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
@@ -781,12 +782,11 @@ if __name__ == "__main__":
     Xdg1 = Xd1 + 0.025*array([-1.0, 1.0])
     Ydg1 = yi1_ + yi1_grad_*0.025*array([-1.0, 1.0])
 
-
-    # Xig2_d1 = vstack((xi2[0,1]+0.025*array([-1.0, 1.0]),
-    #                  array([xi2[1,1],xi2[1,1]])))
-    # Xig2_d2 = vstack((array([xi2[0,1],xi2[0,1]]),
-    #                  xi2[1,1]+0.025*array([-1.0, 1.0])))
-    # Yig2 = yi2[1] + yi2_grad[:,1].reshape(-1,1)*0.025*array([-1.0, 1.0])
+#     Xig2_d1 = vstack((xi2[0,1]+0.025*array([-1.0, 1.0]),
+#                      array([xi2[1,1],xi2[1,1]])))
+#     Xig2_d2 = vstack((array([xi2[0,1],xi2[0,1]]),
+#                      xi2[1,1]+0.025*array([-1.0, 1.0])))
+#     Yig2 = yi2[1] + yi2_grad[:,1].reshape(-1,1)*0.025*array([-1.0, 1.0])
 
     fig1 = plt.figure(figsize=(5, 3), dpi=150)
     p1, = plt.plot(Xd1, Yd1, 'ko', label='Data')
