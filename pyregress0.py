@@ -2,7 +2,7 @@
 """
 Docstring for the pyregress module - needs work.
 
-For basic useage see the documentation in the GPP class.
+For basic usage see the documentation in the GPP class.
 This docstring covers more advanced topics.
 Performance:
   Calculation time will greatly depend on which Blas/Lapack libs are used.
@@ -32,7 +32,7 @@ __all__ = ['GPP']
 from copy import deepcopy
 # from termcolor import colored  # may not work on windows
 from numpy import (ndarray, array, empty, zeros, ones, eye, diag,
-                   shape, resize, tile, hstack, rot90,
+                   shape, resize, tile, rot90,
                    amin, amax, maximum, abs, sqrt, std, sum, count_nonzero)
 from numpy.linalg.linalg import LinAlgError, svd
 from numpy.random import randn
@@ -53,7 +53,7 @@ class GPP:
 
     Examples
     --------
-    >>> import numpy as np
+    >>> from numpy import array
     >>> from pyregress import GPP, Noise, SquareExp, RatQuad
     >>> Xd = array([[0.1], [0.3], [0.6]])
     >>> Yd = array([[0.0], [1.0], [0.5]])
@@ -92,7 +92,7 @@ class GPP:
             Range scaling: 'range'; standard deviation scaling: 'std'; and
             manual scaling: array (same length as the second dimension of Xd).
         Ymean:  function (optional),
-            prior mean of the dependent variable at Xd & Xi. It must accpet
+            prior mean of the dependent variable at Xd & Xi. It must accept
             input in form of Xd, and must provide output the same shape as Yd.
             If omitted, a prior mean of zero is assumed.
         explicit_basis:  list of ints (optional),
@@ -419,7 +419,7 @@ class GPP:
         post_mean:  array-2D,
             inferred mean at each location in the argument Xi.
         post_std: array-2D or list (optional - depending on infer_std),
-            inferred standard deviation of the inferrences
+            inferred standard deviation or full covariance
             (for any inverse transformation, both the positive and negative
             standard deviations are returned - in that order).
 
@@ -550,8 +550,8 @@ class GPP:
         ---------
         Xs:  array-2D,
             independent variables - where to sample. First dimension is for
-            multiple inferences, and second dimension mustmatch the second
-            dimension of the argurment Xd from GPP.__init__.
+            multiple inferences, and second dimension must match the second
+            dimension of the argument Xd from GPP.__init__.
         Nsamples: int (optional),
             allows the calculation of multiple samples at once.
         sum_terms:  bool, int or list of ints (optional),
@@ -606,17 +606,21 @@ class GPP:
         Arguments
         ---------
         return_data:  bool (optional),
-            indicate whether the analysis results shoudl be returned
-            (predicted Y values, predicted std., standarized residuals).
+            indicate whether the analysis results should be returned
+            (predicted Y values, predicted std., standardized residuals).
         plot_results:  bool (optional),
             indicate whether plots of the analysis results should be created.
 
         Raises
         ------
         ValidationError:
-            an esception is thrown when any standardized residules are
+            an exception is thrown when any standardized residues are
             greater in magnitude than three.
         """
+        # if self.trans is None:
+        Yd = self.Yd[:, 0]
+        # else:
+        #     Yd = self.trans(self.Yd[:, 0])
         Xd_red, Yd_red = empty((self.Nd-1, self.Nx)), empty((self.Nd-1, 1))
         Cov_copy = deepcopy(self.kernel)
         Yd_pred, Yd_std = empty(self.Nd), empty(self.Nd)
@@ -624,11 +628,10 @@ class GPP:
             Xd_red[:i, :], Xd_red[i:, :] = self.Xd[:i, :], self.Xd[i+1:, :]
             Yd_red[:i, :], Yd_red[i:, :] = self.Yd[:i, :], self.Yd[i+1:, :]
             tmpGP = GPP(Xd_red, Yd_red, Cov_copy, Xscaling=self.xscale,
-                        Ymean=self.prior_mean, explicit_basis=self.basis,
-                        transform=self.trans)
+                        Ymean=None, explicit_basis=self.basis, transform=None)
             tmp_out = tmpGP(self.Xd[i, :].reshape(1, -1), infer_std=True)
             Yd_pred[i], Yd_std[i] = tmp_out[0][0], tmp_out[1][0]
-        std_res = (self.Yd[:, 0] - Yd_pred) / Yd_std
+        std_res = (Yd - Yd_pred) / Yd_std
         if plot_results:
             figure()
             plot(std_res, 'o')
@@ -643,27 +646,25 @@ class GPP:
             xlabel('Index of Provided Value')
             ylabel('Standard Residual')
             figure()
-            plot(self.Yd[:,0], Yd_pred, 'o')
-            plot([amin(self.Yd), amax(self.Yd)],
-                 [amin(self.Yd), amax(self.Yd)],
+            plot(Yd, Yd_pred, 'o')
+            plot([amin(Yd), amax(Yd)],
+                 [amin(Yd), amax(Yd)],
                  color='black', linestyle='-', linewidth=2.0)
             xlabel('Provided Value')
             ylabel('Predicted Value')
         N2 = count_nonzero(abs(std_res) > 2.0)
         N3 = count_nonzero(abs(std_res) > 3.0)
-        if N3 > 0:
-            raise ValidationError("GPP object failed its cross validation -" +
-                                  " of %d data points, %d had std. resid." +
-                                  " values greater than 3.0",
-                                   self.Nd, N3, N2)
         if return_data:
             return Yd_pred, Yd_std, std_res
-        else:
-            return None
+        # elif N3 > 0:
+        #     raise ValidationError("GPP object failed its cross validation -" +
+        #                           " of %d data points, %d had std. resid." +
+        #                           " values greater than 3.0", self.Nd, N3, N2)
+
 
 
 def cho_factor_gen(A, lower=False, **others):
-    """Generalize scipy's cho_factor to handle arrays of lenth zero."""
+    """Generalize scipy's cho_factor to handle arrays of length zero."""
     if A.size == 0:
         return empty(A.shape), lower
     else:
@@ -677,7 +678,7 @@ def cho_factor_gen(A, lower=False, **others):
 
 
 def cho_solve_gen(C, b, **others):
-    """Generalize scipy's cho_solve to handle arrays of lenth zero."""
+    """Generalize scipy's cho_solve to handle arrays of length zero."""
     if C[0].size == 0:
         return empty(b.shape)
     else:
@@ -730,7 +731,7 @@ class ValidationError(GPError):
 
 
 if __name__ == "__main__":
-    from numpy import linspace, hstack, meshgrid, reshape, vstack
+    from numpy import linspace, hstack, meshgrid, reshape
     import matplotlib as mpl
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
@@ -742,29 +743,31 @@ if __name__ == "__main__":
     # TODO: Examples that provide verification!
 
     # Example 1:
-    # Simple case, 1D with three data points and one regression point
-    Xd1 = array([[0.1], [0.3], [.33], [.57], [0.6]])
-    Yd1 = array([[0.0], [1.0], [1.2], [.6], [0.5]])
-    myGPP1 = GPP(Xd1, Yd1, Noise(w=0.1) + SquareExp(w=0.75, l=0.25))
-    # myGPP1 = GPP( Xd1, Yd1, SquareExp(w=0.75, l=0.25) )
-    xi1 = array([[0.2]])
-    # yi1 = myGPP1( xi1 )
-    yi1, yi1_grad = myGPP1(xi1, grad=True, sum_terms=[1])
+    # Simple case, 1D with five data points and one regression point
     print 'Example 1:'
+    Xd1 = array([[0.1], [0.3], [.36], [0.65], [.57]])
+    Yd1 = array([[0.0], [1.0], [1.2], [0.5], [.6]])
+    xi1 = array([[0.2]])
+    myGPP1 = GPP(Xd1, Yd1, Noise(w=0.1) + SquareExp(w=0.75, l=0.25))
+    yi1, yi1_grad = myGPP1(xi1, grad=True, sum_terms=[1])
+    # Interpolation (slightly simpler example)
+    # myGPP1 = GPP( Xd1, Yd1, SquareExp(w=0.75, l=0.25) )
+    # yi1 = myGPP1( xi1 )
     print 'x = ', xi1, ',  y = ', yi1
-    yi1_, yi1_grad_, yi1_hess_ = myGPP1(Xd1, grad='Hess', sum_terms=[1])
+    yd1_noiseless, yd1_grad, yd1_hess = myGPP1(Xd1, grad='Hess', sum_terms=[1])
+    print ' '
 
     # Example 2:
     # 2D with six data points and two regression points
+    print 'Example 2:'
     Xd2 = array([[0.00, 0.00], [0.50, -0.10], [1.00, 0.00],
                  [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
+    xi2 = array([[0.1, 0.1], [0.5, 0.42]])
     K2 =  RatQuad(w=0.6, l=LogNormal(guess=0.3, std=0.25), alpha=1.0)
     myGPP2 = GPP(Xd2, Yd2, K2, explicit_basis=[0, 1], transform='Probit')
     print 'Optimized value of the hyper-parameters:', myGPP2.kernel.get_hp()
-    xi2 = array([[0.1, 0.1], [0.5, 0.42]])
     yi2, yi2_grad = myGPP2(xi2, grad=True)
-    print 'Example 2:'
     print 'x = ', xi2
     print 'y = ', yi2
 
@@ -777,14 +780,7 @@ if __name__ == "__main__":
     Xig1 = (xi1 + 0.025*array([-1.0, 1.0])).reshape(-1, 1)
     Yig1 = (yi1 + yi1_grad*0.025*array([-1.0, 1.0])).reshape(-1, 1)
     Xdg1 = Xd1 + 0.025*array([-1.0, 1.0])
-    Ydg1 = yi1_ + yi1_grad_*0.025*array([-1.0, 1.0])
-
-
-    # Xig2_d1 = vstack((xi2[0,1]+0.025*array([-1.0, 1.0]),
-    #                  array([xi2[1,1],xi2[1,1]])))
-    # Xig2_d2 = vstack((array([xi2[0,1],xi2[0,1]]),
-    #                  xi2[1,1]+0.025*array([-1.0, 1.0])))
-    # Yig2 = yi2[1] + yi2_grad[:,1].reshape(-1,1)*0.025*array([-1.0, 1.0])
+    Ydg1 = yd1_noiseless + yd1_grad*0.025*array([-1.0, 1.0])
 
     fig1 = plt.figure(figsize=(5, 3), dpi=150)
     p1, = plt.plot(Xd1, Yd1, 'ko', label='Data')
@@ -793,9 +789,8 @@ if __name__ == "__main__":
     p3 = plt.Rectangle((0.0, 0.0), 1.0, 1.0, facecolor='blue',
                        alpha=0.25, label='Uncertainty (one std.)')
     p4, = plt.plot(xi1, yi1, 'ro', label='Example regression point')
-    p5 = plt.plot(Xig1, Yig1, 'r-', linewidth=3.0, label='Inferred slope')
-    p6 = plt.plot(Xdg1[0, :], Ydg1[0, :], 'r-', Xdg1[1, :], Ydg1[1, :], 'r-',
-                  Xdg1[4, :], Ydg1[4, :], 'r-', linewidth=3.0)
+    p5 = plt.plot(Xig1, Yig1, 'r-', linewidth=1.5, label='Inferred slopes')
+    p6 = plt.plot(Xdg1.T, Ydg1.T, 'r-', linewidth=1.5)
     fig1.subplots_adjust(left=0.15, right=0.95, bottom=0.15, top=0.9)
     plt.title('Example 1', fontsize=16)
     plt.xlabel('Independent Variable, X', fontsize=12)
@@ -819,8 +814,6 @@ if __name__ == "__main__":
     ax.plot_surface(Xi_1, Xi_2, reshape(Yi2-Yi2std[1], Ni), alpha=0.25,
                     linewidth=0.25, color='black', rstride=1, cstride=1)
     ax.scatter(Xd2[:, 0], Xd2[:, 1], Yd2, c='black', s=35)
-    # ax.plot(Xig2_d1[0,:], Xig2_d1[1,:], Yig2[1,:], 'r-', linewidth=3.0)
-    # ax.plot(Xig2_d2[0,:], Xig2_d2[1,:], Yig2[0,:], 'r-', linewidth=3.0)
     ax.set_zlim([0.0, 1.0])
     ax.set_title('Example 2', fontsize=16)
     ax.set_xlabel('Independent Variable, X1', fontsize=12)
@@ -834,5 +827,5 @@ if __name__ == "__main__":
     plt.xlim([0, 5])
     plt.ylim([0, 5])
     plt.colorbar()
-    plt.title('Covariance Matrix')
+    plt.title('Eg. 2 - Covariance Matrix')
     plt.show()

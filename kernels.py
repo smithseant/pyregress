@@ -647,7 +647,7 @@ class GammaExp(Kernel):
                         Khess[:,:,i,j] = g*w2*Rglg/l**2*(g*Rglg-(g+1.0))*K0
                     elif h1 == 'l' and h2 == 'gamma':
                         # d^2K/dldgamma
-                        Khess[:,:,i,j] = ( w2/l*(Rglg + g*(1.0-Rglg) * 
+                        Khess[:,:,i,j] = ( w2/l*(Rglg + g*(1.0-Rglg) *
                                          gamma_tmp) * K0 )
                         Khess[:,:,j,i] = Khess[:,:,i,j]
                     elif isinstance(h1, int) and isinstance(h2, int) and h1 == h2:
@@ -662,7 +662,7 @@ class GammaExp(Kernel):
                     elif isinstance(h1, int) and h2 == 'gamma':
                         # d^2K/dl_h1 dgamma
                         Khess[:,:,i,j] = ( w2 * (g*tmp1[:,:,h1]/l[h1] +
-                                       Rl[:,:,h1]**g/l[h1] * 
+                                       Rl[:,:,h1]**g/l[h1] *
                                        (1.0-g*gamma_tmp))*K0 )
                         Khess[:,:,j,i] = Khess[:,:,i,j]
                     elif h1 == 'gamma' and h2 == 'gamma':
@@ -720,7 +720,7 @@ class RatQuad(Kernel):
                 elif h == 'alpha':
                     # dK/dalpha
                     alpha_tmp = (all_tmp-1)/all_tmp - log(all_tmp)
-                    Kgrad[:,:,i] = w2*alpha_tmp*K0  
+                    Kgrad[:,:,i] = w2*alpha_tmp*K0
             if grad_hp != 'Hess':
                 return w2*K0, Kgrad
             # Second derivatives:
@@ -736,16 +736,16 @@ class RatQuad(Kernel):
                         Khess[:,:,j,i] = Khess[:,:,i,j]
                     elif h1 == 'w' and isinstance(h2, int):
                         # d^2K/dwdl_h
-                        Khess[:,:,i,j] = ( 2.0*w*Rk[:,:,h]**2 / 
+                        Khess[:,:,i,j] = ( 2.0*w*Rk[:,:,h]**2 /
                                         (l[h]**3*all_tmp) * K0 )
                         Khess[:,:,j,i] = Khess[:,:,i,j]
                     elif h1 == 'w' and h2 == 'alpha':
                         # d^2K/dwdalpha
-                        Khess[:,:,i,j] = 2.0*w*alpha_tmp*K0 
+                        Khess[:,:,i,j] = 2.0*w*alpha_tmp*K0
                         Khess[:,:,j,i] = Khess[:,:,i,j]
                     elif h1 == 'l' and h2 == 'l':
                         # d^2K/dl^2
-                        Khess[:,:,i,j] = ( w2*R2l2/l**2*((a+1.0)/a*R2l2 / 
+                        Khess[:,:,i,j] = ( w2*R2l2/l**2*((a+1.0)/a*R2l2 /
                                         all_tmp - 3.0)/all_tmp * K0 )
                     elif h1 == 'l' and h2 == 'alpha':
                         # d^2K/dldalpha
@@ -754,19 +754,19 @@ class RatQuad(Kernel):
                         Khess[:,:,j,i] = Khess[:,:,i,j]
                     elif isinstance(h1, int) and isinstance(h2, int) and h1 == h2:
                         # d^2K/dl_h^2
-                        Khess[:,:,i,j] = ( w2*Rk[:,:,h1]**2/l[h1]**4 * 
-                                        ((a+1.0)/a*(Rk[:,:,h1]/l[h1])**2 / 
+                        Khess[:,:,i,j] = ( w2*Rk[:,:,h1]**2/l[h1]**4 *
+                                        ((a+1.0)/a*(Rk[:,:,h1]/l[h1])**2 /
                                         all_tmp - 3.0)/all_tmp * K0 )
                     elif isinstance(h1, int) and isinstance(h2, int):
                         # d^2K/dl_h1 dl_h2
-                        Khess[:,:,i,j] = ( (a+1.0)/a *w2*(Rk[:,:,h1] * 
-                                         Rk[:,:,h2]/all_tmp)**2 / 
+                        Khess[:,:,i,j] = ( (a+1.0)/a *w2*(Rk[:,:,h1] *
+                                         Rk[:,:,h2]/all_tmp)**2 /
                                          (l[h1]*l[h2])**3 * K0 )
                         Khess[:,:,j,i] = Khess[:,:,i,j]
                     elif isinstance(h1, int) and h2 == 'alpha':
                         # d^2K/dl_h dalpha
-                        Khess[:,:,i,j] = ( w2*Rk[:,:,h1]**2/l[h1]**3 * 
-                                        ((a+1.0)/a*(all_tmp-1.0)/all_tmp 
+                        Khess[:,:,i,j] = ( w2*Rk[:,:,h1]**2/l[h1]**3 *
+                                        ((a+1.0)/a*(all_tmp-1.0)/all_tmp
                                         - log(all_tmp) ) /all_tmp*K0 )
                         Khess[:,:,j,i] = Khess[:,:,i,j]
                     elif h1 == 'alpha' and h2 == 'alpha':
@@ -786,26 +786,26 @@ class RatQuad(Kernel):
                 return w2*K0, Kgrad
             Khess = empty((Rk.shape[0], Rk.shape[1], Rk.shape[2], Rk.shape[2]))
             for i in xrange(Rk.shape[2]):
-                for j in xrange(Rk.shape[2]):                    
+                for j in xrange(Rk.shape[2]):
                     if i == j:
                         if isinstance(l, list):
-                            Khess[:,:,i,j] = ( w2/l[i]**2 * (( (a+1.0)/a * 
+                            Khess[:,:,i,j] = ( w2/l[i]**2 * (( (a+1.0)/a *
                                         Rk[:,:,i]**2/l[i]**2 )/
                                         (1.0 + R2l2/(2.0*a)) - 1.0) *
                                         all_tmp**(-(a+1.0)) )
                         else:
-                            Khess[:,:,i,j] = ( w2/l**2 * (( (a+1.0)/a * 
-                                        Rk[:,:,i]**2/l**2 )/ 
+                            Khess[:,:,i,j] = ( w2/l**2 * (( (a+1.0)/a *
+                                        Rk[:,:,i]**2/l**2 )/
                                         (1.0 + R2l2/(2.0*a)) - 1.0) *
                                         all_tmp**(-(a+1.0)) )
                     else:
                         if isinstance(l, list):
-                            Khess[:,:,i,j] = ( (a+1.0)/a * (w2*Rk[:,:,i] * 
+                            Khess[:,:,i,j] = ( (a+1.0)/a * (w2*Rk[:,:,i] *
                                         Rk[:,:,j] / (l[i]**2 * l[j]**2) *
                                         all_tmp**(-(a+2.0))) )
                         else:
-                            Khess[:,:,i,j] = ( (a+1.0)/a * (w2*Rk[:,:,i] * 
-                                        Rk[:,:,j] / l**4 * 
+                            Khess[:,:,i,j] = ( (a+1.0)/a * (w2*Rk[:,:,i] *
+                                        Rk[:,:,j] / l**4 *
                                         all_tmp**(-(a+2.0))))
             return w2*K0, Kgrad, Khess
 
