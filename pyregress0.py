@@ -38,10 +38,10 @@ from numpy.linalg.linalg import LinAlgError, svd
 from numpy.random import randn
 from scipy import log, pi
 from scipy.linalg import cho_factor, cho_solve
-from matplotlib.pyplot import figure, plot, xlabel, ylabel
 from pyregress.kernels import *
 from pyregress.transforms import *
 from pyregress.multi_newton import *
+from rprop import rprop
 
 HLOG2PI = 0.5*log(2.0*pi)
 
@@ -379,14 +379,16 @@ class GPP:
             for i in range(int(len(bounds)/2))]
 
         # Perform minimization
-        if optimize_hp == 'print':
-            MD_Newton(self.hyper_posterior, all_hyper,
-                      options={'tol': 1e-6, 'maxiter': 200, 'bounds': (lo, hi),
-                               'repress text': False})
-        else:
-            MD_Newton(self.hyper_posterior, all_hyper,
-                      options={'tol': 1e-6, 'maxiter': 200, 'bounds': (lo, hi),
-                               'repress text': True})
+#        if optimize_hp == 'print':
+#            MD_Newton(self.hyper_posterior, all_hyper,
+#                      options={'tol': 1e-6, 'maxiter': 200, 'bounds': (lo, hi),
+#                               'repress text': False})
+#        else:
+#            MD_Newton(self.hyper_posterior, all_hyper,
+#                      options={'tol': 1e-6, 'maxiter': 200, 'bounds': (lo, hi),
+#                               'repress text': True})
+        
+        all_hyper = rprop(self.hyper_posterior, all_hyper)
 
         all_hyper, bounds = self.kernel._map_hyper(all_hyper, unmap=True)
         return self, all_hyper
@@ -635,6 +637,7 @@ class GPP:
             Yd_pred[i], Yd_std[i] = tmp_out[0][0], tmp_out[1][0]
         std_res = (self.Yd[:, 0] - Yd_pred) / Yd_std
         if plot_results:
+            from matplotlib.pyplot import figure, plot, xlabel, ylabel
             figure()
             plot(std_res, 'o')
             plot([0, self.Nd + 1], [-2.0, -2.0],
