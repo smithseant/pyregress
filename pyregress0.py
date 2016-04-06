@@ -416,7 +416,7 @@ class GPP:
 
         Returns
         -------
-        post_mean:  array-2D,
+        post_mean:  array-2D,  TODO: change to a 1D-array?
             inferred mean at each location in the argument Xi.
         post_std: array-2D or list (optional - depending on infer_std),
             inferred standard deviation or full covariance
