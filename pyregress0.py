@@ -44,7 +44,7 @@ from kernels import Kernel
 from transforms import BaseTransform, Logarithm, Logit,  Probit, ProbitBeta
 from multi_newton import MD_Newton
 
-HLOG2PI = 0.5*log(2.0*pi)
+HLOG2PI = 0.5*log(2.0 * pi)
 
 
 class GPP:
