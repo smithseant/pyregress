@@ -7,8 +7,12 @@ Docstring for the transforms module - needs to be written
 
 __all__ = ['BaseTransform', 'Logarithm', 'Probit', 'ProbitBeta', 'Logit']
 
+<<<<<<< HEAD
 from abc import ABCMeta, abstractmethod
 from numpy import sqrt, mean, var, empty, expand_dims, tile
+=======
+from numpy import sqrt, mean, var, empty, tile
+>>>>>>> master
 from scipy.special import erf, erfinv, beta, betainc, betaincinv
 from scipy import pi, exp, log
 
@@ -17,9 +21,9 @@ class BaseTransform(metaclass=ABCMeta):
     Provide methods & interfaces for variable transformations in the gpr class.
 
     For advanced use, user-defined variable transformations will need to
-    inherit this base class and define both the transfor and inv_transform
+    inherit this base class and define both the transform and inv_transform
     methods in the derived class.
-    This base class provides the abstract interface for the transfor and
+    This base class provides the abstract interface for the transform and
     inv_transform methods, and it provides the methods: __init__ and __call__.
     """
     def __init__(self, yd):

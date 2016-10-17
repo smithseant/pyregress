@@ -2,9 +2,8 @@
 """
 Verifcation test for pyregress package.
 """
-from numpy import empty, array, linspace, shape
+from numpy import empty, array, linspace
 from scipy import sin, exp
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from pyregress import *
@@ -15,7 +14,7 @@ plt.close('all')
 # True function (create training data)
 def funcIn(x):
     return sin(5.*x) * exp(.25*x)
-    
+
 # Setup source GP with multiple hyper-parameter
 x_all = linspace(1.0,2.0).T
 y_all = funcIn(x_all)
@@ -91,7 +90,7 @@ myK2.map_hyper(p_mapped2, unmap=True)
 (myGPR2, param) = myGPR2.maximize_hyper_posterior()
 print('Optimized value of the hyper-parameter:', param)
 myK2.map_hyper(p_mapped2)
-(hopt_post, hopt_grad) = myGPR2.hyper_posterior(param, p_mapped2)   
+(hopt_post, hopt_grad) = myGPR2.hyper_posterior(param, p_mapped2)
 
 # Infered points
 (Yi2, Yi2std) = myGPR2(Xi1, infer_std=True)
