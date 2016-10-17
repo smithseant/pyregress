@@ -107,8 +107,6 @@ class GPP:
         InputError:
             an exception is thrown for incompatible format of any inputs.
         """
-#        self.__class__ = type(self.__class__.__name__, (self.__class__,), {})
-#        self.__class__.__call__ = self.inference
 
         # Independent variables
         if Xd.ndim == 1:
@@ -191,8 +189,7 @@ class GPP:
                              "with: 0, 1, and/or 2.", self.basis)
         # TODO: implement an interface for user defined basis functions.
         # elif isinstance(self.basis, basis_callable):
-        # H = self.basis(X)
-        # Nth = H.shape[1]
+
         N = X.shape[0]
         Nth = sum(self.Nx**array(self.basis))
         H = empty((N, Nth))
@@ -379,15 +376,14 @@ class GPP:
             for i in range(int(len(bounds)/2))]
 
         # Perform minimization
-#        if optimize_hp == 'print':
-#            MD_Newton(self.hyper_posterior, all_hyper,
-#                      options={'tol': 1e-6, 'maxiter': 200, 'bounds': (lo, hi),
-#                               'repress text': False})
-#        else:
-#            MD_Newton(self.hyper_posterior, all_hyper,
-#                      options={'tol': 1e-6, 'maxiter': 200, 'bounds': (lo, hi),
-#                               'repress text': True})
-        
+       # if optimize_hp == 'print':
+       #     MD_Newton(self.hyper_posterior, all_hyper,
+       #               options={'tol': 1e-6, 'maxiter': 200, 'bounds': (lo, hi),
+       #                        'repress text': False})
+       # else:
+       #     MD_Newton(self.hyper_posterior, all_hyper,
+       #               options={'tol': 1e-6, 'maxiter': 200, 'bounds': (lo, hi),
+       #                        'repress text': True})
         all_hyper = rprop(self.hyper_posterior, all_hyper)
 
         all_hyper, bounds = self.kernel._map_hyper(all_hyper, unmap=True)

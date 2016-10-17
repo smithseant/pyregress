@@ -7,12 +7,9 @@ Docstring for the transforms module - needs to be written
 
 __all__ = ['BaseTransform', 'Logarithm', 'Probit', 'ProbitBeta', 'Logit']
 
-<<<<<<< HEAD
 from abc import ABCMeta, abstractmethod
-from numpy import sqrt, mean, var, empty, expand_dims, tile
-=======
 from numpy import sqrt, mean, var, empty, tile
->>>>>>> master
+
 from scipy.special import erf, erfinv, beta, betainc, betaincinv
 from scipy import pi, exp, log
 
