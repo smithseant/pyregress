@@ -7,6 +7,7 @@ complexity to go into multiple dimensions without a grid. They also offer
 the unique ability for non-parametric (meaning there is no need to pre-specify
 basis functions) regression. This tool is intended to be flexible in many
 regards:
+
 * One or multiple dimensions may be used for the independent variables,
 * Independent variables can be automatically pre-scaled,
 * Use a variety of predefined kernels or specified your own,
