@@ -7,15 +7,15 @@ complexity to go into multiple dimensions without a grid. They also offer
 the unique ability for non-parametric (meaning there is no need to pre-specify
 basis functions) regression. This tool is intended to be flexible in many
 regards:
-- One or multiple dimensions may be used for the independent variables,
-- Independent variables can be automatically pre-scaled,
-- Use a variety of predefined kernels or specified your own,
-- Combine kernels with '+' or '*' operators,
-- Length-scale parameters in kernels may be unique to each dimension,
-- Any kernel parameter may be known or uncertain,
-- Non-parametric approach can be combined with pre-specified basis functions,
-- Use automatic transformations that make the method more widely applicable,
-- Specify and infer slope (or gradient) information,
+* One or multiple dimensions may be used for the independent variables,
+* Independent variables can be automatically pre-scaled,
+* Use a variety of predefined kernels or specified your own,
+* Combine kernels with '+' or '*' operators,
+* Length-scale parameters in kernels may be unique to each dimension,
+* Any kernel parameter may be known or uncertain,
+* Non-parametric approach can be combined with pre-specified basis functions,
+* Use automatic transformations that make the method more widely applicable,
+* Specify and infer slope (or gradient) information,
 There is also a utility for model self validation - using leave-one-out style
 analysis.
 
