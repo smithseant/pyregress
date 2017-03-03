@@ -3,5 +3,6 @@
 # ...except the following list:
 !.gitignore
 !*.py
+!README.md
 !examples/
 !verification/
