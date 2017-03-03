@@ -41,7 +41,7 @@ from scipy.linalg import cho_factor, cho_solve
 from pyregress.kernels import *
 from pyregress.transforms import *
 from pyregress.multi_newton import *
-from rprop import rprop
+from pyregress.rprop import rprop
 
 HLOG2PI = 0.5*log(2.0 * pi)
 

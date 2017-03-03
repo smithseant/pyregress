@@ -4,6 +4,9 @@ Created on Thu Feb 18 09:17:08 2016
 
 @author: bbschro
 """
+__all__ = ['rprop']
+
+
 from numpy import (ones, zeros, sign, inf, array, zeros_like, minimum, maximum,
                    logical_and, choose, select)
 from numpy.linalg import norm
