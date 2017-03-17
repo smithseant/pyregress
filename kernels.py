@@ -45,22 +45,22 @@ class Kernel(metaclass=ABCMeta):
         """
         # TODO: throw an error if the parameters don't match the spec.
         self.Np = len(params_spec)
-        self.Nhp = len([i for i in params.values()
-                        if isinstance(i, HyperPrior)])
+        self.Nφ = len([i for i in params.values()
+                       if isinstance(i, HyperPrior)])
         if 'l' in params and isinstance(params['l'], list):
             self.Np += len(params['l']) - 1
-            self.Nhp += len([i for i in params['l']
-                             if isinstance(i, HyperPrior)])
+            self.Nφ += len([i for i in params['l']
+                            if isinstance(i, HyperPrior)])
         self.p = odict([(key, None) for key in params_spec.keys()])
         self.p_bounds = [val for val in params_spec.values()]
-        self.hp, self.hp_id = [], []
+        self.φ, self.φ_id = [], []
         for key in params_spec.keys():
             val = params[key]
             if isinstance(val, Number):
                 self.p[key] = val
             elif isinstance(val, HyperPrior):
-                self.hp += [val]
-                self.hp_id += [key]
+                self.φ += [val]
+                self.φ_id += [key]
                 self.p[key] = val.guess
             elif isinstance(val, list):
                 self.p[key] = [None]*len(val)
@@ -68,8 +68,8 @@ class Kernel(metaclass=ABCMeta):
                     if isinstance(val[i], Number):
                         self.p[key][i] = val[i]
                     elif isinstance(val[i], HyperPrior):
-                        self.hp += [val[i]]
-                        self.hp_id += [i]
+                        self.φ += [val[i]]
+                        self.φ_id += [i]
                         self.p[key][i] = val[i].guess
 
     def __add__(self, other):
@@ -90,46 +90,46 @@ class Kernel(metaclass=ABCMeta):
             # Combine with the existing KernelProd object.
             return other.__mul__(self, self_on_right=True)
 
-    def _map_hyper(self, hp_mapped=None, bounds_mapped=None, unmap=False):
+    def _map_hyper(self, φ_mapped=None, bounds_mapped=None, unmap=False):
         """Replace hyper-parameter values with pointers to a 1D array."""
-        if hp_mapped is None:
-            hp_mapped = empty(self.Nhp)
+        if φ_mapped is None:
+            φ_mapped = empty(self.Nφ)
             bounds_mapped = empty(0)
         if unmap is True:
             bounds_mapped = []
         if isinstance(self, KernelSum) or isinstance(self, KernelProd):
             i = 0
             for kern in self.terms:
-                hp_mapped[i:i+kern.Nhp], bounds_mapped = \
-                    kern._map_hyper(hp_mapped[i: i+kern.Nhp],
+                φ_mapped[i:i+kern.Nφ], bounds_mapped = \
+                    kern._map_hyper(φ_mapped[i: i+kern.Nφ],
                                     bounds_mapped, unmap=unmap)
-                i += kern.Nhp
+                i += kern.Nφ
         else:
-            for (hp, i) in zip(self.hp_id, range(self.Nhp)):
-                if not isinstance(hp, int):
+            for (φ, i) in zip(self.φ_id, range(self.Nφ)):
+                if not isinstance(φ, int):
                     if unmap is True:
-                        self.hp[i].guess = self.p[hp]
-                        hp_mapped[i] = self.hp[i].guess
+                        self.φ[i].guess = self.p[φ]
+                        φ_mapped[i] = self.φ[i].guess
                     else:
-                        hp_mapped[i] = self.hp[i].guess
-                        self.p[hp] = hp_mapped[i:i+1]
+                        φ_mapped[i] = self.φ[i].guess
+                        self.p[φ] = φ_mapped[i:i+1]
                     bounds_mapped = hstack((bounds_mapped, (self.p_bounds[i])))
                 else:
                     if unmap is True:
-                        self.hp[i].guess = self.p['l'][hp]
-                        hp_mapped[i] = self.hp[i].guess
+                        self.φ[i].guess = self.p['l'][φ]
+                        φ_mapped[i] = self.φ[i].guess
                     else:
-                        hp_mapped[i] = self.hp[i].guess
-                        self.p['l'][hp] = hp_mapped[i:i+1]
-#                    if hp != 0:
+                        φ_mapped[i] = self.φ[i].guess
+                        self.p['l'][φ] = φ_mapped[i:i+1]
+#                    if φ != 0:
                     bounds_mapped = hstack((bounds_mapped,
                                             (self.p_bounds[0])))
 #                    else:
 #                        bounds_mapped = hstack((bounds_mapped,
 #                                                (self.p_bounds[i])))
 
-        # return (self, hp_mapped)
-        return hp_mapped, bounds_mapped
+        # return (self, φ_mapped)
+        return φ_mapped, bounds_mapped
 
     def _ln_priors(self, params=None, grad=False):
         """
@@ -156,16 +156,16 @@ class Kernel(metaclass=ABCMeta):
             evaluated at values provided by params
         """
         if params is None:
-            params = zeros(self.Nhp)
+            params = zeros(self.Nφ)
             i = 0
             if isinstance(self, KernelSum) or isinstance(self, KernelProd):
                 for kern in self.terms:
-                    for hp in kern.hp:
-                        params[i] = hp.guess
+                    for φ in kern.φ:
+                        params[i] = φ.guess
                         i += 1
             else:
-                for hp in self.hp:
-                    params[i] = hp.guess
+                for φ in self.φ:
+                    params[i] = φ.guess
                     i += 1
 
         lnprior = 0.0
@@ -173,73 +173,73 @@ class Kernel(metaclass=ABCMeta):
             if isinstance(self, KernelSum) or isinstance(self, KernelProd):
                 i = 0
                 for kern in self.terms:
-                    for f_prior in kern.hp:
+                    for f_prior in kern.φ:
                         lnprior += f_prior(params[i])
                         i += 1
             else:
-                for f_prior, i in zip(self.hp, range(self.Nhp)):
+                for f_prior, i in zip(self.φ, range(self.Nφ)):
                     lnprior += f_prior(params[i])
             return lnprior
 
         elif grad is True:
-            dlnprior = empty(self.Nhp)
+            dlnprior = empty(self.Nφ)
             if isinstance(self, KernelSum) or isinstance(self, KernelProd):
                 i = 0
                 for kern in self.terms:
-                    for f_prior in kern.hp:
+                    for f_prior in kern.φ:
                         (lnp, dlnp) = f_prior(params[i], grad)
                         lnprior += lnp
                         dlnprior[i] = dlnp
                         i += 1
             else:
-                for f_prior, i in zip(self.hp, range(self.Nhp)):
+                for f_prior, i in zip(self.φ, range(self.Nφ)):
                     lnp, dlnp = f_prior(params[i], grad)
                     lnprior += lnp
                     dlnprior[i] = dlnp
             return lnprior, dlnprior
 
         elif grad == 'Hess':
-            dlnprior = empty(self.Nhp)
-            d2lnprior = zeros((self.Nhp, self.Nhp))
+            dlnprior = empty(self.Nφ)
+            d2lnprior = zeros((self.Nφ, self.Nφ))
             if isinstance(self, KernelSum) or isinstance(self, KernelProd):
                 i = 0
                 for kern in self.terms:
-                    for f_prior in kern.hp:
+                    for f_prior in kern.φ:
                         lnp, dlnp, d2lnp = f_prior(params[i], grad)
                         lnprior += lnp
                         dlnprior[i] = dlnp
                         d2lnprior[i, i] = d2lnp
                         i += 1
             else:
-                for f_prior, i in zip(self.hp, range(self.Nhp)):
+                for f_prior, i in zip(self.φ, range(self.Nφ)):
                     lnp, dlnp, d2lnp = f_prior(params[i], grad)
                     lnprior += lnp
                     dlnprior[i] = dlnp
                     d2lnprior[i, i] = d2lnp
             return lnprior, dlnprior, d2lnprior
 
-    def get_hp(self):
+    def get_φ(self):
         """
         Return the current hyper parameter values.
 
         Returns
         -------
-        all_hp:  array-1D,
+        all_φ:  array-1D,
             current values, for each hyper parameter, from HyperPrior.guess
             (after minimization is run these should be optimized values).
         """
-        all_hp = zeros(self.Nhp)
+        all_φ = zeros(self.Nφ)
         i = 0
         if isinstance(self, KernelSum) or isinstance(self, KernelProd):
             for kern in self.terms:
-                for hp in kern.hp:
-                    all_hp[i] = hp.guess
+                for φ in kern.φ:
+                    all_φ[i] = φ.guess
                     i += 1
         else:
-            for hp in self.hp:
-                all_hp[i] = hp.guess
+            for φ in self.φ:
+                all_φ[i] = φ.guess
                 i += 1
-        return all_hp
+        return all_φ
 
     @abstractmethod
     def __call__(self, Rk, grad_hp=False, grad_r=False, **kwargs):
@@ -278,7 +278,7 @@ class KernelSum(Kernel):
     """Provide a class that lists kernels to be added at evaluation."""
     def __init__(self, k1, k2):
         self.terms = [k1, k2]
-        self.Np, self.Nhp = k1.Np + k2.Np, k1.Nhp + k2.Nhp
+        self.Np, self.Nφ = k1.Np + k2.Np, k1.Nφ + k2.Nφ
 
     def __add__(self, other, self_on_right=False):
         if isinstance(other, KernelSum):
@@ -292,7 +292,7 @@ class KernelSum(Kernel):
             # TODO: throw an error!
             pass
         self.Np += other.Np
-        self.Nhp += other.Nhp
+        self.Nφ += other.Nφ
         return self
 
     def __call__(self, Rk, grad_hp=False, grad_r=False, **kwargs):
@@ -311,21 +311,21 @@ class KernelSum(Kernel):
         if grad_hp is not False:
             if grad_hp != 'Hess':
                 K = zeros(Rk.shape[:2])
-                Kgrad = zeros((Rk.shape[0], Rk.shape[1], self.Nhp))
+                Kgrad = zeros((Rk.shape[0], Rk.shape[1], self.Nφ))
                 h = 0
                 for kern in terms:
-                    K_t, Kgrad[:, :, h:h+kern.Nhp] = kern(Rk, grad_hp=grad_hp,
+                    K_t, Kgrad[:, :, h:h+kern.Nφ] = kern(Rk, grad_hp=grad_hp,
                                                           **kwargs)
                     K += K_t
-                    h += kern.Nhp
+                    h += kern.Nφ
                 return K, Kgrad
             else:
                 K = zeros(Rk.shape[:2])
-                Kgrad = zeros((Rk.shape[0], Rk.shape[1], self.Nhp))
-                Khess = zeros((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
+                Kgrad = zeros((Rk.shape[0], Rk.shape[1], self.Nφ))
+                Khess = zeros((Rk.shape[0], Rk.shape[1], self.Nφ, self.Nφ))
                 h = 0
                 for kern in terms:
-                    hn = h + kern.Nhp
+                    hn = h + kern.Nφ
                     Kt, Kgrad[:, :, h:hn], Khess[:, :, h:hn, h:hn] = \
                         kern(Rk, grad_hp=grad_hp, **kwargs)
                     K += Kt
@@ -359,7 +359,7 @@ class KernelProd(Kernel):
     """Provide a class that lists kernels to be multiplied at evaluation."""
     def __init__(self, k1, k2):
         self.terms = [k1, k2]
-        self.Np, self.Nhp = k1.Np + k2.Np, k1.Nhp + k2.Nhp
+        self.Np, self.Nφ = k1.Np + k2.Np, k1.Nφ + k2.Nφ
 
     def __mul__(self, other, self_on_right=False):
         if isinstance(other, KernelProd):
@@ -370,7 +370,7 @@ class KernelProd(Kernel):
             # TODO: throw an error!
             pass
         self.Np += other.Np
-        self.Nhp += other.Nhp
+        self.Nφ += other.Nφ
         return self
 
     def __call__(self, Rk, grad_hp=False, grad_r=False, **kwargs):
@@ -385,29 +385,29 @@ class KernelProd(Kernel):
             return K
         elif grad_hp != 'Hess':
             K = ones(Rk.shape[:2])
-            Kgrad = ones((Rk.shape[0], Rk.shape[1], self.Nhp))
+            Kgrad = ones((Rk.shape[0], Rk.shape[1], self.Nφ))
             h = 0
             for kern in self.terms:
                 Kt, Kgt = kern(Rk, grad_hp=grad_hp, **kwargs)
                 K *= Kt
-                irange = range(h, h+kern.Nhp)
-                iother = range(0, h) + range(h+kern.Nhp, self.Nhp)
+                irange = range(h, h+kern.Nφ)
+                iother = range(0, h) + range(h+kern.Nφ, self.Nφ)
                 Kgrad[:, :, irange] *= Kgt
                 Kgrad[:, :, iother] *= tile(expand_dims(Kt, 2),
                                             (1, 1, len(iother)))
-                h += kern.Nhp
+                h += kern.Nφ
             return K, Kgrad
         else:
             K = ones(Rk.shape[:2])
-            Kgrad = ones((Rk.shape[0], Rk.shape[1], self.Nhp))
-            Khess = ones((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
+            Kgrad = ones((Rk.shape[0], Rk.shape[1], self.Nφ))
+            Khess = ones((Rk.shape[0], Rk.shape[1], self.Nφ, self.Nφ))
             h = 0
             for kern in self.terms:
                 Kt, Kgt, Kht = kern(Rk, grad_hp=grad_hp, **kwargs)
                 K *= Kt
-                hn = h + kern.Nhp
+                hn = h + kern.Nφ
                 irange = range(h, hn)
-                iother = range(0, h) + range(hn, self.Nhp)
+                iother = range(0, h) + range(hn, self.Nφ)
                 Kgrad[:, :, irange] *= Kgt
                 Kgrad[:, :, iother] *= tile(expand_dims(Kt, 2),
                                             (1, 1, len(iother)))
@@ -423,7 +423,7 @@ class KernelProd(Kernel):
                       iother, iother)] *= \
                           tile(expand_dims(expand_dims(Kt, 2), 3),
                                (1, 1, len(iother), len(iother)))
-                h += kern.Nhp
+                h += kern.Nφ
             return K, Kgrad, Khess
 
 
@@ -450,14 +450,14 @@ class Noise(Kernel):
             # K = w2*K0
             return w2*K0
         if grad_hp is not False:
-            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-            if 'w' in self.hp_id:
+            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nφ))
+            if 'w' in self.φ_id:
                 # dK/dw
                 Kgrad[:, :, 0] = 2.0*w*K0
             if grad_hp != 'Hess':
                 return w2*K0, Kgrad
             Khess = empty((Rk.shape[0], Rk.shape[1], self.Np, self.Np))
-            if 'w' in self.hp_id:
+            if 'w' in self.φ_id:
                 # d^2K/dw^2
                 Khess[:, :, 0, 0] = 2.0*K0
             return w2*K0, Kgrad, Khess
@@ -497,8 +497,8 @@ class SquareExp(Kernel):
             return w2*K0
         if grad_hp is not False:
             # First derivatives:
-            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-            for (i, h) in zip(range(self.Nhp), self.hp_id):
+            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nφ))
+            for (i, h) in zip(range(self.Nφ), self.φ_id):
                 if h == 'w':
                     # dK/dw
                     Kgrad[:, :, i] = 2.0*w*K0
@@ -511,9 +511,9 @@ class SquareExp(Kernel):
             if grad_hp != 'Hess':
                 return w2*K0, Kgrad
             # Second derivatives:
-            Khess = empty((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
-            for i, h1 in zip(range(self.Nhp), self.hp_id):
-                for j, h2 in zip(range(i, self.Nhp+1), self.hp_id[i:]):
+            Khess = empty((Rk.shape[0], Rk.shape[1], self.Nφ, self.Nφ))
+            for i, h1 in zip(range(self.Nφ), self.φ_id):
+                for j, h2 in zip(range(i, self.Nφ+1), self.φ_id[i:]):
                     if h1 == 'w' and h2 == 'w':
                         # d^2K/dw^2
                         Khess[:, :, i, j] = 2.0*K0
@@ -606,8 +606,8 @@ class GammaExp(Kernel):
             return w2*K0
         if grad_hp is not False:
             # First derivatives:
-            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-            for i, h in zip(range(self.Nhp), self.hp_id):
+            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nφ))
+            for i, h in zip(range(self.Nφ), self.φ_id):
                 if h == 'w':
                     # dK/dw
                     Kgrad[:, :, i] = 2.0*w*K0
@@ -623,12 +623,12 @@ class GammaExp(Kernel):
                     tmp1[Rl > 0] = Rl[Rl > 0]**g * log(Rl[Rl > 0.0])
                     gamma_tmp = sum(tmp1, 2)
                     Kgrad[:, :, i] = -w2*gamma_tmp*K0
-            if grad_hp != 'Hess':
+            if grad_φ != 'Hess':
                 return w2*K0, Kgrad
             # Second derivatives:
-            Khess = empty((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
-            for i, h1 in zip(range(self.Nhp), self.hp_id):
-                for j, h2 in zip(range(i, self.Nhp), self.hp_id[i:]):
+            Khess = empty((Rk.shape[0], Rk.shape[1], self.Nφ, self.Nφ))
+            for i, h1 in zip(range(self.Nφ), self.φ_id):
+                for j, h2 in zip(range(i, self.Nφ), self.φ_id[i:]):
                     if h1 == 'w' and h2 == 'w':
                         # d^2K/dw^2
                         Khess[:, :, i, j] = 2.0*K0
@@ -711,8 +711,8 @@ class RatQuad(Kernel):
             return w2*K0
         if grad_hp is not False:
             # First derivatives:
-            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-            for i, h in zip(range(self.Nhp), self.hp_id):
+            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nφ))
+            for i, h in zip(range(self.Nφ), self.φ_id):
                 if h == 'w':
                     # dK/dw
                     Kgrad[:, :, i] = 2.0*w*K0
@@ -729,9 +729,9 @@ class RatQuad(Kernel):
             if grad_hp != 'Hess':
                 return w2*K0, Kgrad
             # Second derivatives:
-            Khess = empty((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
-            for i, h1 in zip(range(self.Nhp), self.hp_id):
-                for j, h2 in zip(range(i, self.Nhp), self.hp_id[i:]):
+            Khess = empty((Rk.shape[0], Rk.shape[1], self.Nφ, self.Nφ))
+            for i, h1 in zip(range(self.Nφ), self.φ_id):
+                for j, h2 in zip(range(i, self.Nφ), self.φ_id[i:]):
                     if h1 == 'w' and h2 == 'w':
                         # d^2K/dw^2
                         Khess[:, :, i, j] = 2.0*K0
