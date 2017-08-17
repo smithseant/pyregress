@@ -12,8 +12,7 @@ from abc import ABCMeta, abstractmethod
 from collections import OrderedDict as odict
 from numbers import Number
 from numpy import (empty, zeros, ones, eye, sum, abs,
-                   ix_, expand_dims, tile, hstack)
-from scipy import exp, log
+                   ix_, expand_dims, tile, hstack, exp, log)
 from pyregress.hyper_params import *
 
 # TODO: Add periodic, but it would require general handling of multiple Rs.

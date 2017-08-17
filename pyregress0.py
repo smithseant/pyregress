@@ -359,13 +359,13 @@ class GPP:
                                            2.0*Δ1Kpβ[:, i] @ Σθ @ Δ1Kpβ[:, j].T)
         return lnP_neg, lnP_grad, lnP_hess
 
-    def maximize_hyper_posterior(self, optimize_φ):
+    def maximize_hyper_posterior(self, optimize_φ=None):
         """
         Find the maximum of the hyper-parameter posterior.
 
         Arguments
         ---------
-       optimize_φ - specify if printing of hyper-parameters is desired
+        optimize_φ - specify whether to print the hyper-parameters
         """
 
         # Setup hyper-parameters & map values from a single array
