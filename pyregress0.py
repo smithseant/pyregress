@@ -25,9 +25,9 @@ Reading the code and development:
     Θ => linear coefficients to the basis functions,
     p => derivative (prime) of a variable,
     L => lower diagonal of a Cholesky factorization.
+
+Created Sep 2013 @author: Sean T. Smith
 """
-# Created Sep 2013
-# @author: Sean T. Smith
 __all__ = ['GPP', 'InputError', 'ValidationError']
 
 from copy import deepcopy
@@ -359,13 +359,13 @@ class GPP:
                                            2.0*Δ1Kpβ[:, i] @ Σθ @ Δ1Kpβ[:, j].T)
         return lnP_neg, lnP_grad, lnP_hess
 
-    def maximize_hyper_posterior(self, optimize_φ):
+    def maximize_hyper_posterior(self, optimize_φ=None):
         """
         Find the maximum of the hyper-parameter posterior.
 
         Arguments
         ---------
-       optimize_φ - specify if printing of hyper-parameters is desired
+        optimize_φ - specify whether to print the hyper-parameters
         """
 
         # Setup hyper-parameters & map values from a single array
@@ -544,7 +544,7 @@ class GPP:
     def sample(self, Xs, Nsamples=1, sum_terms=True, exclude_mean=False,
                grad=False):
         """
-        Sample the Gassian process at specified locations.
+        Sample the Gaussian process at specified locations.
 
         Arguments
         ---------
