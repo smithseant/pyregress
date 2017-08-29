@@ -20,7 +20,7 @@ Reading the code and development:
     K => kernel values (prior covariance matrix),
     φ => hyper(unknown)-parameters of the kernel,
     R => distance (radius) in independent variable space,
-    Σ => other covariance matricies,
+    Σ => other covariance matrices,
     H => explicit basis functions evaluated at X,
     Θ => linear coefficients to the basis functions,
     p => derivative (prime) of a variable,
@@ -43,7 +43,7 @@ from pyregress.transforms import *
 from pyregress.multi_newton import *
 from pyregress.rprop import rprop
 
-HLOG2PI = 0.5*log(2*π)
+HLOG2PI = 0.5 * log(2 * π)
 
 
 class GPP:
@@ -166,14 +166,14 @@ class GPP:
             self.maximize_hyper_posterior(optimize_hp)
         self.Kdd = self.kernel(self.Rdd, block_diag=True)
         self.LKdd = cho_factor_gen(self.Kdd)
-        self.invKdd_Yd = cho_solve_gen(self.LKdd, self.Yd)
+        self.α = cho_solve_gen(self.LKdd, self.Yd)
         if self.basis is not None:
-            self.invKdd_Hd = cho_solve_gen(self.LKdd, self.Hd)
-            LΣθ = cho_factor_gen(self.Hd.T @ self.invKdd_Hd)
-            self.Σθ = cho_solve_gen(LΣθ, eye(self.Nθ))
-            self.Θ = cho_solve_gen(LΣθ, self.Hd.T @ self.invKdd_Yd)
-            HdΘ = self.Hd @ self.Θ
-            self.invKdd_HdΘ = cho_solve_gen(self.LKdd, HdΘ)
+            self.β = cho_solve_gen(self.LKdd, self.Hd)
+            LinvΣθ = cho_factor_gen(self.Hd.T @ self.β)
+            self.Σθ = cho_solve_gen(LinvΣθ, eye(self.Nθ))
+            self.μΘ = cho_solve_gen(LinvΣθ, self.Hd.T @ self.α)
+            HdμΘ = self.Hd @ self.μΘ
+            self.βμΘ = cho_solve_gen(self.LKdd, HdμΘ)
 
     def __call__(self, Xi, infer_std=False, untransform=True, sum_terms=True,
                  exclude_mean=False, grad=False):
@@ -257,11 +257,8 @@ class GPP:
         ---------
         params:  array-1D,
             hyper parameters in an array for the minimization routine.
-        φ_mapped:  array-1D,
-            hyper parameter values that map to self.Kernel.
         grad:  bool or string (optional),
             when grad is True, must return lnP_grad,
-            when grad is 'Hess', must also return lnP_hess.
 
         Returns
         -------
@@ -269,8 +266,6 @@ class GPP:
             negative log of the hyper-parameter posterior.
         lnP_grad:  array-1D (optional - depending on argument grad),
             gradient of lnP_neg with respect to each hyper-parameter.
-        lnP_hess:  array-2D (optional - depending on argument grad),
-            Hessian matrix (2nd derivatives) of lnP_neg.
         """
         Nd, Nφ = self.Nd, self.kernel.Nφ
         if not grad:
@@ -293,79 +288,42 @@ class GPP:
             print(repr(params))
             raise e
         α = cho_solve(LK, self.Yd)
-        lnP_neg = (float(self.Nd) * HLOG2PI + sum(log(diag(LK[0]))) +
-                   0.5*self.Yd.T @ α - lnprior)
+        lnP_neg = (Nd * HLOG2PI + sum(log(diag(LK[0]))) +
+                   0.5 * self.Yd.T @ α - lnprior)
 
         if self.basis is not None:
             Nθ = self.Nθ
             β = cho_solve(LK, self.Hd)
-            try:
-                LΣθ = cho_factor(self.Hd.T @ β)
-            except:
-                print('debug')
-            Σθ = cho_solve(LΣθ, eye(self.Nθ))
-            Θ = cho_solve(LΣθ, self.Hd.T @ α)
-            βΘ = β @ Θ
-            lnP_neg -= (float(self.Nθ)*HLOG2PI - sum(log(diag(LΣθ[0]))) +
-                        0.5 * Θ.T @ self.Hd.T @ βΘ)
+            invΣθ = self.Hd.T @ β
+            LinvΣθ = cho_factor(invΣθ)
+            Σθ = cho_solve(LinvΣθ, eye(Nθ))
+            μΘ = cho_solve(LinvΣθ, self.Hd.T @ α)
+            βμΘ = β @ μΘ
+            lnP_neg -= (Nθ * HLOG2PI - sum(log(diag(LinvΣθ[0]))) +
+                        0.5 * μΘ.T @ invΣθ @ μΘ)
         if not grad:
             return lnP_neg
 
-        # grad == True or 'Hess':
+        # grad is True:
         invK = cho_solve(LK, eye(Nd))
         invK_αα = invK - α @ α.T
         lnP_grad = empty(Nφ)
         for j in range(Nφ):
-            lnP_grad[j] = 0.5*sum(invK_αα.T * Kp[:, :, j]) - 1.0*dlnprior[j]
+            lnP_grad[j] = 0.5 * sum(invK_αα.T * Kp[:, :, j]) - dlnprior[j]
         if self.basis is not None:
-            Δ2 = βΘ.T - 2.0*α.T
+            Δ2 = βμΘ.T - 2 * α.T
             for j in range(Nφ):
                 βKpβ = β.T @ Kp[:, :, j] @ β
-                lnP_grad[j] -= 0.5*(sum(βKpβ.T * Σθ) + Δ2 @ Kp[:, :, j] @ βΘ)
-        if grad != 'Hess':
-            return lnP_neg, lnP_grad
+                lnP_grad[j] -= 0.5*(sum(βKpβ.T * Σθ) + Δ2 @ Kp[:, :, j] @ βμΘ)
+        return lnP_neg, lnP_grad
 
-        # grad == 'Hess':
-        invK_Kp, ααKp = empty((Nd, Nd, Nφ)), empty((Nd, Nd, Nφ))
-        for j in range(Nφ):
-            invK_Kp[:, :, j] = invK @ Kp[:, :, j]
-            αKp = α.T @ Kp[:, :, j]
-            ααKp[:, :, j] = 2.0 * α @ αKp
-        lnP_hess = empty((Nφ, Nφ))
-        for j in range(Nφ):
-            for i in range(j + 1):
-                lnP_hess[i, j] = 0.5*sum(
-                    invK_αα.T * Kpp[:, :, i, j] -
-                    invK_Kp[:, :, i].T * invK_Kp[:, :, j] +
-                    ααKp[:, :, i].T * invK_Kp[:, :, j]) - d2lnprior[i, j]
-                lnP_hess[j, i] = lnP_hess[i, j]
-        if self.basis is not None:
-            Δ1 = βΘ.T - α.T
-            βSβ_2invK = β @ Σθ @ β.T - 2.0 * invK
-            βKp, ΘβKp = empty((Nθ, Nd, Nφ)), empty((Nd, Nφ))
-            Δ1Kpβ, Δ2Kp = empty((Nθ, Nφ)), empty((Nd, Nφ))
-            for j in range(Nφ):
-                βKp[:, :, j] = β.T @ Kp[:, :, j]
-                ΘβKp[:, j] = βΘ.T @ Kp[:, :, j]
-                Δ1Kpβ[:, j] = Δ1 @ Kp[:, :, j] @ β
-                Δ2Kp[:, j] = Δ2 @ Kp[:, :, j]
-            for j in range(Nφ):
-                for i in range(Nφ):
-                    big_mess = (β.T @ Kpp[:, :, i, j] @ β +
-                                βKp[:, :, i] @ βSβ_2invK @ βKp[:, :, j].T)
-                    lnP_hess[i, j] -= 0.5*(sum(big_mess.T * Σθ) +
-                                           Δ2 @ Kpp[:, :, i, j] @ βΘ -
-                                           2.0*Δ2Kp[:, i] @ invK @ ΘβKp[:, j].T +
-                                           2.0*Δ1Kpβ[:, i] @ Σθ @ Δ1Kpβ[:, j].T)
-        return lnP_neg, lnP_grad, lnP_hess
-
-    def maximize_hyper_posterior(self, optimize_φ=None):
+    def maximize_hyper_posterior(self, verbose=False):
         """
         Find the maximum of the hyper-parameter posterior.
 
         Arguments
         ---------
-        optimize_φ - specify whether to print the hyper-parameters
+        verbose - specify whether to print status of the minimization routine.
         """
 
         # Setup hyper-parameters & map values from a single array
@@ -375,15 +333,7 @@ class GPP:
             for i in range(int(len(bounds)/2))]
 
         # Perform minimization
-       # if optimize_φ == 'print':
-       #     MD_Newton(self.hyper_posterior, all_hyper,
-       #               options={'tol': 1e-6, 'maxiter': 200, 'bounds': (lo, hi),
-       #                        'repress text': False})
-       # else:
-       #     MD_Newton(self.hyper_posterior, all_hyper,
-       #               options={'tol': 1e-6, 'maxiter': 200, 'bounds': (lo, hi),
-       #                        'repress text': True})
-        all_hyper = rprop(self.hyper_posterior, all_hyper)
+        all_hyper = rprop(self.hyper_posterior, all_hyper, verbose=verbose)
 
         all_hyper, bounds = self.kernel._map_hyper(all_hyper, unmap=True)
         return self, all_hyper
@@ -459,9 +409,9 @@ class GPP:
                                                   grad_r=grad)
 
         if self.basis is None or exclude_mean:
-            μ_post = Kid @ self.invKdd_Yd
+            μ_post = Kid @ self.α
         else:
-            μ_post = Kid @ (self.invKdd_Yd - self.invKdd_HdΘ)
+            μ_post = Kid @ (self.α - self.βμΘ)
             if grad is False:
                 Nθ, Hi = self._basis(Xi)
             elif grad is True:
@@ -469,20 +419,20 @@ class GPP:
             else:
                 Nθ, Hi, Hpi, Hppi = self._basis(Xi, grad=grad)
 
-            μ_post += Hi @ self.Θ
+            μ_post += Hi @ self.μΘ
 
         if grad is True or grad is 'Hess':
             μ_post_grad = empty((Rid.shape[0], Rid.shape[2]))
             if self.basis is None or exclude_mean:
                 for i in range(Rid.shape[2]):
                     μ_post_grad[:, i] = \
-                        (Kid_grad[:, :, i] @ self.invKdd_Yd).reshape(-1)
+                        (Kid_grad[:, :, i] @ self.α).reshape(-1)
             else:
                 for i in range(Rid.shape[2]):
-                    μ_post_grad[:, i] = (Kid_grad[:, :, i] @ (self.invKdd_Yd -
-                                              self.invKdd_HdΘ)).reshape(-1)
+                    μ_post_grad[:, i] = (Kid_grad[:, :, i] @ (self.α -
+                                              self.βμΘ)).reshape(-1)
                 μ_post_grad[:, :] += \
-                    (Hpi @ self.Θ).reshape(μ_post_grad.shape)
+                    (Hpi @ self.μΘ).reshape(μ_post_grad.shape)
 
         if grad is 'Hess':
             μ_post_hess = empty((Rid.shape[0], Rid.shape[2], Rid.shape[2]))
@@ -490,15 +440,15 @@ class GPP:
                 for i in range(Rid.shape[2]):
                     for j in range(Rid.shape[2]):
                         μ_post_hess[:, i, j] = \
-                            (Kid_hess[:, :, i, j] @ self.invKdd_Yd).reshape(-1)
+                            (Kid_hess[:, :, i, j] @ self.α).reshape(-1)
             else:
                 for i in range(Rid.shape[2]):
                     for j in range(Rid.shape[2]):
                         μ_post_hess[:, i, j] = \
-                            (Kid_hess[:, :, i, j] @ (self.invKdd_Yd -
-                                                     self.invKdd_HdΘ)).reshape(-1)
+                            (Kid_hess[:, :, i, j] @ (self.α -
+                                                     self.βμΘ)).reshape(-1)
                 μ_post_hess[:, :, :] += \
-                    (Hppi @ self.Θ).reshape(μ_post_hess.shape)
+                    (Hppi @ self.μΘ).reshape(μ_post_hess.shape)
 
         # Dependent variable
         if self.μ_prior is not None and not exclude_mean:
@@ -514,7 +464,7 @@ class GPP:
             Kii = self.kernel(Rii, block_diag=True, sum_terms=sum_terms)
             Σ_post = Kii - Kid @ cho_solve_gen(self.LKdd, Kid.T)
             if self.basis is not None:
-                A = Hi - Kid @ self.invKdd_Hd
+                A = Hi - Kid @ self.β
                 Σ_post += A @ (self.Σθ @ A.T)
             σ2_post = maximum(0.0, diag(Σ_post))
             σ_post = sqrt(σ2_post).reshape((-1, 1))

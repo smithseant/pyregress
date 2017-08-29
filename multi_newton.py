@@ -2,9 +2,8 @@
 
 __all__ = ['MD_Newton']
 
-from numpy import abs, array, concatenate, dot, size, squeeze, diag, float32
-from scipy import identity
-from scipy.linalg import eigvals, solve, svd, inv, eig
+from numpy import abs, array, concatenate, dot, size, squeeze
+from scipy.linalg import eigvals, solve, eig
 from scipy.optimize import line_search
 
 def MD_Newton(function, x, options=None):
@@ -191,12 +190,7 @@ def MD_Newton(function, x, options=None):
             # use steepest decent if Hess matrix is not pos. def.
                 # future work on forcing pos. def. needed
             if not is_pos_def(d2f):
-
-#                U,s,V = svd(d2f)
-#                a_inv = dot(dot(V.T,inv(diag(s))),U.T)
-#                dx = -df.dot(a_inv)
-
-                # new spectral decomp. conditioning method
+                # Spectral decomp. conditioning
                 w, v = eig(d2f) # decompose d2f
                 w = abs(w)      # convert eigenvals to positive
                 delta = 0.001   # minimal eigenval tolerated
@@ -205,16 +199,6 @@ def MD_Newton(function, x, options=None):
                         w[i] = delta  # set eigenval to tolerance
                 # reconstruct d2f, now pos. def.
                 d2f = v.dot(diag(w)).dot(v.T).real
-
-                # Original methods of steepest decent
-                # beta = abs(d2f).max() * 5. # commented out for debug
-            # else:
-                # new spectral decomp. conditioning method
-                #d2f = d2f
-
-                # Original methods of steepest decent
-                # beta = 1e-14 # beta value arbitrarily chosen
-                # d2f = ( d2f + beta*identity(len(x)) )/(1.0 + beta)
             try:
                 dx = solve(d2f, -df)
             except ValueError:
