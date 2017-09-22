@@ -7,9 +7,6 @@ from scipy import sin, exp
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from pyregress import *
-#from pyregress.features import *
-plt.close('all')
-
 
 # True function (create training data)
 def funcIn(x):
