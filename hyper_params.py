@@ -15,8 +15,7 @@ Created Sep 2013  @author: Sean T. Smith
 __all__ = ['HyperPrior', 'Constant', 'Normal', 'Jeffreys', 'LogNormal',
            'Gamma', 'Uniform', 'Beta', 'Bounded']
 
-from numpy import array, inf, sqrt, exp, log
-from numpy import pi as π
+from numpy import array, inf, sqrt, exp, log, pi as π
 from scipy.special import gamma, beta, erf, erfinv
 
 # Prior distribution options for the hyper-parameters
