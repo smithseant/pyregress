@@ -9,7 +9,7 @@ from numpy.random import randn
 from numba import jit
 from pyregress import (GPI, Noise, SquareExp, GammaExp, RatQuad, KernelError,
                        Jeffreys, Uniform)
-from DOE_spacefilling import optmaximin_naive, optmaximin_potentialfield
+from DOE_spacefilling import optmaximin_naive
 
 Δ = 1e-4
 @jit(nopython=True)
@@ -190,12 +190,12 @@ class PyregressTesting(TestCase):
             if (isinstance(kern, Noise) or hasattr(kern, 'terms') and
                 any([isinstance(t, Noise) for t in kern.terms])):
                 continue
-            # GPIk = GPI(self.Xd[ik], self.Ys[ik], kern + Noise(1e-7), optimize=False)
             GPIk = GPI(self.Xd[ik], self.Ys[ik], kern, optimize=False)
             Yd = GPIk(self.Xd[ik])
             rel_err = abs((self.Ys[ik] - Yd) / (self.Ys[ik] + 1e-8))
             self.assertLess(rel_err.max(), tol, msg='Kernel No. {}'.format(ik))
 
+    # TODO: The test to reproduce φ may not be well posed.
     # def test_convergence_of_maximize_posterior_φ(self):
     #     """
     #     Ensure the optimization can reproduce the φ that was used in the

@@ -22,19 +22,20 @@ Notation used throughout the code:
     H => explicit basis functions evaluated at X,
     Θ => linear coefficients to the basis functions,
     p => derivative (prime) of a variable,
-    L => lower diagonal of a Cholesky factorization.
+    L => lower diagonal of a Cholesky factorization,
+    Λ => eigenvalues,
+    V => eigenvectors.
 
 Created Sep 2013 @author: Sean T. Smith
 """
 __all__ = ['GPI', 'InputError', 'ValidationError']
 
 from copy import deepcopy
-from numpy import (ndarray, array, empty, zeros, ones, eye, diag, tile,
-                   sum, std, amin, amax, maximum, count_nonzero, abs, sqrt, log)
-from numpy import pi as π
-from numpy.linalg.linalg import LinAlgError, eigh, svd
+from warnings import warn
+from numpy import (ndarray, array, empty, zeros, ones, eye, diag, squeeze, where, tile,
+                   sum, std, count_nonzero, amin, amax, maximum, abs, sqrt, log, pi as π)
 from numpy.random import randn
-from scipy.linalg import cho_factor, cho_solve
+from scipy.linalg import cho_factor, cho_solve, eigh, LinAlgError
 from scipy.optimize import minimize
 from pyregress.kernels import *
 from pyregress.transforms import *
@@ -53,18 +54,18 @@ class GPI:
     >>> from pyregress import GPI, Noise, SquareExp, RatQuad
     >>> Xd = array([[0.1], [0.3], [0.6]])
     >>> Yd = array([[0.0], [1.0], [0.5]])
-    >>> myGPI = GPI( Xd, Yd, Noise(w=0.1) + SquareExp(w=1.0, l=0.3) )
-    >>> print myGPI( np.array([[0.2]]) )
-    [[ 0.52641732]]
+    >>> myGPI = GPI( Xd, Yd, Noise(w=0.1) + SquareExp(w=1, l=0.3) )
+    >>> print(myGPI( array([[0.2]]) ))
+    [[ 0.56465214]]
 
     >>> Xd = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
     ...             [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     >>> Yd = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
-    >>> myGPI = GPI(Xd, Yd, RatQuad(w=0.6, l=0.3, alpha=1.0),
+    >>> myGPI = GPI(Xd, Yd, RatQuad(w=0.6, l=0.3, α=1),
     ...             explicit_basis=[0, 1], transform='Probit')
-    >>> print myGPI( np.array([[0.10, 0.10], [0.50, 0.42]]) )
-    [[ 0.22770558]
-     [ 0.78029862]]
+    >>> print(myGPI( array([[0.10, 0.10], [0.50, 0.42]]) ))
+    [[ 0.21117381]
+     [ 0.74764254]]
     """
     def __init__(self, Xd, Yd, Cov, Xscaling=None,
                  Ymean=None, explicit_basis=None, transform=None,
@@ -125,8 +126,8 @@ class GPI:
         elif Xscaling.shape == (self.Nx,):
             self.xscale = Xscaling
         else:
-            raise InputError("GPI argument Xscaling must be one of: " +
-                             "False, True, 'range', 'std', or 1D array " +
+            raise InputError("GPI argument Xscaling must be one of: "
+                             "False, True, 'range', 'std', or 1D array "
                              "(same length as the 2nd dim. of Xd)", Xscaling)
         # Dependent variable
         if Yd.shape[0] != self.Nd:
@@ -142,7 +143,7 @@ class GPI:
             self.trans = transform
             self.Yd = self.trans(self.Yd)
         else:
-            raise InputError("GPI argument transform must be BaseTransform " +
+            raise InputError("GPI argument transform must be BaseTransform "
                              "class (string of name) or object.", transform)
         self.μ_prior = Ymean
         if self.μ_prior is not None:
@@ -175,7 +176,7 @@ class GPI:
         if not (isinstance(self.basis, list) and
                 all([[0, 1, 2].count(entry) == 1 for entry in self.basis])):
             # TODO: also check if there is less data than degrees of freedom.
-            raise InputError("GPI argument explicit_basis must be a list " +
+            raise InputError("GPI argument explicit_basis must be a list "
                              "with: 0, 1, and/or 2.", self.basis)
         # TODO: implement an interface for user defined basis functions.
         # elif isinstance(self.basis, basis_callable):
@@ -217,6 +218,7 @@ class GPI:
     def _radius(self, X, Y):
         """Calculate the distance matrix (radius)."""
         # scipy.spatial.distance.cdist(X, Y, 'seuclidean', V=self.xscale)
+        # TODO: Migrate this to numba function(s).
         Nx, Ny = X.shape[0], Y.shape[0]
         Rk = empty((Nx, Ny, self.Nx))
         for k in range(self.Nx):
@@ -232,20 +234,29 @@ class GPI:
         """
         self.Kdd = self.kernel(self.Rdd, on_diag=True)
         try:
+            # For covariance matrices Cholesky is fast, but less stable.
             self.LKdd = cho_factor_gen(self.Kdd)
-            self.α = cho_solve_gen(self.LKdd, self.Yd)
-            if self.basis is not None:
-                self.β = cho_solve_gen(self.LKdd, self.Hd)
-                LinvΣθ = cho_factor_gen(self.Hd.T @ self.β)
-                self.Σθ = cho_solve_gen(LinvΣθ, eye(self.Nθ))
-                self.μΘ = cho_solve_gen(LinvΣθ, self.Hd.T @ self.α)
-                HdμΘ = self.Hd @ self.μΘ
-                self.βμΘ = cho_solve_gen(self.LKdd, HdμΘ)
-        except LinAlgError as e:
-            raise e
-            # TODO: Use the symmetric eigendecomposition to automatically correct.
-            # self.Λ, self.V = eigh(self.Kdd)
-            # self.α =
+            self.solve = cho_solve_gen
+        except LinAlgError:
+            # Downshifting to the slower, but more stable, eigen method.
+            self.LKdd = eigh(self.Kdd)
+            eig_solve = lambda Λ, V, b: (V @ ((V.T @ b) / Λ))
+            self.solve = lambda L, b: eig_solve(*L, squeeze(b))
+            Λ, V = self.LKdd
+            Λmin = 1e-12 * Λ[-1]
+            if Λ[0] < Λmin:
+                warn('The data kernel was automatically modified to maintain'
+                     ' positive definiteness.', RuntimeWarning)
+                Λ = where(Λ < Λmin, Λmin, Λ)
+                self.LKdd = (Λ, V)
+        self.α = self.solve(self.LKdd, self.Yd)
+        if self.basis is not None:
+            self.β = self.solve(self.LKdd, self.Hd)
+            LinvΣθ = cho_factor_gen(self.Hd.T @ self.β)
+            self.Σθ = cho_solve_gen(LinvΣθ, eye(self.Nθ))
+            self.μΘ = cho_solve_gen(LinvΣθ, self.Hd.T @ self.α)
+            HdμΘ = self.Hd @ self.μΘ
+            self.βμΘ = self.solve(self.LKdd, HdμΘ)
         return self
 
     def posterior_φ(self, φ, grad=True, trans=True):
@@ -276,21 +287,28 @@ class GPI:
             K, Kp = self.kernel.Kφ(φ, self.Rdd, grad=grad, trans=trans, on_diag=True)
             lnprior, dlnprior = self.kernel.ln_priors(φ, grad=grad, trans=trans)
         try:
+            # For covariance matrices Cholesky is fast, but less stable.
             LK = cho_factor(K)
+            solve = cho_solve
+            ln_detK = sum(log(diag(LK[0])))
         except LinAlgError as e:
-            print("GPI method hyper_posterior failed to factor the " +
-                  "data kernel. This is most often an indication that the " +
-                  "minimization routine is not converging.")
-            print('Current hyper-parameter values: ')
-            print(repr(φ))
-            raise e
-        α = cho_solve(LK, self.Yd)
-        lnP_neg = (Nd * HLOG2PI + sum(log(diag(LK[0]))) +
-                   0.5 * self.Yd.T @ α - lnprior)
+            # Downshifting to the slower, but more stable, eigen method.
+            LK = eigh(K)
+            eig_solve = lambda Λ, V, b: (V @ ((V.T @ b) / Λ))
+            solve = lambda L, b: eig_solve(*L, squeeze(b))
+            Λ, V = LK
+            Λmin = 1e-12 * Λ[-1]
+            if Λ[0] < Λmin:
+                Λ = where(Λ < Λmin, Λmin, Λ)
+                LK = (Λ, V)
+            ln_detK = sum(log(Λ))
+        α = solve(LK, self.Yd)
+
+        lnP_neg = (Nd * HLOG2PI + ln_detK + 0.5 * self.Yd.T @ α - lnprior)
 
         if self.basis is not None:
             Nθ = self.Nθ
-            β = cho_solve(LK, self.Hd)
+            β = solve(LK, self.Hd)
             invΣθ = self.Hd.T @ β
             LinvΣθ = cho_factor(invΣθ)
             Σθ = cho_solve(LinvΣθ, eye(Nθ))
@@ -302,7 +320,7 @@ class GPI:
         if not grad:
             return lnP_neg
         # else grad:
-        invK = cho_solve(LK, eye(Nd))
+        invK = solve(LK, eye(Nd))
         invK_αα = invK - α @ α.T
         lnP_grad = empty(Nφ)
         for j in range(Nφ):
@@ -328,8 +346,8 @@ class GPI:
         # Setup hyper-parameters & map values from a single array
         φ = self.kernel.get_φ(trans=trans)
         # Perform minimization
-        # out = minimize(self.posterior_φ, φ, (False, trans), method='Nelder-Mead')
-        out = minimize(self.posterior_φ, φ, (True, trans), method='BFGS', jac=True)
+        out = minimize(self.posterior_φ, φ, (False, trans), method='Nelder-Mead')
+        # out = minimize(self.posterior_φ, φ, (True, trans), method='BFGS', jac=True)
         # Use the optimized value:
         φ = out.x
         self.kernel.update_p(φ, trans=trans, set=True)
@@ -392,7 +410,7 @@ class GPI:
         if Xi.ndim == 1:
             Xi = Xi.reshape((-1, 1))
         if Xi.ndim != 2 or Xi.shape[1] != self.Nx:
-            raise InputError("GPI object argument Xi must be a 2D array " +
+            raise InputError("GPI object argument Xi must be a 2D array "
                              "(2nd dimension must match that of Xd.)", Xi)
 
         # Mixed i-d kernel & inference of posterior mean
@@ -440,7 +458,7 @@ class GPI:
         if infer_std:
             Rii = self._radius(Xi, Xi)
             Kii = self.kernel(Rii, block_diag=True, sum_terms=sum_terms)
-            Σ_post = Kii - Kid @ cho_solve_gen(self.LKdd, Kid.T)
+            Σ_post = Kii - Kid @ self.solve(self.LKdd, Kid.T)
             if self.basis is not None:
                 A = Hi - Kid @ self.β
                 Σ_post += A @ (self.Σθ @ A.T)
@@ -491,7 +509,9 @@ class GPI:
         Returns
         -------
         Ys:  array-2D,
-            sample value at each location in the argument Xs.
+            sample value from the poster at each location in Xs.
+        μpost_grad:  array-2D,
+            mean gradient of the posterior at each location in Xs.
 
         Raises
         ------
@@ -499,26 +519,22 @@ class GPI:
             an exception is thrown for incompatible format of any inputs.
         """
         Nx = Xs.shape[0]
-        Ys_post, Cov = self.inference(Xs, infer_std='covar',
-                                      sum_terms=sum_terms,
-                                      exclude_mean=exclude_mean,
-                                      grad=grad)
+        μpost, Σ = self.inference(Xs, infer_std='covar', sum_terms=sum_terms,
+                                      exclude_mean=exclude_mean, grad=grad)
         if grad:
-            Ys_post, Ys_post_grad = Ys_post
+            μpost, μpost_grad = μpost
 
         Z = randn(Nx, Nsamples)
-        U, S, V = svd(Cov)  # TODO: convert this to use eigh
-        sig = U @ diag(sqrt(S))
+        Λ, V = eigh(Σ)  # TODO: convert this to use eigh
         Ys = empty((Nx, Nsamples))
         for i in range(Nsamples):
-            Ys[:, i] = sig @ Z[:, i]
-            Ys[:, i] += Ys_post[:, 0]
+            Ys[:, i] = μpost[:, 0] + V @ (sqrt(Λ) * Z[:, i])
         if self.trans is not None:
             Ys = self.trans(Ys, inverse=True)
         if not grad:
             return Ys
         else:
-            return Ys, Ys_post_grad
+            return Ys, μpost_grad
 
     def loo(self, return_data=False, plot_results=False):
         """
@@ -575,8 +591,8 @@ class GPI:
         N2 = count_nonzero(abs(std_res) > 2.0)
         N3 = count_nonzero(abs(std_res) > 3.0)
         if N3 > 0:
-            raise ValidationError("GPI object failed its cross validation -" +
-                                  " of %d data points, %d had std. resid." +
+            raise ValidationError("GPI object failed its cross validation -"
+                                  " of %d data points, %d had std. resid."
                                   " values greater than 3",
                                   self.Nd, N3, N2)
         if return_data:
@@ -593,9 +609,9 @@ def cho_factor_gen(A, lower=False, **others):
         try:
             return cho_factor(A, lower=lower, **others)
         except LinAlgError as e:
-            print("GPI method __init__ failed to factor data kernel." +
-                  "This often indicates that X has near duplicates or " +
-                  "the noise kernel has too small of weight.")
+            e.args += (("GPI method __init__ failed to factor data kernel."
+                        "This often indicates that X has near duplicates or "
+                        "the noise kernel has too small of weight."),)
             raise e
 
 
@@ -664,7 +680,6 @@ if __name__ == "__main__":
 
     # Example 1:
     # Simple case, 1D with five data points and one regression point
-    print('Example 1:')
     Xd1 = array([[0.1], [0.3], [.36], [0.65], [.57]])
     Yd1 = array([[0.0], [1.0], [1.2], [0.5], [.6]])
     xi1 = array([[0.2]])

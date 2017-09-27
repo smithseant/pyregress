@@ -24,9 +24,8 @@ __all__ = ['Kernel', 'Noise', 'SquareExp', 'GammaExp', 'RatQuad', 'KernelError']
 from abc import ABCMeta, abstractmethod
 from collections import Iterable
 from re import search
-from numpy import (empty, zeros, ones, eye, sum, abs,
-                   expand_dims, tile, sqrt, exp, log)
-from numpy import pi as π
+from numpy import (empty, zeros, ones, eye, expand_dims, tile,
+                   sum, abs, sqrt, exp, log, pi as π)
 from pyregress.hyper_params import *
 
 # TODO: Add periodic!
