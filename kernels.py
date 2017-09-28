@@ -16,7 +16,7 @@ hyper-parameters (unknown parameters):
     prior of the transformed φ (transformed), parameter transformation
     (trans), and parameter inverse transformation (invtr).
 
-Created Sep 2013  @author: Sean T. Smith
+Created Sep 2013  @authors: Sean T. Smith & Benjamin B. Schroeder
 """
 
 __all__ = ['Kernel', 'Noise', 'SquareExp', 'GammaExp', 'RatQuad', 'KernelError']
@@ -28,7 +28,7 @@ from numpy import (empty, zeros, ones, eye, expand_dims, tile,
                    sum, abs, sqrt, exp, log, pi as π)
 from pyregress.hyper_params import *
 
-# TODO: Add periodic!
+# TODO: Add a periodic kernel (..but flexible for dims. that are not periodic.)
 # TODO: I would love to add heuristics so users are required to specify less.
 
 class Kernel(metaclass=ABCMeta):
@@ -90,7 +90,7 @@ class Kernel(metaclass=ABCMeta):
             current values, for each hyper parameter, from p (after running
             minimization, these should be optimized values).
         """
-        # TODO: Currently relying on the dicts to maintain ordering!
+        # TODO: Currently relying on the dicts to maintain order (python 3.6)!
         φout = empty(self.Nφ)
         iφ = 0
         for key, val in self.φdist.items():
@@ -117,7 +117,7 @@ class Kernel(metaclass=ABCMeta):
         be nested in lists (use an if & a for loop); and 2nd, CombiningKernel
         nest an entire dict for each term (overload this method.)
         """
-        # TODO: Currently relying on the dicts to maintain ordering!
+        # TODO: Currently relying on the dicts to maintain order (python 3.6)!
         for val in self.φdist.values():
             if not isinstance(val, Iterable):
                 yield val
@@ -126,7 +126,7 @@ class Kernel(metaclass=ABCMeta):
                     yield el
 
     def update_p(self, φ, trans=True, set=True):
-        # TODO: Currently relying on the dicts to maintain ordering!
+        # TODO: Currently relying on the dicts to maintain order (python 3.6)!
         p = {}
         iφ = 0
         for key, val in self.p.items():
@@ -295,13 +295,13 @@ class CombiningKernel(Kernel):
         return _φ
 
     def iter_φdist(self):
-        # TODO: Currently relying on the dicts to maintain ordering!
+        # TODO: Currently relying on the dicts to maintain order (python 3.6)!
         for kern in self.terms:
             for φdist in kern.iter_φdist():
                 yield φdist
 
     def get_φ(self, trans=True):
-        # TODO: Currently relying on the dicts to maintain ordering!
+        # TODO: Currently relying on the dicts to maintain order (python 3.6)!
         φ = empty(self.Nφ)
         iφ = 0
         for kern in self.terms:
@@ -310,7 +310,7 @@ class CombiningKernel(Kernel):
         return φ
 
     def update_p(self, φ, trans=True, set=True):
-        # TODO: Currently relying on the dicts to maintain ordering!
+        # TODO: Currently relying on the dicts to maintain order (python 3.6)!
         p = {}
         iφ = 0
         for kern in self.terms:
@@ -414,7 +414,7 @@ class KernelProd(CombiningKernel):
         elif isinstance(other, Kernel):
             self.terms += [other]
         else:
-            # TODO: add the capability or throw an error!
+            # TODO: Throw an error!
             pass
         self.Nφ += other.Nφ
         return self
@@ -652,7 +652,6 @@ class GammaExp(Kernel):
                 else:
                     γtr = self.φdist['γ'].trans(γ)
                     c = self.φdist['γ'].c
-                    # TODO: Should this gradient live in the φ object?
                     dγdγtr = c * exp(-γtr**2 / 2) / sqrt(2 * π)
                     Kgrad[:, :, iφ] = -w2 * γ_tmp * K0 * dγdγtr
             return w2 * K0, Kgrad

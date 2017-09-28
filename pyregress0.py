@@ -26,7 +26,7 @@ Notation used throughout the code:
     Λ => eigenvalues,
     V => eigenvectors.
 
-Created Sep 2013 @author: Sean T. Smith
+Created Sep 2013 @authors: Sean T. Smith & Benjamin B. Schroeder
 """
 __all__ = ['GPI', 'InputError', 'ValidationError']
 
@@ -35,6 +35,7 @@ from warnings import warn
 from numpy import (ndarray, array, empty, zeros, ones, eye, diag, squeeze, where, tile,
                    sum, std, count_nonzero, amin, amax, maximum, abs, sqrt, log, pi as π)
 from numpy.random import randn
+from numba import jit
 from scipy.linalg import cho_factor, cho_solve, eigh, LinAlgError
 from scipy.optimize import minimize
 from pyregress.kernels import *
@@ -117,7 +118,7 @@ class GPI:
         else:
             raise InputError("GPI argument Xd must be a 2D array.", Xd)
         self.Nd, self.Nx = Xd.shape
-        if Xscaling is None:
+        if not Xscaling:
             self.xscale = ones(self.Nx)
         elif Xscaling == 'range':
             self.xscale = Xd.max(0) - Xd.min(0)
@@ -127,7 +128,7 @@ class GPI:
             self.xscale = Xscaling
         else:
             raise InputError("GPI argument Xscaling must be one of: "
-                             "False, True, 'range', 'std', or 1D array "
+                             "None, False, True, 'range', 'std', or 1D array "
                              "(same length as the 2nd dim. of Xd)", Xscaling)
         # Dependent variable
         if Yd.shape[0] != self.Nd:
@@ -160,7 +161,7 @@ class GPI:
             raise InputError("GPI argument Cov must be a Kernel object.", Cov)
 
         # Do as many calculations as possible in preparation for the inference.
-        self.Rdd = self._radius(self.Xd, self.Xd)
+        self.Rdd = _radius(self.Xd, self.Xd, self.xscale)
         if self.kernel.Nφ > 0 and optimize:
             self.maximize_posterior_φ(optimize)
         else:
@@ -175,7 +176,7 @@ class GPI:
         """Calculate the basis functions given independent variables."""
         if not (isinstance(self.basis, list) and
                 all([[0, 1, 2].count(entry) == 1 for entry in self.basis])):
-            # TODO: also check if there is less data than degrees of freedom.
+            # TODO: Check if there are fewer data points than degrees of freedom.
             raise InputError("GPI argument explicit_basis must be a list "
                              "with: 0, 1, and/or 2.", self.basis)
         # TODO: implement an interface for user defined basis functions.
@@ -214,18 +215,6 @@ class GPI:
                         Hp[:, jx, j] += X[:, ix]
                         j += 1
             return Nθ, H, Hp
-
-    def _radius(self, X, Y):
-        """Calculate the distance matrix (radius)."""
-        # scipy.spatial.distance.cdist(X, Y, 'seuclidean', V=self.xscale)
-        # TODO: Migrate this to numba function(s).
-        Nx, Ny = X.shape[0], Y.shape[0]
-        Rk = empty((Nx, Ny, self.Nx))
-        for k in range(self.Nx):
-            Rk[:, :, k] = tile(X[:, [k]], (1, Ny)) - tile(Y[:, [k]].T, (Nx, 1))
-            if isinstance(self.xscale, ndarray):
-                Rk[:, :, k] /= self.xscale[k]
-        return Rk
 
     def _one_time_prep(self):
         """
@@ -404,7 +393,6 @@ class GPI:
         If μ_prior was specified for GPI class object, this function
             will also be applied to Xi data.
         """
-        # TODO: calculation of the posterior mean of gradient and Hessian.
 
         # Independent variables
         if Xi.ndim == 1:
@@ -414,7 +402,7 @@ class GPI:
                              "(2nd dimension must match that of Xd.)", Xi)
 
         # Mixed i-d kernel & inference of posterior mean
-        Rid = self._radius(Xi, self.Xd)
+        Rid = _radius(Xi, self.Xd, self.xscale)
 
         if not grad:
             Kid = self.kernel(Rid, on_diag=False, sum_terms=sum_terms)
@@ -456,7 +444,7 @@ class GPI:
 
         # Inference of posterior covariance
         if infer_std:
-            Rii = self._radius(Xi, Xi)
+            Rii = _radius(Xi, Xi, self.xscale)
             Kii = self.kernel(Rii, block_diag=True, sum_terms=sum_terms)
             Σ_post = Kii - Kid @ self.solve(self.LKdd, Kid.T)
             if self.basis is not None:
@@ -525,7 +513,7 @@ class GPI:
             μpost, μpost_grad = μpost
 
         Z = randn(Nx, Nsamples)
-        Λ, V = eigh(Σ)  # TODO: convert this to use eigh
+        Λ, V = eigh(Σ)
         Ys = empty((Nx, Nsamples))
         for i in range(Nsamples):
             Ys[:, i] = μpost[:, 0] + V @ (sqrt(Λ) * Z[:, i])
@@ -599,6 +587,22 @@ class GPI:
             return Yd_pred, Yd_std, std_res
         else:
             return None
+
+
+@jit(nopython=True)
+def _radius(x, y, scale):
+    """Calculate the distance matrix (radius)."""
+    # Started with scipy.spatial.distance.cdist(X, Y, 'seuclidean', V=xscale)
+    # Next, used numpy (with tile)
+    # Currently prefer the simplicity of element operations with numba.
+    Nx, Ndim = x.shape
+    Ny, Ndim = y.shape
+    r = empty((Nx, Ny, Ndim))
+    for i in range(Nx):
+        for j in range(Ny):
+            for k in range(Ndim):
+                r[i, j, k] = (x[i, k] - y[j, k]) / scale[k]
+    return r
 
 
 def cho_factor_gen(A, lower=False, **others):
@@ -676,7 +680,7 @@ if __name__ == "__main__":
     from mpl_toolkits.mplot3d import Axes3D
     from pyregress import *
 
-    # TODO: Examples that provide verification!
+    # TODO: Provide examples that verify!
 
     # Example 1:
     # Simple case, 1D with five data points and one regression point

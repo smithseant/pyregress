@@ -195,7 +195,7 @@ class PyregressTesting(TestCase):
             rel_err = abs((self.Ys[ik] - Yd) / (self.Ys[ik] + 1e-8))
             self.assertLess(rel_err.max(), tol, msg='Kernel No. {}'.format(ik))
 
-    # TODO: The test to reproduce φ may not be well posed.
+    # TODO: The test to reproduce φ may not be well posed - fix.
     # def test_convergence_of_maximize_posterior_φ(self):
     #     """
     #     Ensure the optimization can reproduce the φ that was used in the

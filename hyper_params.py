@@ -10,7 +10,7 @@ Provided prior distributions (log(P) and dlog(P))
     Currently includes constant, normal, Jeffreys', log-Normal, gamma,
     uniform, beta, and bounded constant distributions.
 
-Created Sep 2013  @author: Sean T. Smith
+Created Sep 2013  @authors: Sean T. Smith & Benjamin B. Schroeder
 """
 __all__ = ['HyperPrior', 'Constant', 'Normal', 'Jeffreys', 'LogNormal',
            'Gamma', 'Uniform', 'Beta', 'Bounded']
@@ -69,7 +69,7 @@ class Normal(HyperPrior):
         f(x; μ, σ) = 1 / \sqrt(2 π σ^2) * \exp(-(x - μ)^2 / (2 σ^2)).
     """
     def __init__(self, guess=0, μ=0, σ=1, **kwargs):
-        # TODO: make an option to define guess, μ & σ from Rk2
+        # TODO: Add a heuristic to calculate guess, μ & σ from Rk2.
         self.guess = guess
         self.μ = μ
         self.σ = σ
@@ -93,7 +93,7 @@ class Jeffreys(HyperPrior):
     (A degenerate lognormal in the case that σ approaches infinity.)
     """
     def __init__(self, guess=1, **kwargs):
-        # TODO: make an option to define guess, μ & σ from Rk2
+        # TODO: Add a heuristic to calculate guess, μ & σ from Rk2.
         super().__init__(self, guess=guess, **kwargs)
         self.trans = log
         self.invtr = exp
@@ -120,7 +120,7 @@ class LogNormal(HyperPrior):
                      \exp(-(ln(x) - μ)^2 / (2 σ^2)) , x > 0
     """
     def __init__(self, guess=1, μ=0, σ=1, **kwargs):
-        # TODO: make an option to define guess, μ & σ from Rk2
+        # TODO: Add a heuristic to calculate guess, μ & σ from Rk2.
         self.guess = guess
         self.μ = μ
         self.σ = σ
