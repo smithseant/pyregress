@@ -28,12 +28,13 @@ Notation used throughout the code:
 
 Created Sep 2013 @authors: Sean T. Smith & Benjamin B. Schroeder
 """
-__all__ = ['GPI', 'InputError', 'ValidationError']
+__all__ = ['GPI', 'radius', 'InputError', 'ValidationError']
 
 from copy import deepcopy
 from warnings import warn
-from numpy import (ndarray, array, empty, zeros, ones, eye, diag, squeeze, where, tile,
-                   sum, std, count_nonzero, amin, amax, maximum, abs, sqrt, log, pi as π)
+from numpy import (array, empty, zeros, ones, eye, diag, squeeze, where,
+                   sum, std, count_nonzero, amin, amax, maximum,
+                   abs, sqrt, log, pi as π)
 from numpy.random import randn
 from numba import jit
 from scipy.linalg import cho_factor, cho_solve, eigh, LinAlgError
@@ -161,7 +162,7 @@ class GPI:
             raise InputError("GPI argument Cov must be a Kernel object.", Cov)
 
         # Do as many calculations as possible in preparation for the inference.
-        self.Rdd = _radius(self.Xd, self.Xd, self.xscale)
+        self.Rdd = radius(self.Xd, self.Xd, self.xscale)
         if self.kernel.Nφ > 0 and optimize:
             self.maximize_posterior_φ(optimize)
         else:
@@ -176,7 +177,7 @@ class GPI:
         """Calculate the basis functions given independent variables."""
         if not (isinstance(self.basis, list) and
                 all([[0, 1, 2].count(entry) == 1 for entry in self.basis])):
-            # TODO: Check if there are fewer data points than degrees of freedom.
+            # TODO: Compare number of data points to degrees of freedom.
             raise InputError("GPI argument explicit_basis must be a list "
                              "with: 0, 1, and/or 2.", self.basis)
         # TODO: implement an interface for user defined basis functions.
@@ -257,7 +258,9 @@ class GPI:
         φ:  array-1D,
             hyper parameters in an array for the minimization routine.
         grad:  bool or string (optional),
-            when grad is True, must return lnP_grad,
+            when grad is True, also return lnP_grad.
+        trans:  bool (optional),
+            indicate whether the provided φ is in its transformed space.
 
         Returns
         -------
@@ -334,9 +337,12 @@ class GPI:
         #          calculations before inference can be performed properly.
         # Setup hyper-parameters & map values from a single array
         φ = self.kernel.get_φ(trans=trans)
+        f = self.posterior_φ
         # Perform minimization
-        out = minimize(self.posterior_φ, φ, (False, trans), method='Nelder-Mead')
-        # out = minimize(self.posterior_φ, φ, (True, trans), method='BFGS', jac=True)
+        # out = minimize(f, φ, (False, trans), method='Nelder-Mead')
+        # out = minimize(f, φ, (False, trans), method='Powell')
+        # out = minimize(f, φ, (False, trans), method='CG')
+        out = minimize(f, φ, (True, trans), method='BFGS', jac=True)
         # Use the optimized value:
         φ = out.x
         self.kernel.update_p(φ, trans=trans, set=True)
@@ -376,7 +382,7 @@ class GPI:
 
         Returns
         -------
-        μ_post:  array-2D,  TODO: change to a 1D-array?
+        μ_post:  array-2D,
             inferred mean at each location in the argument Xi.
         Σ_post: array-2D or list (optional - depending on infer_std),
             inferred standard deviation or full covariance
@@ -402,7 +408,7 @@ class GPI:
                              "(2nd dimension must match that of Xd.)", Xi)
 
         # Mixed i-d kernel & inference of posterior mean
-        Rid = _radius(Xi, self.Xd, self.xscale)
+        Rid = radius(Xi, self.Xd, self.xscale)
 
         if not grad:
             Kid = self.kernel(Rid, on_diag=False, sum_terms=sum_terms)
@@ -444,7 +450,7 @@ class GPI:
 
         # Inference of posterior covariance
         if infer_std:
-            Rii = _radius(Xi, Xi, self.xscale)
+            Rii = radius(Xi, Xi, self.xscale)
             Kii = self.kernel(Rii, block_diag=True, sum_terms=sum_terms)
             Σ_post = Kii - Kid @ self.solve(self.LKdd, Kid.T)
             if self.basis is not None:
@@ -466,6 +472,7 @@ class GPI:
         if grad:
             μ_post = μ_post, μ_post_grad
 
+        # TODO: Should we return μ_post as a 1-D array (rather than 2-D)?
         if not infer_std:
             return μ_post
         elif infer_std == 'covar':
@@ -527,7 +534,7 @@ class GPI:
     def loo(self, return_data=False, plot_results=False):
         """
         Perform a leave-one-out cross-validation analysis on the data
-        following the procedure outlined by Sacks and Welch at SAMSI 2010.
+        following the procedure outlined by Sacks & Welch at SAMSI 2010.
 
         Arguments
         ---------
@@ -590,11 +597,11 @@ class GPI:
 
 
 @jit(nopython=True)
-def _radius(x, y, scale):
+def radius(x, y, scale):
     """Calculate the distance matrix (radius)."""
-    # Started with scipy.spatial.distance.cdist(X, Y, 'seuclidean', V=xscale)
-    # Next, used numpy (with tile)
-    # Currently prefer the simplicity of element operations with numba.
+    # Started with scipy.spatial.distance.cdist(X, Y, 'seuclidean', V=xscale);
+    # Next, used numpy (with tile);
+    # Currently prefer the simplicity of element operations with numba's jit.
     Nx, Ndim = x.shape
     Ny, Ndim = y.shape
     r = empty((Nx, Ny, Ndim))
