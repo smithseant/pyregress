@@ -1,4 +1,4 @@
-# Project Title
+# Pyregress/GPI:
 
 This project provides a suite of Bayesian methods for regression and
 interpolation in python - specifically using Gaussian-processes. Gaussian
