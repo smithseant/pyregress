@@ -5,13 +5,15 @@ Docstring for the transforms module - needs to be written
 # Created Sep 2013
 # @author: Sean T. Smith
 
-from abc import ABCMeta, abstractmethod
+__all__ = ['BaseTransform', 'Logarithm', 'Probit', 'ProbitBeta', 'Logit']
 
+from abc import ABCMeta, abstractmethod
 from numpy import sqrt, mean, var, empty, tile
+
 from scipy.special import erf, erfinv, beta, betainc, betaincinv
 from scipy import pi, exp, log
 
-class BaseTransform():
+class BaseTransform(metaclass=ABCMeta):
     """
     Provide methods & interfaces for variable transformations in the gpr class.
 
@@ -21,7 +23,6 @@ class BaseTransform():
     This base class provides the abstract interface for the transform and
     inv_transform methods, and it provides the methods: __init__ and __call__.
     """
-    __metaclass__ = ABCMeta
     def __init__(self, yd):
         """Create a transformation object using dependent variable data."""
         return None
@@ -75,7 +76,7 @@ class BaseTransform():
 
 class Logarithm(BaseTransform):
     r"""
-    Transform a variable on a semi-infinite support (0,\infty) to an infinite
+    Transform a variable on a semi-infinite support [0,\infty) to an infinite
     support (-\infty,\infty) using the logarithm transformation.
     .. math::
         z = \log(y),
@@ -92,13 +93,13 @@ class Logarithm(BaseTransform):
         if hess_z is None:
             return y, grad_y
         hess_y = empty(hess_z.shape)
-        for i in xrange(hess_z.shape[1]):
-            for j in xrange(hess_z.shape[2]):
+        for i in range(hess_z.shape[1]):
+            for j in range(hess_z.shape[2]):
                 hess_y[:, i, j] = y * (grad_z[:, i]**2 + hess_z[:, i, j])
         return y, grad_y, hess_y
 
 class Probit(BaseTransform):
-    """
+    r"""
     Transform a variable on a finite suppot [0,1] to an infinite support
     (-\infty,\infty) using the probit transformation.
     .. math::
@@ -117,8 +118,8 @@ class Probit(BaseTransform):
         if hess_z is None:
             return y, grad_y
         hess_y = empty(hess_z.shape)
-        for i in xrange(hess_z.shape[1]):
-            for j in xrange(hess_z.shape[2]):
+        for i in range(hess_z.shape[1]):
+            for j in range(hess_z.shape[2]):
                 hess_y[:, i, j] = fz * (-z*grad_z[:, i]**2 + hess_z[:, i, j])
         return y, grad_y, hess_y
 
@@ -157,8 +158,8 @@ class ProbitBeta(BaseTransform):
         if hess_z is None:
             return y, grad_y
         hess_y = empty(hess_z.shape)
-        for i in xrange(hess_z.shape[1]):
-            for j in xrange(hess_z.shape[2]):
+        for i in range(hess_z.shape[1]):
+            for j in range(hess_z.shape[2]):
                 hess_y[:, i, j] = fz/fy * ( ((mu-z)/s2 - fz/fy*((a-1.0)/y - (b-1.0)/(1.0-y)))*grad_z[:, i]**2 + hess_z[:, i, j] )
         return y, grad_y, hess_y
 
@@ -181,7 +182,7 @@ class Logit(BaseTransform):
         if hess_z is None:
             return y, grad_y
         hess_y = empty(hess_z.shape)
-        for i in xrange(hess_z.shape[1]):
-            for j in xrange(hess_z.shape[2]):
+        for i in range(hess_z.shape[1]):
+            for j in range(hess_z.shape[2]):
                 hess_y[:, i, j] = coef * ((1.0 - 2.0/(1.0 + exp(z)))*grad_z[:, i]**2 + hess_z[:, i, j])
         return y, grad_y, hess_y

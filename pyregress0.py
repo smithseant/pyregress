@@ -1,80 +1,79 @@
 # -*- coding: utf-8 -*-
 """
-Docstring for the pyregress module - needs work.
+Interpolation or regression by means of Gaussian-process inference.
+For basic usage see the documentation in the GPI class.
 
-For basic usage see the documentation in the GPP class.
-This docstring covers more advanced topics.
 Performance:
-  Calculation time will greatly depend on which Blas/Lapack libs are used.
-  Most default python/numpy/scipy packages are based on unoptimized libs
-  (including linux repositories and downloaded executables).
-Beyond commonly used kernels and basis functions:
-  --give an overview of Kernel object and BaseBasis interface.--
-Reading the code and development:
-  Notation used throughout the code:
+    Calculation time will greatly depend on which Blas/Lapack libs are used.
+    Some default python/numpy/scipy packages are based on unoptimized libs
+    (including linux repositories), Anaconda provides optimized libs.
+Notation used throughout the code:
     X => independent variables,
-    Y => dependent variables,
+    Y => dependent variable,
     Z => transformed dependent variable,
     d => data values (observations),
     i => inferred values,
     s => sampled values,
+    μ => Gaussian location parameter & expected value (for various values),
+    K => kernel values (prior covariance matrix),
+    φ => (unknown) hyper-parameters of the kernel,
     R => distance (radius) in independent variable space,
-    K => kernel values (covariance matrix),
-    hp => parameters (hyper-parameters) of the kernel,
-    p => derivative (prime) of a variable,
+    Σ => other covariance matrices,
     H => explicit basis functions evaluated at X,
-    Th => Linear coefficients to the basis functions.
+    Θ => linear coefficients to the basis functions,
+    p => derivative (prime) of a variable,
+    L => lower diagonal of a Cholesky factorization,
+    Λ => eigenvalues,
+    V => eigenvectors.
+
+Created Sep 2013 @authors: Sean T. Smith & Benjamin B. Schroeder
 """
-# Created Sep 2013
-# @author: Sean T. Smith
-__all__ = ['GPP']
+__all__ = ['GPI', 'radius', 'InputError', 'ValidationError']
 
 from copy import deepcopy
-# from termcolor import colored  # may not work on windows
-from numpy import (ndarray, array, empty, zeros, ones, eye, diag,
-                   shape, resize, tile, rot90,
-                   amin, amax, maximum, abs, sqrt, std, sum, count_nonzero)
-from numpy.linalg.linalg import LinAlgError, svd
+from warnings import warn
+from numpy import (array, empty, zeros, ones, eye, diag, squeeze, where,
+                   sum, std, count_nonzero, amin, amax, maximum,
+                   abs, sqrt, log, pi as π)
 from numpy.random import randn
-from scipy import log, pi
-from scipy.linalg import cho_factor, cho_solve
-from matplotlib.pyplot import figure, plot, xlabel, ylabel
+from numba import jit
+from scipy.linalg import cho_factor, cho_solve, eigh, LinAlgError
+from scipy.optimize import minimize
+from pyregress.kernels import *
+from pyregress.transforms import *
 
-from kernels import Kernel
-from transforms import BaseTransform, Logarithm, Logit,  Probit, ProbitBeta
-from multi_newton import MD_Newton
-
-HLOG2PI = 0.5*log(2.0 * pi)
+HLOG2PI = 0.5 * log(2 * π)
 
 
-class GPP:
+class GPI:
     """
-    Doctring for the GPP class - needs work.
+    Create a Gaussian-process inference (GPR or Kriging) object that can
+    subsequently called for regression or interpolation.
 
     Examples
     --------
     >>> from numpy import array
-    >>> from pyregress import GPP, Noise, SquareExp, RatQuad
+    >>> from pyregress import GPI, Noise, SquareExp, RatQuad
     >>> Xd = array([[0.1], [0.3], [0.6]])
     >>> Yd = array([[0.0], [1.0], [0.5]])
-    >>> myGPP = GPP( Xd, Yd, Noise(w=0.1) + SquareExp(w=1.0, l=0.3) )
-    >>> print myGPP( np.array([[0.2]]) )
-    [[ 0.52641732]]
+    >>> myGPI = GPI( Xd, Yd, Noise(w=0.1) + SquareExp(w=1, l=0.3) )
+    >>> print(myGPI( array([[0.2]]) ))
+    [[ 0.56465214]]
 
     >>> Xd = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
     ...             [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     >>> Yd = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
-    >>> myGPP = GPP(Xd, Yd, RatQuad(w=0.6, l=0.3, alpha=1.0),
+    >>> myGPI = GPI(Xd, Yd, RatQuad(w=0.6, l=0.3, α=1),
     ...             explicit_basis=[0, 1], transform='Probit')
-    >>> print myGPP( np.array([[0.10, 0.10], [0.50, 0.42]]) )
-    [[ 0.22770558]
-     [ 0.78029862]]
+    >>> print(myGPI( array([[0.10, 0.10], [0.50, 0.42]]) ))
+    [[ 0.21117381]
+     [ 0.74764254]]
     """
     def __init__(self, Xd, Yd, Cov, Xscaling=None,
                  Ymean=None, explicit_basis=None, transform=None,
-                 optimize_hp=True):
+                 optimize=True):
         """
-        Create a GPP object and prepare for inference.
+        Create a GPI object and prepare for inference.
 
         Arguments
         ---------
@@ -98,17 +97,19 @@ class GPP:
         explicit_basis:  list of ints (optional),
             explicit basis functions are specified by any combination of the
             integers: 0, 1, 2 - each corresponding to its polynomial order.
-        transform:  string or BaseTransform object (optional)
+        transform:  string or BaseTransform object (optional),
             specify a dependent variable transformation with the name of a
             BaseTransform class (as a string) or a BaseTransform object.
             Options include: Logarithm, Logit, Probit, or ProbitBeta.
+        optimize:  bool (optional),
+            specify whether to optimize the hyper-parameters by maximizing
+            its log posterior.
 
         Raises
         ------
         InputError:
             an exception is thrown for incompatible format of any inputs.
         """
-        self.__call__ = self.inference
 
         # Independent variables
         if Xd.ndim == 1:
@@ -116,9 +117,9 @@ class GPP:
         elif Xd.ndim == 2:
             self.Xd = Xd
         else:
-            raise InputError("GPP argument Xd must be a 2D array.", Xd)
+            raise InputError("GPI argument Xd must be a 2D array.", Xd)
         self.Nd, self.Nx = Xd.shape
-        if Xscaling is None:
+        if not Xscaling:
             self.xscale = ones(self.Nx)
         elif Xscaling == 'range':
             self.xscale = Xd.max(0) - Xd.min(0)
@@ -127,70 +128,64 @@ class GPP:
         elif Xscaling.shape == (self.Nx,):
             self.xscale = Xscaling
         else:
-            raise InputError("GPP argument Xscaling must be one of: " +
-                             "False, True, 'range', 'std', or 1D array " +
+            raise InputError("GPI argument Xscaling must be one of: "
+                             "None, False, True, 'range', 'std', or 1D array "
                              "(same length as the 2nd dim. of Xd)", Xscaling)
-
         # Dependent variable
         if Yd.shape[0] != self.Nd:
-            raise InputError("GPP argument Yd must have the same length as " +
+            raise InputError("GPI argument Yd must have the same length as " +
                              "the 1st dim. of Xd.", Yd)
         self.Yd = Yd.reshape((-1, 1)).copy()
         if transform is None:
             self.trans = None
-        elif isinstance(transform, basestring):
-            self.trans = eval(transform+'(self.Yd)')
+        elif isinstance(transform, str):
+            self.trans = eval(transform + '(self.Yd)')
             self.Yd = self.trans(self.Yd)
         elif isinstance(transform, BaseTransform):
             self.trans = transform
             self.Yd = self.trans(self.Yd)
         else:
-            raise InputError("GPP argument transform must be BaseTransform " +
+            raise InputError("GPI argument transform must be BaseTransform "
                              "class (string of name) or object.", transform)
-        self.prior_mean = Ymean
-        if self.prior_mean is not None:
+        self.μ_prior = Ymean
+        if self.μ_prior is not None:
             if self.trans is None:
-                self.Yd -= self.prior_mean(Xd).reshape((-1, 1))
+                self.Yd -= self.μ_prior(Xd).reshape((-1, 1))
             else:
-                self.Yd -= self.trans(self.prior_mean(Xd).reshape(-1, 1))
+                self.Yd -= self.trans(self.μ_prior(Xd).reshape(-1, 1))
         self.basis = explicit_basis
         if self.basis is not None:
-            self.Nth, self.Hd = self._basis(Xd)
+            self.Nθ, self.Hd = self._basis(Xd)
         # Kernel (prior covariance)
         self.kernel = Cov
         if not isinstance(Cov, Kernel):
-            raise InputError("GPP argument Cov must be a Kernel object.", Cov)
+            raise InputError("GPI argument Cov must be a Kernel object.", Cov)
 
-        # Do as many calculations as possible in preparation for the inference
-        # -- Create a separate function for the following? --
-        self.Rdd = self._radius(self.Xd, self.Xd)
-        if (self.kernel.Nhp > 0 and optimize_hp):
-            self.maximize_hyper_posterior(optimize_hp)
-        self.Kdd = self.kernel(self.Rdd, block_diag=True)
-        self.LKdd = cho_factor_gen(self.Kdd)
-        self.invKdd_Yd = cho_solve_gen(self.LKdd, self.Yd)
-        if self.basis is not None:
-                self.invKdd_Hd = cho_solve_gen(self.LKdd, self.Hd)
-                LSth = cho_factor_gen(self.Hd.T.dot(self.invKdd_Hd))
-                self.Sth = cho_solve_gen(LSth, eye(self.Nth))
-                self.Th = cho_solve_gen(LSth, self.Hd.T.dot(self.invKdd_Yd))
-                HdTh = self.Hd.dot(self.Th)
-                self.invKdd_HdTh = cho_solve_gen(self.LKdd, HdTh)
+        # Do as many calculations as possible in preparation for the inference.
+        self.Rdd = radius(self.Xd, self.Xd, self.xscale)
+        if self.kernel.Nφ > 0 and optimize:
+            self.maximize_posterior_φ(optimize)
+        else:
+            self._one_time_prep()
+
+    def __call__(self, Xi, infer_std=False, untransform=True, sum_terms=True,
+                 exclude_mean=False, grad=False):
+        return self.inference(Xi, infer_std, untransform, sum_terms,
+                              exclude_mean, grad)
 
     def _basis(self, X, grad=False):
         """Calculate the basis functions given independent variables."""
         if not (isinstance(self.basis, list) and
                 all([[0, 1, 2].count(entry) == 1 for entry in self.basis])):
-        # TODO: also check if there is less data than degrees of freedom.
-            raise InputError("GPP argument explicit_basis must be a list " +
+            # TODO: Compare number of data points to degrees of freedom.
+            raise InputError("GPI argument explicit_basis must be a list "
                              "with: 0, 1, and/or 2.", self.basis)
         # TODO: implement an interface for user defined basis functions.
         # elif isinstance(self.basis, basis_callable):
-        # H = self.basis(X)
-        # Nth = H.shape[1]
+
         N = X.shape[0]
-        Nth = sum(self.Nx**array(self.basis))
-        H = empty((N, Nth))
+        Nθ = sum(self.Nx**array(self.basis))
+        H = empty((N, Nθ))
         j = 0
         if self.basis.count(0):
             H[:, j] = 1.0
@@ -199,67 +194,73 @@ class GPP:
             H[:, j:j+self.Nx] = X
             j += self.Nx
         if self.basis.count(2):
-            for ix in xrange(self.Nx):
-                for jx in xrange(self.Nx):
-                    H[:, j] = X[:, ix]*X[:, jx]
+            for ix in range(self.Nx):
+                for jx in range(self.Nx):
+                    H[:, j] = X[:, ix] * X[:, jx]
                     j += 1
         if not grad:
-            return Nth, H
-
-        Hp = zeros((N, self.Nx, Nth))
-        j = 0
-        if self.basis.count(0):
-            j += 1
-        if self.basis.count(1):
-            for ix in xrange(self.Nx):
-                Hp[:, ix, j] = 1.0
+            return Nθ, H
+        else:
+            Hp = zeros((N, self.Nx, Nθ))
+            j = 0
+            if self.basis.count(0):
                 j += 1
-        if self.basis.count(2):
-            for ix in xrange(self.Nx):
-                for jx in xrange(self.Nx):
-                    Hp[:, ix, j] += X[:, jx]
-                    Hp[:, jx, j] += X[:, ix]
+            if self.basis.count(1):
+                for ix in range(self.Nx):
+                    Hp[:, ix, j] = 1.0
                     j += 1
-        if not grad == 'Hess':
-            return Nth, H, Hp
+            if self.basis.count(2):
+                for ix in range(self.Nx):
+                    for jx in range(self.Nx):
+                        Hp[:, ix, j] += X[:, jx]
+                        Hp[:, jx, j] += X[:, ix]
+                        j += 1
+            return Nθ, H, Hp
 
-        Hpp = zeros((N, self.Nx, self.Nx, Nth))
-        j = 0
-        if self.basis.count(0):
-            j += 1
-        if self.basis.count(1):
-            j += self.Nx
-        if self.basis.count(2):
-            for ix in xrange(self.Nx):
-                Hpp[:, ix, ix, j] = 2.0
-                j += self.Nx + 1
-        return Nth, H, Hp, Hpp
+    def _one_time_prep(self):
+        """
+        Pre-calculate the expensive operations that need only be performed
+        once in preparation for the inference.
+        """
+        self.Kdd = self.kernel(self.Rdd, on_diag=True)
+        try:
+            # For covariance matrices Cholesky is fast, but less stable.
+            self.LKdd = cho_factor_gen(self.Kdd)
+            self.solve = cho_solve_gen
+        except LinAlgError:
+            # Downshifting to the slower, but more stable, eigen method.
+            self.LKdd = eigh(self.Kdd)
+            eig_solve = lambda Λ, V, b: (V @ ((V.T @ b) / Λ))
+            self.solve = lambda L, b: eig_solve(*L, squeeze(b))
+            Λ, V = self.LKdd
+            Λmin = 1e-12 * Λ[-1]
+            if Λ[0] < Λmin:
+                warn('The data kernel was automatically modified to maintain'
+                     ' positive definiteness.', RuntimeWarning)
+                Λ = where(Λ < Λmin, Λmin, Λ)
+                self.LKdd = (Λ, V)
+        self.α = self.solve(self.LKdd, self.Yd)
+        if self.basis is not None:
+            self.β = self.solve(self.LKdd, self.Hd)
+            LinvΣθ = cho_factor_gen(self.Hd.T @ self.β)
+            self.Σθ = cho_solve_gen(LinvΣθ, eye(self.Nθ))
+            self.μΘ = cho_solve_gen(LinvΣθ, self.Hd.T @ self.α)
+            HdμΘ = self.Hd @ self.μΘ
+            self.βμΘ = self.solve(self.LKdd, HdμΘ)
+        return self
 
-    def _radius(self, X, Y):
-        """Calculate the distance matrix (radius)."""
-        # Previously used: cdist(X, Y, 'seuclidean',V=self.xscale),
-        # which required: from scipy.spatial.distance import cdist.
-        Nx, Ny = X.shape[0], Y.shape[0]
-        Rk = empty((Nx, Ny, self.Nx))
-        for k in xrange(self.Nx):
-            Rk[:, :, k] = tile(X[:, [k]], (1, Ny)) - tile(Y[:, [k]].T, (Nx, 1))
-            if isinstance(self.xscale, ndarray):
-                Rk[:, :, k] /= self.xscale[k]
-        return Rk
-
-    def hyper_posterior(self, params=None, grad=True):
+    def posterior_φ(self, φ, grad=True, trans=True):
         """
         Negative log of the hyper-parameter posterior & its gradient.
 
         Arguments
         ---------
-        params:  array-1D,
+        φ:  array-1D,
             hyper parameters in an array for the minimization routine.
-        hp_mapped:  array-1D,
-            hyper parameter values that map to self.Kernel.
         grad:  bool or string (optional),
-            when grad is True, must return lnP_grad,
-            when grad is 'Hess', must also return lnP_hess.
+            when grad is True, also return lnP_grad.
+        trans:  bool (optional),
+            indicate whether the provided φ is in its transformed space.
 
         Returns
         -------
@@ -267,138 +268,104 @@ class GPP:
             negative log of the hyper-parameter posterior.
         lnP_grad:  array-1D (optional - depending on argument grad),
             gradient of lnP_neg with respect to each hyper-parameter.
-        lnP_hess:  array-2D (optional - depending on argument grad),
-            Hessian matrix (2nd derivatives) of lnP_neg.
         """
-        Nd, Nhp = self.Nd, self.kernel.Nhp
+        if len(φ.shape) > 1:   # Corrects odd behavior of scipy's minimize
+            φ = φ[0]           # Corrects odd behavior of scipy's minimize
+        Nd, Nφ = self.Nd, self.kernel.Nφ
         if not grad:
-            K = self.kernel(self.Rdd, block_diag=True)
-            lnprior = self.kernel._ln_priors(params)
-        elif grad != 'Hess':
-            K, Kp = self.kernel(self.Rdd, grad_hp=grad, block_diag=True)
-            lnprior, dlnprior = self.kernel._ln_priors(params, grad=grad)
+            K = self.kernel.Kφ(φ, self.Rdd, trans=trans, on_diag=True)
+            lnprior = self.kernel.ln_priors(φ, trans=trans)
         else:
-            K, Kp, Kpp = self.kernel(self.Rdd, grad_hp=grad, block_diag=True)
-            lnprior, dlnprior, d2lnprior = \
-                self.kernel._ln_priors(params, grad=grad)
+            K, Kp = self.kernel.Kφ(φ, self.Rdd, grad=grad, trans=trans, on_diag=True)
+            lnprior, dlnprior = self.kernel.ln_priors(φ, grad=grad, trans=trans)
         try:
+            # For covariance matrices Cholesky is fast, but less stable.
             LK = cho_factor(K)
+            solve = cho_solve
+            ln_detK = sum(log(diag(LK[0])))
         except LinAlgError as e:
-            print ("GPP method hyper_posterior failed to factor the " +
-                   "data kernel. This is most often an indication that the " +
-                   "minimization routine is not converging.")
-            print ('Current hyper-parameter values: ')
-            print (repr(params))
-            raise e
-        invK_Y = cho_solve(LK, self.Yd)
-        lnP_neg = (float(self.Nd)*HLOG2PI + sum(log(diag(LK[0]))) +
-                   0.5*self.Yd.T.dot(invK_Y) - lnprior)
+            # Downshifting to the slower, but more stable, eigen method.
+            LK = eigh(K)
+            eig_solve = lambda Λ, V, b: (V @ ((V.T @ b) / Λ))
+            solve = lambda L, b: eig_solve(*L, squeeze(b))
+            Λ, V = LK
+            Λmin = 1e-12 * Λ[-1]
+            if Λ[0] < Λmin:
+                Λ = where(Λ < Λmin, Λmin, Λ)
+                LK = (Λ, V)
+            ln_detK = sum(log(Λ))
+        α = solve(LK, self.Yd)
+
+        lnP_neg = (Nd * HLOG2PI + ln_detK + 0.5 * self.Yd.T @ α - lnprior)
 
         if self.basis is not None:
-            Nth = self.Nth
-            beta = cho_solve(LK, self.Hd)
-            try:
-                LSth = cho_factor(self.Hd.T.dot(beta))
-            except:
-                print 'debug'
-            Sth = cho_solve(LSth, eye(self.Nth))
-            Th = cho_solve(LSth, self.Hd.T.dot(invK_Y))
-            betaTh = beta.dot(Th)
-            lnP_neg -= (float(self.Nth)*HLOG2PI - sum(log(diag(LSth[0]))) +
-                        0.5*Th.T.dot(self.Hd.T).dot(betaTh))
+            Nθ = self.Nθ
+            β = solve(LK, self.Hd)
+            invΣθ = self.Hd.T @ β
+            LinvΣθ = cho_factor(invΣθ)
+            Σθ = cho_solve(LinvΣθ, eye(Nθ))
+            μΘ = cho_solve(LinvΣθ, self.Hd.T @ α)
+            βμΘ = β @ μΘ
+            lnP_neg -= (Nθ * HLOG2PI - sum(log(diag(LinvΣθ[0]))) +
+                        0.5 * μΘ.T @ invΣθ @ μΘ)
+
         if not grad:
             return lnP_neg
-
-        # grad == True or 'Hess':
-        invK = cho_solve(LK, eye(Nd))
-        invK_aa = invK - invK_Y.dot(invK_Y.T)
-        lnP_grad = empty(Nhp)
-        for j in xrange(Nhp):
-            lnP_grad[j] = 0.5*sum(invK_aa.T * Kp[:, :, j]) - 1.0*dlnprior[j]
+        # else grad:
+        invK = solve(LK, eye(Nd))
+        invK_αα = invK - α @ α.T
+        lnP_grad = empty(Nφ)
+        for j in range(Nφ):
+            lnP_grad[j] = 0.5 * sum(invK_αα.T * Kp[:, :, j]) - dlnprior[j]
         if self.basis is not None:
-            diff2 = betaTh.T - 2.0*invK_Y.T
-            for j in xrange(Nhp):
-                bKpb = beta.T.dot(Kp[:, :, j]).dot(beta)
-                lnP_grad[j] -= 0.5*(sum(bKpb.T*Sth) +
-                                    diff2.dot(Kp[:, :, j]).dot(betaTh))
-        if grad != 'Hess':
-            return lnP_neg, lnP_grad
+            Δ2 = βμΘ.T - 2 * α.T
+            for j in range(Nφ):
+                βKpβ = β.T @ Kp[:, :, j] @ β
+                lnP_grad[j] -= 0.5*(sum(βKpβ.T * Σθ) + Δ2 @ Kp[:, :, j] @ βμΘ)
+        return lnP_neg, lnP_grad
 
-        # grad == 'Hess':
-        invK_Kp, aa_Kp = empty((Nd, Nd, Nhp)), empty((Nd, Nd, Nhp))
-        for j in xrange(Nhp):
-            invK_Kp[:, :, j] = invK.dot(Kp[:, :, j])
-            a_Kp = invK_Y.T.dot(Kp[:, :, j])
-            aa_Kp[:, :, j] = 2.0*invK_Y.dot(a_Kp)
-        lnP_hess = empty((Nhp, Nhp))
-        for j in xrange(Nhp):
-            for i in xrange(j + 1):
-                lnP_hess[i, j] = 0.5*sum(
-                    invK_aa.T*Kpp[:, :, i, j] -
-                    invK_Kp[:, :, i].T*invK_Kp[:, :, j] +
-                    aa_Kp[:, :, i].T*invK_Kp[:, :, j]) - d2lnprior[i, j]
-                lnP_hess[j, i] = lnP_hess[i, j]
-        if self.basis is not None:
-            diff1 = betaTh.T - invK_Y.T
-            bSb_2invK = beta.dot(Sth).dot(beta.T) - 2.0*invK
-            bKp, ThbKp = empty((Nth, Nd, Nhp)), empty((Nd, Nhp))
-            diff1Kpb, diff2Kp = empty((Nth, Nhp)), empty((Nd, Nhp))
-            for j in xrange(Nhp):
-                bKp[:, :, j] = beta.T.dot(Kp[:, :, j])
-                ThbKp[:, j] = betaTh.T.dot(Kp[:, :, j])
-                diff1Kpb[:, j] = diff1.dot(Kp[:, :, j]).dot(beta)
-                diff2Kp[:, j] = diff2.dot(Kp[:, :, j])
-            for j in xrange(Nhp):
-                for i in xrange(Nhp):
-                    my_mess = (beta.T.dot(Kpp[:, :, i, j]).dot(beta) +
-                               bKp[:, :, i].dot(bSb_2invK).dot(bKp[:, :, j].T))
-                    lnP_hess[i, j] -= 0.5 * (sum(my_mess.T * Sth) +
-                        diff2.dot(Kpp[:, :, i, j]).dot(betaTh) -
-                        2.0*diff2Kp[:, i].dot(invK).dot(ThbKp[:, j].T) +
-                        2.0*diff1Kpb[:, i].dot(Sth).dot(diff1Kpb[:, j].T))
-        return lnP_neg, lnP_grad, lnP_hess
-
-    def maximize_hyper_posterior(self, optimize_hp):
+    def maximize_posterior_φ(self, trans=True, verbose=True):
         """
-        Find the maximum of the hyper-parameter posterior.
+        Find the maximum of the hyper-parameter posterior (minimum of -ln(P)).
 
         Arguments
         ---------
-       optimize_hp - specify if printing of hyper-parameters is desired
+        trans - specify whether to solve for φ in a transformed space.
+        verbose - specify whether to print status of the minimization routine.
         """
-
+        # Warning: running this routine manually requires additional
+        #          calculations before inference can be performed properly.
         # Setup hyper-parameters & map values from a single array
-        all_hyper, bounds = self.kernel._map_hyper()
-        lo, hi = [], []
-        [(lo.append(bounds[i+i]), hi.append(bounds[2*i+1]))
-            for i in xrange(len(bounds)/2)]
-
+        φ = self.kernel.get_φ(trans=trans)
+        f = self.posterior_φ
         # Perform minimization
-        if optimize_hp == 'print':
-            MD_Newton(self.hyper_posterior, all_hyper,
-                      options={'tol': 1e-6, 'maxiter': 200, 'bounds': (lo, hi),
-                               'repress text': False})
-        else:
-            MD_Newton(self.hyper_posterior, all_hyper,
-                      options={'tol': 1e-6, 'maxiter': 200, 'bounds': (lo, hi),
-                               'repress text': True})
-
-        all_hyper, bounds = self.kernel._map_hyper(all_hyper, unmap=True)
-        return self, all_hyper
+        # out = minimize(f, φ, (False, trans), method='Nelder-Mead')
+        # out = minimize(f, φ, (False, trans), method='Powell')
+        # out = minimize(f, φ, (False, trans), method='CG')
+        out = minimize(f, φ, (True, trans), method='BFGS', jac=True)
+        # Use the optimized value:
+        φ = out.x
+        self.kernel.update_p(φ, trans=trans, set=True)
+        if verbose:
+            print('Optimize φ: {} post. evals. & {} iters. gave p = {}'.format(
+                out.nfev, out.nit, self.kernel.p))
+        # Reevaluate the variables needed for inference:
+        self._one_time_prep()
+        return self, φ
 
     def inference(self, Xi, infer_std=False, untransform=True, sum_terms=True,
                   exclude_mean=False, grad=False):
         """
         Make inferences (interpolation or regression) at specified locations.
         Limited to a single value of each hyper-parameters.
-        This method is invoked when the GPP object is called as a function.
+        This method is invoked when the GPI object is called as a function.
 
         Arguments
         ---------
         Xi:  array-2D,
             independent variables - where to make inferences. The first
             dimension is for multiple inferences, and second dimension must
-            match the second dimension of the argurment Xd from __init__.
+            match the second dimension of the argument Xd from __init__.
         infer_std:  bool or 'covar' (optional),
             if True, return the inferred standard deviation;
             if 'covar', return the full posterior covariance matrix.
@@ -406,19 +373,18 @@ class GPP:
             if False, any inverse transformation is suppressed.
         sum_terms:  bool, int or list of ints (optional),
             if int or list of ints, then use only this subset of terms of the
-            sum kernel, by index (Cov in GPP.__init__ must be a KernelSum).
+            sum kernel, by index (Cov in GPI.__init__ must be a KernelSum).
             If True, all terms are included.
         exclude_mean:  bool (optional),
             if False include prior mean and basis functions, otherwise don't.
-        grad:  bool or 'Hess' (optional),
-            if True or 'Hess' return the gradient of the dependent variable,
-            if 'Hess' also return the second derivatives.
+        grad:  bool (optional),
+            whether return the gradient of the dependent variable.
 
         Returns
         -------
-        post_mean:  array-2D,  TODO: change to a 1D-array?
+        μ_post:  array-2D,
             inferred mean at each location in the argument Xi.
-        post_std: array-2D or list (optional - depending on infer_std),
+        Σ_post: array-2D or list (optional - depending on infer_std),
             inferred standard deviation or full covariance
             (for any inverse transformation, both the positive and negative
             standard deviations are returned - in that order).
@@ -430,133 +396,106 @@ class GPP:
 
         Note
         ----
-        If prior_mean was specified for GPP class object, this function
+        If μ_prior was specified for GPI class object, this function
             will also be applied to Xi data.
         """
-
-        # TODO: calculation of the posterior mean of gradient and Hessian.
 
         # Independent variables
         if Xi.ndim == 1:
             Xi = Xi.reshape((-1, 1))
         if Xi.ndim != 2 or Xi.shape[1] != self.Nx:
-            raise InputError("GPP object argument Xi must be a 2D array " +
+            raise InputError("GPI object argument Xi must be a 2D array "
                              "(2nd dimension must match that of Xd.)", Xi)
 
         # Mixed i-d kernel & inference of posterior mean
-        Rid = self._radius(Xi, self.Xd)
+        Rid = radius(Xi, self.Xd, self.xscale)
 
-        if grad is False:
-            Kid = self.kernel(Rid, block_diag=False, sum_terms=sum_terms)
-        elif grad is True:
-            Kid, Kid_grad = self.kernel(Rid, block_diag=False,
-                                        sum_terms=sum_terms, grad_r=grad)
+        if not grad:
+            Kid = self.kernel(Rid, on_diag=False, sum_terms=sum_terms)
         else:
-            Kid, Kid_grad, Kid_hess = self.kernel(Rid, block_diag=False,
-                                                  sum_terms=sum_terms,
-                                                  grad_r=grad)
+            Kid, Kid_grad = self.kernel(Rid, on_diag=False,
+                                        sum_terms=sum_terms, grad=grad)
 
         if self.basis is None or exclude_mean:
-            post_mean = Kid.dot(self.invKdd_Yd)
+            μ_post = Kid @ self.α
         else:
-            post_mean = Kid.dot(self.invKdd_Yd - self.invKdd_HdTh)
-            if grad is False:
-                Nth, Hi = self._basis(Xi)
-            elif grad is True:
-                Nth, Hi, Hpi = self._basis(Xi, grad=grad)
+            μ_post = Kid @ (self.α - self.βμΘ)
+            if not grad:
+                Nθ, Hi = self._basis(Xi)
             else:
-                Nth, Hi, Hpi, Hppi = self._basis(Xi, grad=grad)
+                Nθ, Hi, Hpi = self._basis(Xi, grad=grad)
 
-            post_mean += Hi.dot(self.Th)
+            μ_post += Hi @ self.μΘ
 
-        if grad is True or grad is 'Hess':
-            post_mean_grad = empty((Rid.shape[0],Rid.shape[2]))
+        if grad:
+            μ_post_grad = empty((Rid.shape[0], Rid.shape[2]))
             if self.basis is None or exclude_mean:
-                for i in xrange(Rid.shape[2]):
-                    post_mean_grad[:,i] = \
-                        Kid_grad[:,:,i].dot(self.invKdd_Yd).reshape(-1)
+                for i in range(Rid.shape[2]):
+                    μ_post_grad[:, i] = \
+                        (Kid_grad[:, :, i] @ self.α).reshape(-1)
             else:
-                for i in xrange(Rid.shape[2]):
-                    post_mean_grad[:,i] = \
-                        Kid_grad[:,:,i].dot(self.invKdd_Yd-
-                                            self.invKdd_HdTh).reshape(-1)
-                post_mean_grad[:,:] += \
-                    Hpi.dot(self.Th).reshape(shape(post_mean_grad))
-
-        if grad is 'Hess':
-            post_mean_hess = empty((Rid.shape[0],Rid.shape[2],Rid.shape[2]))
-            if self.basis is None or exclude_mean:
-                for i in xrange(Rid.shape[2]):
-                    for j in xrange(Rid.shape[2]):
-                        post_mean_hess[:,i,j] = \
-                            Kid_hess[:,:,i,j].dot(self.invKdd_Yd).reshape(-1)
-            else:
-                for i in xrange(Rid.shape[2]):
-                    for j in xrange(Rid.shape[2]):
-                        post_mean_hess[:,i,j] = \
-                            Kid_hess[:,:,i,j].dot(self.invKdd_Yd -
-                                                self.invKdd_HdTh).reshape(-1)
-                post_mean_hess[:,:,:] += \
-                            Hppi.dot(self.Th).reshape(shape(post_mean_hess))
+                for i in range(Rid.shape[2]):
+                    μ_post_grad[:, i] = (Kid_grad[:, :, i] @ (self.α -
+                                              self.βμΘ)).reshape(-1)
+                μ_post_grad[:, :] += \
+                    (Hpi @ self.μΘ).reshape(μ_post_grad.shape)
 
         # Dependent variable
-        if self.prior_mean is not None and not exclude_mean:
-            Yi_mean = self.prior_mean(Xi).reshape((-1, 1))
+        if self.μ_prior is not None and not exclude_mean:
+            μi = self.μ_prior(Xi).reshape((-1, 1))
             if self.trans is None or not untransform:
-                post_mean = resize(post_mean, Yi_mean.shape) + Yi_mean
+                μ_post = μ_post.reshape(μi.shape) + μi
             else:
-                post_mean = (resize(post_mean, Yi_mean.shape) +
-                             self.trans(Yi_mean))
+                μ_post = μ_post.reshape(μi.shape) + self.trans(μi)
 
         # Inference of posterior covariance
         if infer_std:
-            Rii = self._radius(Xi, Xi)
+            Rii = radius(Xi, Xi, self.xscale)
             Kii = self.kernel(Rii, block_diag=True, sum_terms=sum_terms)
-            post_covar = Kii - Kid.dot(cho_solve_gen(self.LKdd, Kid.T))
+            Σ_post = Kii - Kid @ self.solve(self.LKdd, Kid.T)
             if self.basis is not None:
-                A = Hi - Kid.dot(self.invKdd_Hd)
-                post_covar += A.dot(self.Sth.dot(A.T))
-            post_var = maximum(0.0, diag(post_covar))
-            post_std = sqrt(post_var).reshape((-1, 1))
+                A = Hi - Kid @ self.β
+                Σ_post += A @ (self.Σθ @ A.T)
+            σ2_post = maximum(0.0, diag(Σ_post))
+            σ_post = sqrt(σ2_post).reshape((-1, 1))
 
         # Inverse transformation of the dependent variable
         if self.trans is not None and untransform:
             if infer_std:
-                post_std = [self.trans(post_mean - post_std, inverse=True),
-                            self.trans(post_mean + post_std, inverse=True)]
-                post_mean = self.trans(post_mean, inverse=True)
-                post_std = [post_std[0] - post_mean, post_mean - post_std[1]]
+                σ_post = [self.trans(μ_post - σ_post, inverse=True),
+                          self.trans(μ_post + σ_post, inverse=True)]
+                μ_post = self.trans(μ_post, inverse=True)
+                σ_post = [σ_post[0] - μ_post, μ_post - σ_post[1]]
             else:
-                post_mean = self.trans(post_mean, inverse=True)
+                μ_post = self.trans(μ_post, inverse=True)
 
-        if grad is True:
-            post_mean = post_mean, post_mean_grad
-        if grad is 'Hess':
-            post_mean = post_mean, post_mean_grad, post_mean_hess
+        if grad:
+            μ_post = μ_post, μ_post_grad
 
+        # TODO: Should we return μ_post as a 1-D array (rather than 2-D)?
         if not infer_std:
-            return post_mean
+            return μ_post
         elif infer_std == 'covar':
-            return post_mean, post_covar
+            return μ_post, Σ_post
         else:
-            return post_mean, post_std
+            return μ_post, σ_post
 
     def sample(self, Xs, Nsamples=1, sum_terms=True, exclude_mean=False,
                grad=False):
         """
-        Sample the Gassian process at specified locations.
+        Sample the Gaussian process at specified locations.
 
         Arguments
         ---------
         Xs:  array-2D,
             independent variables - where to sample. First dimension is for
-            multiple inferences, and second dimension must match the second
-            dimension of the argument Xd from GPP.__init__.
+            multiple (correlated) inferences, and second dimension must match
+            the second dimension of the argument Xd from GPI.__init__.
         Nsamples: int (optional),
             allows the calculation of multiple samples at once.
         sum_terms:  bool, int or list of ints (optional),
             if int or list of ints, then use only this subset of terms of the
-            sum kernel, by index (Cov in GPP.__init__ must be a KernelSum).
+            sum kernel, by index (Cov in GPI.__init__ must be a KernelSum).
             For regression, standard use includes all terms except the noise.
             If True, all terms are included.
         exclude_mean:  bool (optional),
@@ -565,7 +504,9 @@ class GPP:
         Returns
         -------
         Ys:  array-2D,
-            sample value at each location in the argument Xs.
+            sample value from the poster at each location in Xs.
+        μpost_grad:  array-2D,
+            mean gradient of the posterior at each location in Xs.
 
         Raises
         ------
@@ -573,35 +514,27 @@ class GPP:
             an exception is thrown for incompatible format of any inputs.
         """
         Nx = Xs.shape[0]
-        Ys_post, Cov = self.inference(Xs, infer_std='covar',
-                                      sum_terms=sum_terms,
-                                      exclude_mean=exclude_mean,
-                                      grad=grad)
-        if grad is True:
-            Ys_post, Ys_post_grad = Ys_post
-        if grad is 'Hess':
-            Ys_post, Ys_post_grad, Ys_post_hess = Ys_post
+        μpost, Σ = self.inference(Xs, infer_std='covar', sum_terms=sum_terms,
+                                      exclude_mean=exclude_mean, grad=grad)
+        if grad:
+            μpost, μpost_grad = μpost
 
         Z = randn(Nx, Nsamples)
-        U, S, V = svd(Cov)
-        sig = U.dot(diag(sqrt(S)))
+        Λ, V = eigh(Σ)
         Ys = empty((Nx, Nsamples))
-        for i in xrange(Nsamples):
-            Ys[:, i] = sig.dot(Z[:, i])
-            Ys[:, i] += Ys_post[:, 0]
+        for i in range(Nsamples):
+            Ys[:, i] = μpost[:, 0] + V @ (sqrt(Λ) * Z[:, i])
         if self.trans is not None:
             Ys = self.trans(Ys, inverse=True)
-        if grad is False:
+        if not grad:
             return Ys
-        if grad is True:
-            return Ys, Ys_post_grad
-        if grad is 'Hess':
-            return Ys, Ys_post_grad, Ys_post_hess
+        else:
+            return Ys, μpost_grad
 
     def loo(self, return_data=False, plot_results=False):
         """
         Perform a leave-one-out cross-validation analysis on the data
-        following the procedure outlined by Sacks and Welch at SAMSI 2010.
+        following the procedure outlined by Sacks & Welch at SAMSI 2010.
 
         Arguments
         ---------
@@ -617,22 +550,20 @@ class GPP:
             an exception is thrown when any standardized residues are
             greater in magnitude than three.
         """
-        # if self.trans is None:
-        Yd = self.Yd[:, 0]
-        # else:
-        #     Yd = self.trans(self.Yd[:, 0])
         Xd_red, Yd_red = empty((self.Nd-1, self.Nx)), empty((self.Nd-1, 1))
         Cov_copy = deepcopy(self.kernel)
         Yd_pred, Yd_std = empty(self.Nd), empty(self.Nd)
-        for i in xrange(self.Nd):
+        for i in range(self.Nd):
             Xd_red[:i, :], Xd_red[i:, :] = self.Xd[:i, :], self.Xd[i+1:, :]
             Yd_red[:i, :], Yd_red[i:, :] = self.Yd[:i, :], self.Yd[i+1:, :]
-            tmpGP = GPP(Xd_red, Yd_red, Cov_copy, Xscaling=self.xscale,
-                        Ymean=None, explicit_basis=self.basis, transform=None)
+            tmpGP = GPI(Xd_red, Yd_red, Cov_copy, Xscaling=self.xscale,
+                        Ymean=self.μ_prior, explicit_basis=self.basis,
+                        transform=self.trans)
             tmp_out = tmpGP(self.Xd[i, :].reshape(1, -1), infer_std=True)
             Yd_pred[i], Yd_std[i] = tmp_out[0][0], tmp_out[1][0]
-        std_res = (Yd - Yd_pred) / Yd_std
+        std_res = (self.Yd[:, 0] - Yd_pred) / Yd_std
         if plot_results:
+            from matplotlib.pyplot import figure, plot, xlabel, ylabel
             figure()
             plot(std_res, 'o')
             plot([0, self.Nd + 1], [-2.0, -2.0],
@@ -646,21 +577,39 @@ class GPP:
             xlabel('Index of Provided Value')
             ylabel('Standard Residual')
             figure()
-            plot(Yd, Yd_pred, 'o')
-            plot([amin(Yd), amax(Yd)],
-                 [amin(Yd), amax(Yd)],
+            plot(self.Yd[:, 0], Yd_pred, 'o')
+            plot([amin(self.Yd), amax(self.Yd)],
+                 [amin(self.Yd), amax(self.Yd)],
                  color='black', linestyle='-', linewidth=2.0)
             xlabel('Provided Value')
             ylabel('Predicted Value')
         N2 = count_nonzero(abs(std_res) > 2.0)
         N3 = count_nonzero(abs(std_res) > 3.0)
+        if N3 > 0:
+            raise ValidationError("GPI object failed its cross validation -"
+                                  " of %d data points, %d had std. resid."
+                                  " values greater than 3",
+                                  self.Nd, N3, N2)
         if return_data:
             return Yd_pred, Yd_std, std_res
-        # elif N3 > 0:
-        #     raise ValidationError("GPP object failed its cross validation -" +
-        #                           " of %d data points, %d had std. resid." +
-        #                           " values greater than 3.0", self.Nd, N3, N2)
+        else:
+            return None
 
+
+@jit(nopython=True)
+def radius(x, y, scale):
+    """Calculate the distance matrix (radius)."""
+    # Started with scipy.spatial.distance.cdist(X, Y, 'seuclidean', V=xscale);
+    # Next, used numpy (with tile);
+    # Currently prefer the simplicity of element operations with numba's jit.
+    Nx, Ndim = x.shape
+    Ny, Ndim = y.shape
+    r = empty((Nx, Ny, Ndim))
+    for i in range(Nx):
+        for j in range(Ny):
+            for k in range(Ndim):
+                r[i, j, k] = (x[i, k] - y[j, k]) / scale[k]
+    return r
 
 
 def cho_factor_gen(A, lower=False, **others):
@@ -671,9 +620,9 @@ def cho_factor_gen(A, lower=False, **others):
         try:
             return cho_factor(A, lower=lower, **others)
         except LinAlgError as e:
-            print ("GPP method __init__ failed to factor data kernel." +
-                   "This often indicates that X has near duplicates or " +
-                   "the noise kernel has too small of weight.")
+            e.args += (("GPI method __init__ failed to factor data kernel."
+                        "This often indicates that X has near duplicates or "
+                        "the noise kernel has too small of weight."),)
             raise e
 
 
@@ -707,6 +656,7 @@ class InputError(GPError):  # -- not a ValueError? --
         self.args = (msg,)
         self.input_argument = input_argument
 
+
 class ValidationError(GPError):
     def __init__(self, msg, Nd=None, N3=None, N2=None):
         """
@@ -731,56 +681,50 @@ class ValidationError(GPError):
 
 
 if __name__ == "__main__":
-    from numpy import linspace, hstack, meshgrid, reshape
+    from numpy import linspace, hstack, meshgrid, rot90
     import matplotlib as mpl
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
-    #from pyregress import *
-    from kernels import Noise, SquareExp, RatQuad
-    from transforms import Probit
-    from hyper_params import LogNormal
+    from pyregress import *
 
-    # TODO: Examples that provide verification!
+    # TODO: Provide examples that verify!
 
     # Example 1:
     # Simple case, 1D with five data points and one regression point
-    print 'Example 1:'
     Xd1 = array([[0.1], [0.3], [.36], [0.65], [.57]])
     Yd1 = array([[0.0], [1.0], [1.2], [0.5], [.6]])
     xi1 = array([[0.2]])
-    myGPP1 = GPP(Xd1, Yd1, Noise(w=0.1) + SquareExp(w=0.75, l=0.25))
-    yi1, yi1_grad = myGPP1(xi1, grad=True, sum_terms=[1])
-    # Interpolation (slightly simpler example)
-    # myGPP1 = GPP( Xd1, Yd1, SquareExp(w=0.75, l=0.25) )
-    # yi1 = myGPP1( xi1 )
-    print 'x = ', xi1, ',  y = ', yi1
-    yd1_noiseless, yd1_grad, yd1_hess = myGPP1(Xd1, grad='Hess', sum_terms=[1])
-    print ' '
+    myGPI1 = GPI(Xd1, Yd1, Noise(w=0.1) + SquareExp(w=0.75, l=0.25))
+    yi1, yi1_grad = myGPI1(xi1, grad=True, sum_terms=[1])
+    print('Example 1:')
+    print('x = ', xi1, ',  y = ', yi1)
+    yi1_, yi1_grad_ = myGPI1(Xd1, grad=True, sum_terms=[1])
 
     # Example 2:
     # 2D with six data points and two regression points
-    print 'Example 2:'
     Xd2 = array([[0.00, 0.00], [0.50, -0.10], [1.00, 0.00],
                  [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
+    K2 = RatQuad(w=0.6, l=LogNormal(guess=0.3, std=0.25), α=1)
+    myGPI2 = GPI(Xd2, Yd2, K2, explicit_basis=[0, 1], transform='Probit')
+    print('Example 2:')
+    print('Optimized value of the hyper-parameters:', myGPI2.kernel.get_φ())
     xi2 = array([[0.1, 0.1], [0.5, 0.42]])
-    K2 =  RatQuad(w=0.6, l=LogNormal(guess=0.3, std=0.25), alpha=1.0)
-    myGPP2 = GPP(Xd2, Yd2, K2, explicit_basis=[0, 1], transform='Probit')
-    print 'Optimized value of the hyper-parameters:', myGPP2.kernel.get_hp()
-    yi2, yi2_grad = myGPP2(xi2, grad=True)
-    print 'x = ', xi2
-    print 'y = ', yi2
+    yi2, yi2_grad = myGPI2(xi2, grad=True)
+    print('x = ', xi2)
+    print('y = ', yi2)
 
     # Figures to support the examples
     # fig. example 1
     Xi1 = linspace(0.0, 0.75, 200)
-    Yi1, Yi1std = myGPP1(Xi1, infer_std=True, sum_terms=1)
+    Yi1, Yi1std = myGPI1(Xi1, infer_std=True, sum_terms=1)
     Yi1, Yi1std = Yi1.reshape(-1), Yi1std.reshape(-1)
 
     Xig1 = (xi1 + 0.025*array([-1.0, 1.0])).reshape(-1, 1)
     Yig1 = (yi1 + yi1_grad*0.025*array([-1.0, 1.0])).reshape(-1, 1)
     Xdg1 = Xd1 + 0.025*array([-1.0, 1.0])
-    Ydg1 = yd1_noiseless + yd1_grad*0.025*array([-1.0, 1.0])
+    Ydg1 = yi1_ + yi1_grad_*0.025*array([-1.0, 1.0])
+
 
     fig1 = plt.figure(figsize=(5, 3), dpi=150)
     p1, = plt.plot(Xd1, Yd1, 'ko', label='Data')
@@ -789,8 +733,9 @@ if __name__ == "__main__":
     p3 = plt.Rectangle((0.0, 0.0), 1.0, 1.0, facecolor='blue',
                        alpha=0.25, label='Uncertainty (one std.)')
     p4, = plt.plot(xi1, yi1, 'ro', label='Example regression point')
-    p5 = plt.plot(Xig1, Yig1, 'r-', linewidth=1.5, label='Inferred slopes')
-    p6 = plt.plot(Xdg1.T, Ydg1.T, 'r-', linewidth=1.5)
+    p5 = plt.plot(Xig1, Yig1, 'r-', linewidth=3.0, label='Inferred slope')
+    p6 = plt.plot(Xdg1[0, :], Ydg1[0, :], 'r-', Xdg1[1, :], Ydg1[1, :], 'r-',
+                  Xdg1[4, :], Ydg1[4, :], 'r-', linewidth=3.0)
     fig1.subplots_adjust(left=0.15, right=0.95, bottom=0.15, top=0.9)
     plt.title('Example 1', fontsize=16)
     plt.xlabel('Independent Variable, X', fontsize=12)
@@ -803,15 +748,15 @@ if __name__ == "__main__":
     xi_2 = linspace(-0.2, 1.0, Ni[1])
     Xi_1, Xi_2 = meshgrid(xi_1, xi_2, indexing='ij')
     Xi2 = hstack([Xi_1.reshape((-1, 1)), Xi_2.reshape((-1, 1))])
-    Yi2, Yi2std = myGPP2.inference(Xi2, infer_std=True)
+    Yi2, Yi2std = myGPI2(Xi2, infer_std=True)
 
     fig = plt.figure(figsize=(7, 5), dpi=150)
     ax = fig.gca(projection='3d')
     ax.plot_surface(Xi_1, Xi_2, Yi2.reshape(Ni), alpha=0.75,
                     linewidth=0.5, cmap=mpl.cm.jet, rstride=1, cstride=1)
-    ax.plot_surface(Xi_1, Xi_2, reshape(Yi2+Yi2std[0], Ni), alpha=0.25,
+    ax.plot_surface(Xi_1, Xi_2, (Yi2+Yi2std[0]).reshape(Ni), alpha=0.25,
                     linewidth=0.25, color='black', rstride=1, cstride=1)
-    ax.plot_surface(Xi_1, Xi_2, reshape(Yi2-Yi2std[1], Ni), alpha=0.25,
+    ax.plot_surface(Xi_1, Xi_2, (Yi2-Yi2std[1]).reshape(Ni), alpha=0.25,
                     linewidth=0.25, color='black', rstride=1, cstride=1)
     ax.scatter(Xd2[:, 0], Xd2[:, 1], Yd2, c='black', s=35)
     ax.set_zlim([0.0, 1.0])
@@ -821,7 +766,7 @@ if __name__ == "__main__":
     ax.set_zlabel('Dependent Variable, Y', fontsize=12)
 
     fig3 = plt.figure(figsize=(5, 3), dpi=150)
-    plt.pcolor(rot90(myGPP1.Kdd, 1))
+    plt.pcolor(rot90(myGPI1.Kdd, 1))
     plt.yticks([.5, 1.5, 2.5, 3.5, 4.5], [5, 4, 3, 2, 1])
     plt.xticks([.5, 1.5, 2.5, 3.5, 4.5], [1, 2, 3, 4, 5])
     plt.xlim([0, 5])

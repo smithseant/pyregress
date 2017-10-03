@@ -6,7 +6,7 @@ Created on Thu Jul 10 13:22:40 2014
 """
 from numpy import array, empty, expand_dims, linspace, meshgrid, reshape, vstack
 
-from transforms import Logarithm, Probit, ProbitBeta, Logit
+from pyregress.transforms import Logarithm, Probit, ProbitBeta, Logit
 
 dx = 1e-5
 x1 = linspace(1e2*dx, 1.0-1e2*dx, 40)
@@ -32,4 +32,4 @@ for j in range(X.shape[1]):
 
 Yout, Ygrad_out = trans(Zprobit, inverse=True, grad_z=grad_Zprobit)
 
-print Ygrad_out
+print(Ygrad_out)

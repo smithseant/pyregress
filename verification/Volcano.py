@@ -57,7 +57,7 @@ def Volcano(outputType, mean, errorType):
     def RMSE(y_test, y_pred, y_mean):
         N = len(y_test)
         topsum = bottomsum = 0.
-        for i in xrange(N):
+        for i in range(N):
             topsum += (y_test[i] - y_pred[i])**2
             bottomsum += (y_mean - y_pred[i])**2
         return sqrt(topsum/N)/sqrt(bottomsum/N)
@@ -66,13 +66,13 @@ def Volcano(outputType, mean, errorType):
     def MAE(y_test, y_pred, y_mean):
         N = len(y_test)
         topmax = bottommax = 0.
-        for i in xrange(N):
+        for i in range(N):
             topmax = max(abs(y_test[i] - y_pred[i]), topmax)
             bottommax = max(abs(y_mean - y_pred[i]), bottommax)
         return topmax/bottommax
         
     error_return = zeros(25)
-    for i in xrange(25):
+    for i in range(25):
 
         # filter data into training and testing sets
         trainData_x = Data[:25,1:3]
@@ -131,18 +131,18 @@ if __name__ == "__main__":
     # Error Calculations based upon use of sqrt(y)
     errors_const_sr = Volcano('sqrt', 'constant', error_type)
     errors_fl_sr = Volcano('sqrt', 'fl', error_type)    
-    print '%s Const. Mean with Sqrt Y Data - ' %error_type
-    print errors_const_sr
-    print '%s Full Linear Mean with Sqrt Y Data - ' %error_type
-    print errors_fl_sr    
+    print('%s Const. Mean with Sqrt Y Data - ' %error_type)
+    print(errors_const_sr)
+    print('%s Full Linear Mean with Sqrt Y Data - ' %error_type)
+    print(errors_fl_sr)
     
     # Error Calculations based upon use of log10(y+1)
     errors_const_log = Volcano('log', 'constant', error_type)
     errors_fl_log = Volcano('log', 'fl', error_type)
-    print '%s Const. Mean with log10(Y+1) Data - ' %error_type
-    print errors_const_log
-    print '%s Full Linear Mean with log10(Y+1) Data - ' %error_type
-    print errors_fl_log
+    print('%s Const. Mean with log10(Y+1) Data - ' %error_type)
+    print(errors_const_log)
+    print('%s Full Linear Mean with log10(Y+1) Data - ' %error_type)
+    print(errors_fl_log)
     
     # Plot
     fig = plt.figure(figsize=(6, 3))

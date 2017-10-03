@@ -1,75 +1,62 @@
 # -*- coding: utf-8 -*-
 """
-Docstring for the kernels module - needs to be written
+The Kernels themselves are rather straight forward.
+The kernel parameters are not so much due to the flexibility offered
+by GPI. Some comments about the handling of parameters as well as
+hyper-parameters (unknown parameters):
+   -The Kernel object will contain a dict (p) which stores the
+    current value of all parameters - known or unknown.
+   -Isotropic or 1-D lengthscales can be stored as a scalar,
+    while independent lengthscales will be stored as a list.
+   -The Kernel object will contain a dict (φdist) for the hyper
+    parameters objects. The list of lengthscales for independent
+    lengthscales can have None valued placeholders for known values.
+   -The HyperParam object will contain the value of the initial
+    guess (guess) as well as callables for the prior (__call__),
+    prior of the transformed φ (transformed), parameter transformation
+    (trans), and parameter inverse transformation (invtr).
+
+Created Sep 2013  @authors: Sean T. Smith & Benjamin B. Schroeder
 """
-# Created Sep 2013
-# @author: Sean T. Smith
+
+__all__ = ['Kernel', 'Noise', 'SquareExp', 'GammaExp', 'RatQuad', 'KernelError']
 
 from abc import ABCMeta, abstractmethod
-from collections import OrderedDict as odict
-from numbers import Number
+from collections import Iterable
+from re import search
+from numpy import (empty, zeros, ones, eye, expand_dims, tile,
+                   sum, abs, sqrt, exp, log, pi as π)
+from pyregress.hyper_params import *
 
-from numpy import (empty, zeros, ones, eye, sum, abs,
-                   ix_, expand_dims, tile, hstack)
-from scipy import exp, log
+# TODO: Add a periodic kernel (..but flexible for dims. that are not periodic.)
+# TODO: I would love to add heuristics so users are required to specify less.
 
-from hyper_params import HyperPrior
-
-# TODO: Add periodic, but it would require general handling of multiple Rs.
-
-
-class Kernel:
+class Kernel(metaclass=ABCMeta):
     """
-    Provide methods & an interface for kernels in the GPP class.
+    Provide methods & an interface for kernels in the GPI class.
 
-    User-defined kernels will need to inherit this baseclass and define
-    both __init__ and __call__ methods in the derived class. This base
-    class provides the abstract interface for the __call__ method and
-    provides the methods: __init__, declare_hyper, and map_hyper.
+    Specific kernels will need to inherit this baseclass and define
+    __init__, __call__ & Kφ methods in the derived class.
     """
-    __metaclass__ = ABCMeta
-
-    def __init__(self, params, params_spec):
-        """
-        Create a Kernel object.
-
-        Arguments
-        ---------
-        params: dict,
-            the specified kernel parameters. The length parameter value
-            can be a list for different lengths in multiple dimensions.
-            Uncertain values should be represented by HyperPrior objects.
-        params_spec: dict,
-            All required kernel parameters with the domain of each as a
-            tuple (min, max). When unbounded, use None for min and/or max.
-        """
-        # TODO: throw an error if the parameters don't match the spec.
-        self.Np = len(params_spec)
-        self.Nhp = len([i for i in params.values()
-                        if isinstance(i, HyperPrior)])
-        if 'l' in params and isinstance(params['l'], list):
-            self.Np += len(params['l']) - 1
-            self.Nhp += len([i for i in params['l']
-                             if isinstance(i, HyperPrior)])
-        self.p = odict([(key, None) for key in params_spec.keys()])
-        self.p_bounds = [val for val in params_spec.values()]
-        self.hp, self.hp_id = [], []
-        for key in params_spec.keys():
-            val = params[key]
-            if isinstance(val, Number):
+    def __init__(self, **kwargs):
+        self.p = {}
+        self.φdist = {}
+        self.Nφ = 0
+        for key, val in kwargs.items():
+            if not isinstance(val, Iterable):
+                if not isinstance(val, HyperPrior):
+                    self.p[key] = val
+                else:
+                    self.Nφ += 1
+                    self.p[key] = val.guess
+                    self.φdist[key] = val
+            else:
                 self.p[key] = val
-            elif isinstance(val, HyperPrior):
-                self.hp += [val]
-                self.hp_id += [key]
-                self.p[key] = val.guess
-            elif isinstance(val, list):
-                self.p[key] = [None]*len(val)
+                self.φdist[key] = [None] * len(val)
                 for i in range(len(val)):
-                    if isinstance(val[i], Number):
-                        self.p[key][i] = val[i]
-                    elif isinstance(val[i], HyperPrior):
-                        self.hp += [val[i]]
-                        self.hp_id += [i]
+                    if isinstance(val[i], HyperPrior):
+                        self.Nφ += 1
+                        self.φdist[key][i] = val[i]
                         self.p[key][i] = val[i].guess
 
     def __add__(self, other):
@@ -90,58 +77,98 @@ class Kernel:
             # Combine with the existing KernelProd object.
             return other.__mul__(self, self_on_right=True)
 
-    def _map_hyper(self, hp_mapped=None, bounds_mapped=None, unmap=False):
-        """Replace hyper-parameter values with pointers to a 1D array."""
-        if hp_mapped is None:
-            hp_mapped = empty(self.Nhp)
-            bounds_mapped = empty(0)
-        if unmap is True:
-            bounds_mapped = []
-        if isinstance(self, KernelSum) or isinstance(self, KernelProd):
-            i = 0
-            for kern in self.terms:
-                hp_mapped[i:i+kern.Nhp], bounds_mapped = \
-                    kern._map_hyper(hp_mapped[i: i+kern.Nhp],
-                                    bounds_mapped, unmap=unmap)
-                i += kern.Nhp
-        else:
-            for (hp, i) in zip(self.hp_id, xrange(self.Nhp)):
-                if not isinstance(hp, int):
-                    if unmap is True:
-                        self.hp[i].guess = self.p[hp]
-                        hp_mapped[i] = self.hp[i].guess
-                    else:
-                        hp_mapped[i] = self.hp[i].guess
-                        self.p[hp] = hp_mapped[i:i+1]
-                    bounds_mapped = hstack((bounds_mapped, (self.p_bounds[i])))
+    def get_φ(self, trans=True):
+        """
+        Return the values of the current hyper parameters.
+        Arguments
+        ---------
+        trans: bool (optional),
+            indicate whether to transform the hyper-parameters.
+        Returns
+        -------
+        all_φ:  array-1D,
+            current values, for each hyper parameter, from p (after running
+            minimization, these should be optimized values).
+        """
+        # TODO: Currently relying on the dicts to maintain order (python 3.6)!
+        φout = empty(self.Nφ)
+        iφ = 0
+        for key, val in self.φdist.items():
+            if not isinstance(val, Iterable):
+                if not trans:
+                    φout[iφ] = self.p[key]
                 else:
-                    if unmap is True:
-                        self.hp[i].guess = self.p['l'][hp]
-                        hp_mapped[i] = self.hp[i].guess
-                    else:
-                        hp_mapped[i] = self.hp[i].guess
-                        self.p['l'][hp] = hp_mapped[i:i+1]
-                    if hp != 0:
-                        bounds_mapped = hstack((bounds_mapped,
-                                                (self.p_bounds[i-hp])))
-                    else:
-                        bounds_mapped = hstack((bounds_mapped,
-                                                (self.p_bounds[i])))
+                    φout[iφ] = self.φdist[key].trans(self.p[key])
+                iφ += 1
+            else:
+                for i in range(len(val)):
+                    if self.φdist[key][i]:
+                        if trans:
+                            φout[iφ] = self.φdist[key][i].trans(self.p[key][i])
+                        else:
+                            φout[iφ] = self.p[key][i]
+                        iφ += 1
+        return φout
 
-        # return (self, hp_mapped)
-        return hp_mapped, bounds_mapped
+    def iter_φdist(self):
+        """
+        Provide an iterator for each prior φ in order. Two complications
+        prevent this from simply being done inline: 1st, length-scales can
+        be nested in lists (use an if & a for loop); and 2nd, CombiningKernel
+        nest an entire dict for each term (overload this method.)
+        """
+        # TODO: Currently relying on the dicts to maintain order (python 3.6)!
+        for val in self.φdist.values():
+            if not isinstance(val, Iterable):
+                yield val
+            else:
+                for el in [e for e in val if e]:
+                    yield el
 
-    def _ln_priors(self, params=None, grad=False):
+    def update_p(self, φ, trans=True, set=True):
+        # TODO: Currently relying on the dicts to maintain order (python 3.6)!
+        p = {}
+        iφ = 0
+        for key, val in self.p.items():
+            if key not in self.φdist:
+                p[key] = val
+            elif not isinstance(self.φdist[key], Iterable):
+                if not trans:
+                    p[key] = φ[iφ]
+                else:
+                    p[key] = self.φdist[key].invtr(φ[iφ])
+                iφ += 1
+            else:
+                p[key] = [None] * len(self.φdist[key])
+                for i in range(len(self.φdist[key])):
+                    if not self.φdist[key][i]:
+                        p[key][i] = val[i]
+                    else:
+                        if not trans:
+                            p[key][i] = φ[iφ]
+                        else:
+                            p[key][i] = self.φdist[key][i].invtr(φ[iφ])
+                        iφ += 1
+        if set:
+            self.p = p
+            return None
+        else:
+            return p
+
+    def ln_priors(self, φ=None, grad=False, trans=False):
         """
         Calculate log of prior distributions for hyper-parameters.
 
         Arguments
         ---------
-        params: array-1D
-            array of hyper-parameter values.
+        φ: array-1D (optional),
+            array of hyper-parameter values. When no values are provided,
+            use the initial guess.
         grad: bool (optional),
-            when grad is True also return dlnprior, and when grad is 'Hess'
-            also return d2lnpdf.
+            when grad is True also return dlnprior.
+        trans: book (optional),
+            indicate whether the input values of φ have been transformed
+            and whether the gradients are wrt the transformed space.
 
         Returns
         -------
@@ -151,98 +178,41 @@ class Kernel:
         dlnprior: array-1D
             array of gradients of log prior probabilities evaluated at
             values provided by params
-        d2lnprior: array-2D
-            matrix where diagonal is 2nd derivatives of log prior probabilities
-            evaluated at values provided by params
         """
-        if params is None:
-            params = zeros(self.Nhp)
-            i = 0
-            if isinstance(self, KernelSum) or isinstance(self, KernelProd):
-                for kern in self.terms:
-                    for hp in kern.hp:
-                        params[i] = hp.guess
-                        i += 1
-            else:
-                for hp in self.hp:
-                    params[i] = hp.guess
-                    i += 1
-
+        if φ is None:
+            φ = [None] * self.Nφ
         lnprior = 0.0
+        iφ = 0
         if not grad:
-            if isinstance(self, KernelSum) or isinstance(self, KernelProd):
-                i = 0
-                for kern in self.terms:
-                    for f_prior in kern.hp:
-                        lnprior += f_prior(params[i])
-                        i += 1
-            else:
-                for f_prior, i in zip(self.hp, xrange(self.Nhp)):
-                    lnprior += f_prior(params[i])
+            for key, val in self.φdist.items():
+                if not isinstance(val, Iterable):
+                    lnprior += val(φ[iφ], trans=trans)
+                    iφ += 1
+                else:
+                    for i in range(len(val)):
+                        if self.φdist[key][i]:
+                            lnprior += val[i](φ[iφ], trans=trans)
+                            iφ += 1
             return lnprior
-
-        elif grad is True:
-            dlnprior = empty(self.Nhp)
-            if isinstance(self, KernelSum) or isinstance(self, KernelProd):
-                i = 0
-                for kern in self.terms:
-                    for f_prior in kern.hp:
-                        (lnp, dlnp) = f_prior(params[i], grad)
-                        lnprior += lnp
-                        dlnprior[i] = dlnp
-                        i += 1
-            else:
-                for f_prior, i in zip(self.hp, xrange(self.Nhp)):
-                    lnp, dlnp = f_prior(params[i], grad)
-                    lnprior += lnp
-                    dlnprior[i] = dlnp
+        else:
+            dlnprior = empty(self.Nφ)
+            for key, val in self.φdist.items():
+                if not isinstance(val, Iterable):
+                    lnP, dlnP = val(φ[iφ], grad=grad, trans=trans)
+                    lnprior += lnP
+                    dlnprior[iφ] = dlnP
+                    iφ += 1
+                else:
+                    for i in range(len(val)):
+                        if self.φdist[key][i]:
+                            lnP, dlnP = val[i](φ[iφ], grad=grad, trans=trans)
+                            lnprior += lnP
+                            dlnprior[iφ] = dlnP
+                            iφ += 1
             return lnprior, dlnprior
 
-        elif grad == 'Hess':
-            dlnprior = empty(self.Nhp)
-            d2lnprior = zeros((self.Nhp, self.Nhp))
-            if isinstance(self, KernelSum) or isinstance(self, KernelProd):
-                i = 0
-                for kern in self.terms:
-                    for f_prior in kern.hp:
-                        lnp, dlnp, d2lnp = f_prior(params[i], grad)
-                        lnprior += lnp
-                        dlnprior[i] = dlnp
-                        d2lnprior[i, i] = d2lnp
-                        i += 1
-            else:
-                for f_prior, i in zip(self.hp, xrange(self.Nhp)):
-                    lnp, dlnp, d2lnp = f_prior(params[i], grad)
-                    lnprior += lnp
-                    dlnprior[i] = dlnp
-                    d2lnprior[i, i] = d2lnp
-            return lnprior, dlnprior, d2lnprior
-
-    def get_hp(self):
-        """
-        Return the current hyper parameter values.
-
-        Returns
-        -------
-        all_hp:  array-1D,
-            current values, for each hyper parameter, from HyperPrior.guess
-            (after minimization is run these should be optimized values).
-        """
-        all_hp = zeros(self.Nhp)
-        i = 0
-        if isinstance(self, KernelSum) or isinstance(self, KernelProd):
-            for kern in self.terms:
-                for hp in kern.hp:
-                    all_hp[i] = hp.guess
-                    i += 1
-        else:
-            for hp in self.hp:
-                all_hp[i] = hp.guess
-                i += 1
-        return all_hp
-
     @abstractmethod
-    def __call__(self, Rk, grad_hp=False, grad_r=False, **kwargs):
+    def __call__(self, Rk, grad=False, **kwargs):
         """
         Calculate and return kernel values given the radius array.
 
@@ -250,14 +220,8 @@ class Kernel:
         ---------
         Rk: array-3D,
             directional radius matrix (difference between points).
-        grad_hp: bool (optional),
-            gradients with respect to hyper parameters,
-            when grad_hp is True also return Kgrad, and when grad_hp is 'Hess'
-            also return Khess.
-        grad_r: bool (optional),
-            gradients with respect to radius,
-            when grad_r is True also return Kgrad, and when grad_r is 'Hess'
-            also return Khess.
+        grad: bool (optional),
+            gradients with respect to radius, when True also return Kgrad.
         kwargs: any additional options (opt_name=opt_value),
             specific options for specific kernels, otherwise ignored.
 
@@ -268,18 +232,117 @@ class Kernel:
         Kgrad: array-3D (optional - depending on argument grad),
             partial of kernel (first two dimensions) with respect to each
             hyper parameter (third dimension).
-        Khess: array-4D (optional - depending on argument grad),
-            second derivative for all combinations of two hyper parameters.
+        """
+        return
+
+    @abstractmethod
+    def Kφ(self, φ, Rk, grad=False, trans=False, **kwargs):
+        """
+        Calculate and return kernel values given a vector of hyper
+        parameters and the radius array.
+
+        Arguments
+        ---------
+        φ: array-1D,
+            array of hyper parameters (potentially transformed),
+        Rk: array-3D,
+            directional radius matrix (difference between points),
+        grad: bool (optional),
+            indicate whether to return the gradients with respect to the
+            transformed hyper parameters as Kgrad,
+        trans: bool (optional),
+            indicate whether the input values of φ have been transformed
+            and whether the gradients are wrt the transformed space,
+        kwargs: any additional options (opt_name=opt_value),
+            specific options for specific kernels, otherwise ignored.
+
+        Returns
+        -------
+        K: array-2D,
+            kernel values - shape must match argument R,
+        Kgrad: array-3D (optional - depending on argument grad),
+            partial of kernel (first two dimensions) with respect to each
+            hyper parameter (third dimension).
         """
         return
 
 
-class KernelSum(Kernel):
-    """Provide a class that lists kernels to be added at evaluation."""
+def subclass(kern):
+    return search("kernels.(\w+)", repr(type(kern))).group(1)
+
+
+class CombiningKernel(Kernel):
+    """
+    This is just a super class of KernelSum & KernelProd created so these
+    methods don't need to be repeated.
+    """
     def __init__(self, k1, k2):
         self.terms = [k1, k2]
-        self.Np, self.Nhp = k1.Np + k2.Np, k1.Nhp + k2.Nhp
+        self.Nφ = k1.Nφ + k2.Nφ
 
+    @property
+    def p(self):
+        _p = {}
+        for kern in self.terms:
+            _p[subclass(kern)] = kern.p
+        return _p
+
+    @property
+    def φdist(self):
+        _φ = {}
+        for kern in self.terms:
+            _φ[subclass(kern)] = kern.φdist
+        return _φ
+
+    def iter_φdist(self):
+        # TODO: Currently relying on the dicts to maintain order (python 3.6)!
+        for kern in self.terms:
+            for φdist in kern.iter_φdist():
+                yield φdist
+
+    def get_φ(self, trans=True):
+        # TODO: Currently relying on the dicts to maintain order (python 3.6)!
+        φ = empty(self.Nφ)
+        iφ = 0
+        for kern in self.terms:
+            φ[iφ:iφ+kern.Nφ] = kern.get_φ(trans)
+            iφ += kern.Nφ
+        return φ
+
+    def update_p(self, φ, trans=True, set=True):
+        # TODO: Currently relying on the dicts to maintain order (python 3.6)!
+        p = {}
+        iφ = 0
+        for kern in self.terms:
+            p[subclass(kern)] = kern.update_p(φ[iφ:iφ+kern.Nφ], trans, set)
+            iφ += kern.Nφ
+        if set:
+            return None
+        else:
+            return p
+
+    def ln_priors(self, φ=None, grad=False, trans=False):
+        if φ is None:
+            φ = [None] * self.Nφ
+        lnprior = 0.0
+        iφ = 0
+        if not grad:
+            for kern in self.terms:
+                lnprior += kern.ln_priors(φ[iφ:iφ+kern.Nφ], grad, trans)
+                iφ += kern.Nφ
+            return lnprior
+        else:
+            dlnprior = empty(self.Nφ)
+            for kern in self.terms:
+                lnp, dlnp = kern.ln_priors(φ[iφ:iφ+kern.Nφ], grad, trans)
+                lnprior += lnp
+                dlnprior[iφ:iφ+kern.Nφ] = dlnp
+                iφ += kern.Nφ
+            return lnprior, dlnprior
+
+
+class KernelSum(CombiningKernel):
+    """Provide a class that lists kernels to be added at evaluation."""
     def __add__(self, other, self_on_right=False):
         if isinstance(other, KernelSum):
             self.terms += other.terms
@@ -288,14 +351,10 @@ class KernelSum(Kernel):
                 self.terms = [other] + self.terms
             else:
                 self.terms += [other]
-        else:
-            # TODO: throw an error!
-            pass
-        self.Np += other.Np
-        self.Nhp += other.Nhp
+        self.Nφ += other.Nφ
         return self
 
-    def __call__(self, Rk, grad_hp=False, grad_r=False, **kwargs):
+    def __call__(self, Rk, grad=False, **kwargs):
         if 'sum_terms' in kwargs and not kwargs['sum_terms'] is True:
             if type(kwargs['sum_terms']) is list:
                 terms = [self.terms[i] for i in kwargs['sum_terms']]
@@ -303,128 +362,96 @@ class KernelSum(Kernel):
                 terms = [self.terms[kwargs['sum_terms']]]
         else:
             terms = self.terms
-        if (not grad_hp) and (not grad_r):
+        if not grad:
             K = zeros(Rk.shape[:2])
             for kern in terms:
                 K += kern(Rk, **kwargs)
             return K
-        if grad_hp is not False:
-            if grad_hp != 'Hess':
-                K = zeros(Rk.shape[:2])
-                Kgrad = zeros((Rk.shape[0], Rk.shape[1], self.Nhp))
-                h = 0
-                for kern in terms:
-                    K_t, Kgrad[:, :, h:h+kern.Nhp] = kern(Rk, grad_hp=grad_hp,
-                                                          **kwargs)
-                    K += K_t
-                    h += kern.Nhp
-                return K, Kgrad
-            else:
-                K = zeros(Rk.shape[:2])
-                Kgrad = zeros((Rk.shape[0], Rk.shape[1], self.Nhp))
-                Khess = zeros((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
-                h = 0
-                for kern in terms:
-                    hn = h + kern.Nhp
-                    Kt, Kgrad[:, :, h:hn], Khess[:, :, h:hn, h:hn] = \
-                        kern(Rk, grad_hp=grad_hp, **kwargs)
-                    K += Kt
-                    h = hn
-                return K, Kgrad, Khess
-        if grad_r is not False:
-            if grad_r != 'Hess':
-                K = zeros(Rk.shape[:2])
-                Kgrad = zeros(Rk.shape)
-                h = 0
-                for kern in terms:
-                    Kt, Ktgrad = kern(Rk, grad_r=grad_r, **kwargs)
-                    K += Kt
-                    Kgrad += Ktgrad
-                return K, Kgrad
-            else:
-                K = zeros(Rk.shape[:2])
-                Kgrad = zeros(Rk.shape)
-                Khess = zeros((Rk.shape[0], Rk.shape[1], Rk.shape[2],
-                               Rk.shape[2]))
-                h = 0
-                for kern in terms:
-                    Kt, Ktgrad, Kthess = kern(Rk, grad_r=grad_r, **kwargs)
-                    K += Kt
-                    Kgrad += Ktgrad
-                    Khess += Kthess
-                return K, Kgrad, Khess
+        else:
+            K = zeros(Rk.shape[:2])
+            Kgrad = zeros(Rk.shape)
+            for kern in terms:
+                Kt, Ktgrad = kern(Rk, grad=grad, **kwargs)
+                K += Kt
+                Kgrad += Ktgrad
+            return K, Kgrad
 
 
-class KernelProd(Kernel):
+    def Kφ(self, φ, Rk, grad=False, trans=False, **kwargs):
+        if 'sum_terms' in kwargs and not kwargs['sum_terms'] is True:
+            if type(kwargs['sum_terms']) is list:
+                terms = [self.terms[i] for i in kwargs['sum_terms']]
+            elif type(kwargs['sum_terms']) is int:
+                terms = [self.terms[kwargs['sum_terms']]]
+        else:
+            terms = self.terms
+        if not grad:
+            K = zeros(Rk.shape[:2])
+            iφ = 0
+            for kern in terms:
+                Nφ = kern.Nφ
+                K += kern.Kφ(φ[iφ:iφ+Nφ], Rk, trans=trans, **kwargs)
+                iφ += Nφ
+            return K
+        else:
+            K = zeros(Rk.shape[:2])
+            Kgrad = zeros((Rk.shape[0], Rk.shape[1], self.Nφ))
+            iφ = 0
+            for kern in terms:
+                Nφ = kern.Nφ
+                Kt, Kgrad[:, :, iφ:iφ+Nφ] = kern.Kφ(φ[iφ:iφ+Nφ], Rk, grad,
+                                                    trans, **kwargs)
+                K += Kt
+                iφ += Nφ
+            return K, Kgrad
+
+
+class KernelProd(CombiningKernel):
     """Provide a class that lists kernels to be multiplied at evaluation."""
-    def __init__(self, k1, k2):
-        self.terms = [k1, k2]
-        self.Np, self.Nhp = k1.Np + k2.Np, k1.Nhp + k2.Nhp
-
     def __mul__(self, other, self_on_right=False):
         if isinstance(other, KernelProd):
             self.terms += other.terms
         elif isinstance(other, Kernel):
             self.terms += [other]
         else:
-            # TODO: throw an error!
+            # TODO: Throw an error!
             pass
-        self.Np += other.Np
-        self.Nhp += other.Nhp
+        self.Nφ += other.Nφ
         return self
 
-    def __call__(self, Rk, grad_hp=False, grad_r=False, **kwargs):
-        if grad_r is not False:
-            raise InputError("Kernel products do not currently support" +
-                             " radial gradients.  If desired, feel free" +
-                             " to implement")
-        if not grad_hp:
+    def __call__(self, Rk, grad=False, **kwargs):
+        if grad is not False:
+            raise InputError("Kernel product does not currently support" +
+                             " radial gradients.")
+        K = ones(Rk.shape[:2])
+        for kern in self.terms:
+            K *= kern(Rk, **kwargs)
+        return K
+
+    def Kφ(self, φ, Rk, grad=False, trans=False, **kwargs):
+        if not grad:
             K = ones(Rk.shape[:2])
+            iφ = 0
             for kern in self.terms:
-                K *= kern(Rk, **kwargs)
+                Nφ = kern.Nφ
+                K *= kern.Kφ(φ[iφ:iφ+Nφ], Rk, trans=trans, **kwargs)
+                iφ += Nφ
             return K
-        elif grad_hp != 'Hess':
-            K = ones(Rk.shape[:2])
-            Kgrad = ones((Rk.shape[0], Rk.shape[1], self.Nhp))
-            h = 0
-            for kern in self.terms:
-                Kt, Kgt = kern(Rk, grad_hp=grad_hp, **kwargs)
-                K *= Kt
-                irange = range(h, h+kern.Nhp)
-                iother = range(0, h) + range(h+kern.Nhp, self.Nhp)
-                Kgrad[:, :, irange] *= Kgt
-                Kgrad[:, :, iother] *= tile(expand_dims(Kt, 2),
-                                            (1, 1, len(iother)))
-                h += kern.Nhp
-            return K, Kgrad
         else:
             K = ones(Rk.shape[:2])
-            Kgrad = ones((Rk.shape[0], Rk.shape[1], self.Nhp))
-            Khess = ones((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
-            h = 0
+            Kgrad = ones((Rk.shape[0], Rk.shape[1], self.Nφ))
+            iφ = 0
             for kern in self.terms:
-                Kt, Kgt, Kht = kern(Rk, grad_hp=grad_hp, **kwargs)
+                Nφ = kern.Nφ
+                Kt, Kgt = kern.Kφ(φ[iφ:iφ+Nφ], Rk, grad, trans, **kwargs)
                 K *= Kt
-                hn = h + kern.Nhp
-                irange = range(h, hn)
-                iother = range(0, h) + range(hn, self.Nhp)
+                irange = range(iφ, iφ+Nφ)
+                iother = range(0, iφ) + range(iφ+Nφ, self.Nφ)
                 Kgrad[:, :, irange] *= Kgt
                 Kgrad[:, :, iother] *= tile(expand_dims(Kt, 2),
                                             (1, 1, len(iother)))
-                Khess[ix_(range(0, Rk.shape[0]), range(0, Rk.shape[1]),
-                          irange, irange)] *= Kht
-                Khess[ix_(range(0, Rk.shape[0]), range(0, Rk.shape[1]),
-                          irange, iother)] *= tile(expand_dims(Kgt, 3),
-                                                   (1, 1, 1, len(iother)))
-                Khess[ix_(range(0, Rk.shape[0]), range(0, Rk.shape[1]),
-                          iother, irange)] *= tile(expand_dims(Kgt, 2),
-                                                   (1, 1, len(iother), 1))
-                Khess[ix_(range(0, Rk.shape[0]), range(0, Rk.shape[1]),
-                          iother, iother)] *= \
-                          tile(expand_dims(expand_dims(Kt, 2), 3),
-                               (1, 1, len(iother), len(iother)))
-                h += kern.Nhp
-            return K, Kgrad, Khess
+                iφ += Nφ
+            return K, Kgrad
 
 
 class Noise(Kernel):
@@ -435,246 +462,200 @@ class Noise(Kernel):
     with the weight parameter, w, and a flag indicating inclusion or not.
     White noise is discontinuous.
     """
-    def __init__(self, **params):
-        p_bounds = odict([('w', (0.0, None))])
-        super(Noise, self).__init__(params, p_bounds)
+    def __init__(self, w):
+        super().__init__(w=w)
 
-    def __call__(self, Rk, grad_hp=False, grad_r=False, **kwargs):
+    def __call__(self, Rk, grad=False, **kwargs):
         w = self.p['w']
         w2 = w**2
-        if 'block_diag' in kwargs and kwargs['block_diag'] == True:
+        if 'on_diag' in kwargs and kwargs['on_diag'] == True:
                 K0 = eye(Rk.shape[0], Rk.shape[1])
         else:
             K0 = zeros(Rk.shape[:2])
-        if (not grad_hp) and (not grad_r):
-            # K = w2*K0
-            return w2*K0
-        if grad_hp is not False:
-            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-            if 'w' in self.hp_id:
-                # dK/dw
-                Kgrad[:, :, 0] = 2.0*w*K0
-            if grad_hp != 'Hess':
-                return w2*K0, Kgrad
-            Khess = empty((Rk.shape[0], Rk.shape[1], self.Np, self.Np))
-            if 'w' in self.hp_id:
-                # d^2K/dw^2
-                Khess[:, :, 0, 0] = 2.0*K0
-            return w2*K0, Kgrad, Khess
-
-        if grad_r is not False:
+        if not grad:
+            # K = w2 * K0
+            return w2 * K0
+        else:
             raise InputError("Noise Kernel is not differentiable, need" +
-                             " to separate kernels if differntiation is" +
-                             " desired")
+                             " to separate kernels for differentiation")
+
+    def Kφ(self, φ, Rk, grad=False, trans=False, **kwargs):
+        p = self.update_p(φ, trans=trans, set=False)
+        w = p['w']
+        w2 = w**2
+        if 'on_diag' in kwargs and kwargs['on_diag'] == True:
+                K0 = eye(Rk.shape[0], Rk.shape[1])
+        else:
+            K0 = zeros(Rk.shape[:2])
+        if not grad:
+            return w2 * K0
+        else:
+            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nφ))
+            if 'w' in self.φdist:
+                if not trans:
+                    Kgrad[:, :, 0] = 2 * w  * K0
+                else:
+                    Kgrad[:, :, 0] = 2 * w2 * K0
+            return w2 * K0, Kgrad
 
 
 class SquareExp(Kernel):
     r"""
     Squared-exponential kernel object.
     .. math::
-        K(R; w, l) = w^2*\exp( -1/2 *(R/l)^2 ),
+        K(R; w, l) = w^2 * \exp( -1/2 *(R/l)^2 ),
     with the parameters of weight, w, and length, l. For multiple
     dimensions, the length can be a single value applied to all directions
     or it can be a list with a separate value in each direction.
     Squared-exponential is continuous and infinitely differentiable.
     """
-    def __init__(self, **params):
-        p_bounds = odict([('w', (1E-6, None)), ('l', (1E-6, None))])
-        super(SquareExp, self).__init__(params, p_bounds)
+    def __init__(self, w, l):
+        super().__init__(w=w, l=l)
 
-    def __call__(self, Rk, grad_hp=False, grad_r=False, **kwargs):
+    def __call__(self, Rk, grad=False, **kwargs):
         w, l = self.p['w'], self.p['l']
-        if not isinstance(l, list):
-            R2l2 = sum(Rk**2, 2)/l**2
+        if not isinstance(l, Iterable):
+            Rl2 = sum(Rk**2, 2) / l**2
         else:
-            R2l2 = zeros(Rk.shape[:2])
-            for k in xrange(Rk.shape[2]):
-                R2l2 += (Rk[:, :, k]/l[k])**2
+            Rl2 = zeros(Rk.shape[:2])
+            for k in range(Rk.shape[2]):
+                Rl2 += (Rk[:, :, k] / l[k])**2
         w2 = w**2
-        K0 = exp(-0.5*R2l2)
-        if (not grad_hp) and (not grad_r):
-            # K = w2*K0
-            return w2*K0
-        if grad_hp is not False:
-            # First derivatives:
-            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-            for (i, h) in zip(range(self.Nhp), self.hp_id):
-                if h == 'w':
-                    # dK/dw
-                    Kgrad[:, :, i] = 2.0*w*K0
-                elif h == 'l':
-                    # dK/dl
-                    Kgrad[:, :, i] = w2*R2l2/l*K0
-                elif isinstance(h, int):
-                    # dK/dl_h
-                    Kgrad[:, :, i] = w2*Rk[:, :, h]**2/l[h]**3*K0
-            if grad_hp != 'Hess':
-                return w2*K0, Kgrad
-            # Second derivatives:
-            Khess = empty((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
-            for i, h1 in zip(xrange(self.Nhp), self.hp_id):
-                for j, h2 in zip(xrange(i, self.Nhp+1), self.hp_id[i:]):
-                    if h1 == 'w' and h2 == 'w':
-                        # d^2K/dw^2
-                        Khess[:, :, i, j] = 2.0*K0
-                    elif h1 == 'w' and h2 == 'l':
-                        # d^2K/dwdl
-                        Khess[:, :, i, j] = 2.0*w*R2l2/l*K0
-                        Khess[:, :, j, i] = Khess[:, :, i, j]
-                    elif h1 == 'w' and isinstance(h2, int):
-                        # d^2K/dwdl_i
-                        Khess[:, :, i, j] = 2.0*w*Rk[:, :, h2]**2/l[h2]**3*K0
-                        Khess[:, :, j, i] = Khess[:, :, i, j]
-                    elif h1 == 'l' and h2 == 'l':
-                        # d^2K/dl^2
-                        Khess[:, :, i, j] = w2*R2l2/l**2*(R2l2-3.0)*K0
-                    elif (isinstance(h1, int) and isinstance(h2, int) and
-                          h1 == h2):
-                        # d^2K/dl_i^2
-                        Khess[:, :, i, j] = (w2*Rk[:, :, h1]**2/l[h1]**4 *
-                                             ((Rk[:, :, h1]/l[h1])**2 -
-                                             3.0)*K0)
-                    elif isinstance(h1, int) and isinstance(h2, int):
-                        # d^2K/dl_i dl_j
-                        Khess[:, :, i, j] = (w2*(Rk[:, :, h1] *
-                                             Rk[:, :, h2])**2 /
-                                             (l[h1]*l[h2])**3*K0)
-                        Khess[:, :, j, i] = Khess[:, :, i, j]
-            return w2*K0, Kgrad, Khess
-
-        if grad_r is not False:
-            # First derivatives:
+        K0 = exp(-0.5 * Rl2)
+        if not grad:
+            return w2 * K0
+        else:
             Kgrad = empty(Rk.shape)
-            for i in xrange(Rk.shape[2]):
-                if isinstance(l, list):
-                    Kgrad[:, :, i] = -w2*Rk[:, :, i]/l[i]**2 * K0
+            for i in range(Rk.shape[2]):
+                if isinstance(l, Iterable):
+                    Kgrad[:, :, i] = -w2 * Rk[:, :, i] / l[i]**2 * K0
                 else:
-                    Kgrad[:, :, i] = -w2*Rk[:, :, i]/l**2 * K0
-            if grad_r != 'Hess':
-                return w2*K0, Kgrad
-            # Second derivatives:
-            Khess = empty((Rk.shape[0], Rk.shape[1], Rk.shape[2], Rk.shape[2]))
-            for i in xrange(Rk.shape[2]):
-                for j in xrange(Rk.shape[2]):
-                    if i == j:
-                        if isinstance(l, list):
-                            Khess[:, :, i, j] = (w2/l[i]**2 *
-                                                 (Rk[:, :, i]**2/l[i]**2 -
-                                                  1.0)*K0)
-                        else:
-                            Khess[:, :, i, j] = (w2/l**2 *
-                                                 (Rk[:, :, i]**2/l**2 -
-                                                  1.0) * K0)
+                    Kgrad[:, :, i] = -w2 * Rk[:, :, i] / l**2 * K0
+            return w2 * K0, Kgrad
+
+    def Kφ(self, φ, Rk, grad=False, trans=False, **kwargs):
+        p = self.update_p(φ, trans=trans, set=False)
+        w, l = p['w'], p['l']
+        if not isinstance(l, Iterable):
+            Rl2 = sum(Rk**2, 2) / l**2
+        else:
+            Rl2 = zeros(Rk.shape[:2])
+            for k in range(Rk.shape[2]):
+                Rl2 += (Rk[:, :, k] / l[k])**2
+        w2 = w**2
+        K0 = exp(-0.5 * Rl2)
+        if not grad:
+            return w2 * K0
+        else:
+            Kgrad = empty(Rk.shape[:2] + (self.Nφ,))
+            iφ = 0
+            if 'w' in self.φdist:
+                if not trans:
+                    Kgrad[:, :, iφ] = 2 * w  * K0
+                else:
+                    Kgrad[:, :, iφ] = 2 * w2 * K0
+                iφ += 1
+            if 'l' in self.φdist:
+                ld = self.φdist['l']
+                if not isinstance(ld, Iterable):
+                    if not trans:
+                        Kgrad[:, :, iφ] = w2 * Rl2 / l * K0
                     else:
-                        if isinstance(l, list):
-                            Khess[:, :, i, j] = (w2*Rk[:, :, i]*Rk[:, :, j] /
-                                                 (l[i]**2 * l[j]**2) * K0)
-                        else:
-                            Khess[:, :, i, j] = (w2*Rk[:, :, i]*Rk[:, :, j] /
-                                                 (l**4)*K0)
-            return w2*K0, Kgrad, Khess
+                        Kgrad[:, :, iφ] = w2 * Rl2 * K0
+                else:
+                    for i in range(len(ld)):
+                        if ld[i]:
+                            if not trans:
+                                Kgrad[:, :, iφ] = w2 * Rk[:, :, i]**2 / l[i]**3 * K0
+                            else:
+                                Kgrad[:, :, iφ] = w2 * (Rk[:, :, i] / l[i])**2 * K0
+                            iφ += 1
+            return w2 * K0, Kgrad
+
 
 class GammaExp(Kernel):
     r"""
     Gamma-exponential kernel object.
     .. math::
-        K(R; w, l, gamma) = w^2*\exp( -(R/l)^{\gamma} ),
-    with the parameters of weight, w, length, l, and power norm, gamma.
+        K(R; w, l, γ) = w^2 \exp( -(R/l)^γ ),
+    with the parameters of weight, w, length, l, and power norm, γ.
     For multiple dimensions, the length can be a single value applied to
     all directions or a list with a separate value in each direction.
-    Gamma-exponential is continuous, and when gamma=2 it is smooth.
+    Gamma-exponential is continuous, and it is smooth only when γ=2.
     """
-    def __init__(self, **params):
-        p_bounds = odict([('w', (0.0, None)), ('l', (0.0, None)),
-                          ('gamma', (0.0, 2.0))])
-        super(GammaExp, self).__init__(params, p_bounds)
-    def __call__(self, Rk, grad_hp=False, grad_r=False, **kwargs):
-        w, l, g = self.p['w'], self.p['l'], self.p['gamma']
-        if not isinstance(l, list):
-            Rl = abs(Rk/l)
+    def __init__(self, w, l, γ):
+        super().__init__(w=w, l=l, γ=γ)
+
+    def __call__(self, Rk, grad=False, **kwargs):
+        w, l, γ = self.p['w'], self.p['l'], self.p['γ']
+        if not isinstance(l, Iterable):
+            Rl = abs(Rk / l)
         else:
             Rl = empty(Rk.shape)
-            for k in xrange(Rk.shape[2]):
-                Rl[:,:,k] = abs(Rk[:,:,k]/l[k])
-        Rglg = sum(Rl**g, 2)
+            for k in range(Rk.shape[2]):
+                Rl[:, :, k] = abs(Rk[:, :, k] / l[k])
+        Rlγ = sum(Rl**γ, 2)
         w2 = w**2
-        K0 = exp(-Rglg)
-        if (not grad_hp) and (not grad_r):
-            # K = w2*K0
-            return w2*K0
-        if grad_hp is not False:
-            # First derivatives:
-            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-            for i, h in zip(range(self.Nhp), self.hp_id):
-                if h == 'w':
-                    # dK/dw
-                    Kgrad[:,:,i] = 2.0*w*K0
-                elif h == 'l':
-                    # dK/dl
-                    Kgrad[:,:,i] = g*w2*Rglg / l*K0
-                elif isinstance(h, int):
-                    # dK/dl_h
-                    Kgrad[:,:,i] = g*w2*Rl[:,:,h]**g / l[h]*K0
-                elif h == 'gamma':
-                    # dK/dgamma
-                    tmp1 = zeros(Rk.shape)
-                    tmp1[Rl > 0] = Rl[Rl>0]**g * log(Rl[Rl>0.0])
-                    gamma_tmp = sum(tmp1, 2)
-                    Kgrad[:,:,i] = -w2*gamma_tmp*K0
-            if grad_hp != 'Hess':
-                return w2*K0, Kgrad
-            # Second derivatives:
-            Khess = empty((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
-            for i, h1 in zip(xrange(self.Nhp), self.hp_id):
-                for j, h2 in zip(xrange(i, self.Nhp), self.hp_id[i:]):
-                    if h1 == 'w' and h2 == 'w':
-                        # d^2K/dw^2
-                        Khess[:,:,i,j] = 2.0*K0
-                    elif h1 == 'w' and h2 == 'l':
-                        # d^2K/dwdl
-                        Khess[:,:,i,j] = 2.0*g*w*Rglg/l*K0
-                        Khess[:,:,j,i] = Khess[:,:,i,j]
-                    elif h1 == 'w' and isinstance(h2, int):
-                        # d^2K/dwdl_h
-                        Khess[:,:,i,j] = 2.0*g*w*Rl[:,:,h2]**g/l[h2]*K0
-                        Khess[:,:,j,i] = Khess[:,:,i,j]
-                    elif h1 == 'w' and h2 == 'gamma':
-                        # d^2K/dwdgamma
-                        Khess[:,:,i,j] = -2.0*w*gamma_tmp*K0
-                        Khess[:,:,j,i] = Khess[:,:,i,j]
-                    elif h1 == 'l' and h2 == 'l':
-                        # d^2K/dl^2
-                        Khess[:,:,i,j] = g*w2*Rglg/l**2*(g*Rglg-(g+1.0))*K0
-                    elif h1 == 'l' and h2 == 'gamma':
-                        # d^2K/dldgamma
-                        Khess[:,:,i,j] = ( w2/l*(Rglg + g*(1.0-Rglg) *
-                                         gamma_tmp) * K0 )
-                        Khess[:,:,j,i] = Khess[:,:,i,j]
-                    elif isinstance(h1, int) and isinstance(h2, int) and h1 == h2:
-                        # d^2K/dl_h^2
-                        Khess[:,:,i,j] = ( g*w2*Rl[:,:,h1]**g/l[h1]**2 *
-                                           (g*Rl[:,:,h1]**g-(g+1.0))*K0 )
-                    elif isinstance(h1, int) and isinstance(h2, int):
-                        # d^2K/dl_h1 dl_h2
-                        Khess[:,:,i,j] = ( g**2*w2*(Rl[:,:,h1]*Rl[:,:,h2])**g /
-                                          (l[h1]*l[h2])*K0 )
-                        Khess[:,:,j,i] = Khess[:,:,i,j]
-                    elif isinstance(h1, int) and h2 == 'gamma':
-                        # d^2K/dl_h1 dgamma
-                        Khess[:,:,i,j] = ( w2 * (g*tmp1[:,:,h1]/l[h1] +
-                                       Rl[:,:,h1]**g/l[h1] *
-                                       (1.0-g*gamma_tmp))*K0 )
-                        Khess[:,:,j,i] = Khess[:,:,i,j]
-                    elif h1 == 'gamma' and h2 == 'gamma':
-                        # d^2K/dgamma^2
-                        tmp2 = zeros(Rk.shape)
-                        tmp2[Rl > 0] = tmp1[Rl > 0] * log(Rl[Rl>0.0])
-                        Khess[:,:,i,j] = w2*(gamma_tmp**2 - sum(tmp2, 2))*K0
-            return w2*K0, Kgrad, Khess
-        if grad_r is not False:
-            raise InputError("Gamma Exponential Kernel is not differentiable,"+
-                             " need to separate kernels if differntiation is" +
-                             " desired")
+        K0 = exp(-Rlγ)
+        if not grad:
+            return w2 * K0
+        else:
+            raise InputError("Gamma Exponential Kernel is not generally" +
+                             "differentiable, need to separate kernels if " +
+                             "differentiation is desired")
+
+    def Kφ(self, φ, Rk, grad=False, trans=False, **kwargs):
+        p = self.update_p(φ, trans=trans, set=False)
+        w, l, γ = p['w'], p['l'], p['γ']
+        if not isinstance(l, Iterable):
+            Rl = abs(Rk / l)
+        else:
+            Rl = empty(Rk.shape)
+            for k in range(Rk.shape[2]):
+                Rl[:, :, k] = abs(Rk[:, :, k] / l[k])
+        Rlγ = sum(Rl**γ, 2)
+        w2 = w**2
+        K0 = exp(-Rlγ)
+        if not grad:
+            return w2 * K0
+        else:
+            Kgrad = empty(Rk.shape[:2] + (self.Nφ,))
+            iφ = 0
+            if 'w' in self.φdist:
+                if not trans:
+                    Kgrad[:, :, iφ] = 2 * w  * K0
+                else:
+                    Kgrad[:, :, iφ] = 2 * w2 * K0
+                iφ += 1
+            if 'l' in self.φdist:
+                ld  = self.φdist['l']
+                if not isinstance(ld, Iterable):
+                    if not trans:
+                        Kgrad[:, :, iφ] = γ * w2 * Rlγ / l * K0
+                    else:
+                        Kgrad[:, :, iφ] = γ * w2 * Rlγ * K0
+                    iφ += 1
+                else:
+                    for i in range(len(ld)):
+                        if ld[i]:
+                            if not trans:
+                                Kgrad[:, :, iφ] = γ * w2 * Rl[:, :, i]**γ / l[i] * K0
+                            else:
+                                Kgrad[:, :, iφ] = γ * w2 * Rl[:, :, i]**γ * K0
+                            iφ += 1
+            if 'γ' in self.φdist:
+                tmp1 = zeros(Rk.shape)
+                tmp1[Rl > 0] = Rl[Rl > 0]**γ * log(Rl[Rl > 0])
+                γ_tmp = sum(tmp1, 2)
+                if not trans:
+                    Kgrad[:, :, iφ] = -w2 * γ_tmp * K0
+                else:
+                    γtr = self.φdist['γ'].trans(γ)
+                    c = self.φdist['γ'].c
+                    dγdγtr = c * exp(-γtr**2 / 2) / sqrt(2 * π)
+                    Kgrad[:, :, iφ] = -w2 * γ_tmp * K0 * dγdγtr
+            return w2 * K0, Kgrad
+
 
 class RatQuad(Kernel):
     r"""
@@ -687,135 +668,85 @@ class RatQuad(Kernel):
     Rational quadratic is SE over a gamma distribution of length scales
     with a mean of alpha*l^2 and variance of alpha*l^4.
     """
-    def __init__(self, **params):
-        p_bounds = odict([('w', (0.0, None)), ('l', (0.0, None)),
-                          ('alpha', (0.0, None))])
-        super(RatQuad, self).__init__(params, p_bounds)
-    def __call__(self, Rk, grad_hp=False, grad_r=False, **kwargs):
-        w, l, a = self.p['w'], self.p['l'], self.p['alpha']
+    def __init__(self, w, l, α):
+        super().__init__(w=w, l=l, α=α)
+
+    def __call__(self, Rk, grad=False, **kwargs):
+        w, l, α = self.p['w'], self.p['l'], self.p['α']
         if not isinstance(l, list):
-            R2l2 = sum(Rk**2,2)/l**2
+            R2l2 = sum(Rk**2, 2) / l**2
         else:
             R2l2 = zeros(Rk.shape[:2])
-            for k in xrange(Rk.shape[2]):
-                R2l2 += (Rk[:,:,k]/l[k])**2
+            for k in range(Rk.shape[2]):
+                R2l2 += (Rk[:, :, k] / l[k])**2
         w2 = w**2
-        all_tmp = 1.0 + R2l2/(2.0*a)
-        K0 = all_tmp**(-a)
-        if (not grad_hp) and (not grad_r):
+        base = 1 + R2l2 / (2 * α)
+        K0 = base**(-α)
+        if not grad:
             return w2*K0
-        if grad_hp is not False:
-            # First derivatives:
-            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.Nhp))
-            for i, h in zip(range(self.Nhp), self.hp_id):
-                if h == 'w':
-                    # dK/dw
-                    Kgrad[:,:,i] = 2.0*w*K0
-                elif h == 'l':
-                    # dK/dl
-                    Kgrad[:,:,i] = w2*R2l2/(l*all_tmp)*K0
-                elif isinstance(h, int):
-                    # dK/dl_h
-                    Kgrad[:,:,i] = w2*Rk[:,:,h]**2/(l[h]**3*all_tmp)*K0
-                elif h == 'alpha':
-                    # dK/dalpha
-                    alpha_tmp = (all_tmp-1)/all_tmp - log(all_tmp)
-                    Kgrad[:,:,i] = w2*alpha_tmp*K0
-            if grad_hp != 'Hess':
-                return w2*K0, Kgrad
-            # Second derivatives:
-            Khess = empty((Rk.shape[0], Rk.shape[1], self.Nhp, self.Nhp))
-            for i, h1 in zip(xrange(self.Nhp), self.hp_id):
-                for j, h2 in zip(xrange(i, self.Nhp), self.hp_id[i:]):
-                    if h1 == 'w' and h2 == 'w':
-                        # d^2K/dw^2
-                        Khess[:,:,i,j] = 2.0*K0
-                    elif h1 == 'w' and h2 == 'l':
-                        # d^2K/dwdl
-                        Khess[:,:,i,j] = 2.0*w*R2l2/(l*all_tmp)*K0
-                        Khess[:,:,j,i] = Khess[:,:,i,j]
-                    elif h1 == 'w' and isinstance(h2, int):
-                        # d^2K/dwdl_h
-                        Khess[:,:,i,j] = ( 2.0*w*Rk[:,:,h]**2 /
-                                        (l[h]**3*all_tmp) * K0 )
-                        Khess[:,:,j,i] = Khess[:,:,i,j]
-                    elif h1 == 'w' and h2 == 'alpha':
-                        # d^2K/dwdalpha
-                        Khess[:,:,i,j] = 2.0*w*alpha_tmp*K0
-                        Khess[:,:,j,i] = Khess[:,:,i,j]
-                    elif h1 == 'l' and h2 == 'l':
-                        # d^2K/dl^2
-                        Khess[:,:,i,j] = ( w2*R2l2/l**2*((a+1.0)/a*R2l2 /
-                                        all_tmp - 3.0)/all_tmp * K0 )
-                    elif h1 == 'l' and h2 == 'alpha':
-                        # d^2K/dldalpha
-                        Khess[:,:,i,j] = ( w2*R2l2/l*((a+1.0)/a*(all_tmp-1.0) /
-                                         all_tmp - log(all_tmp))/all_tmp * K0 )
-                        Khess[:,:,j,i] = Khess[:,:,i,j]
-                    elif isinstance(h1, int) and isinstance(h2, int) and h1 == h2:
-                        # d^2K/dl_h^2
-                        Khess[:,:,i,j] = ( w2*Rk[:,:,h1]**2/l[h1]**4 *
-                                        ((a+1.0)/a*(Rk[:,:,h1]/l[h1])**2 /
-                                        all_tmp - 3.0)/all_tmp * K0 )
-                    elif isinstance(h1, int) and isinstance(h2, int):
-                        # d^2K/dl_h1 dl_h2
-                        Khess[:,:,i,j] = ( (a+1.0)/a *w2*(Rk[:,:,h1] *
-                                         Rk[:,:,h2]/all_tmp)**2 /
-                                         (l[h1]*l[h2])**3 * K0 )
-                        Khess[:,:,j,i] = Khess[:,:,i,j]
-                    elif isinstance(h1, int) and h2 == 'alpha':
-                        # d^2K/dl_h dalpha
-                        Khess[:,:,i,j] = ( w2*Rk[:,:,h1]**2/l[h1]**3 *
-                                        ((a+1.0)/a*(all_tmp-1.0)/all_tmp
-                                        - log(all_tmp) ) /all_tmp*K0 )
-                        Khess[:,:,j,i] = Khess[:,:,i,j]
-                    elif h1 == 'alpha' and h2 == 'alpha':
-                        # d^2K/dalpha^2
-                        Khess[:,:,i,j] = ( w2*(R2l2**2/(4.0*a**3*all_tmp**2)+
-                                               alpha_tmp**2)*K0 )
-            return w2*K0, Kgrad, Khess
-        if grad_r is not False:
-            # First derivatives:
+        else:
             Kgrad = empty(Rk.shape)
-            for i in xrange(Rk.shape[2]):
+            for i in range(Rk.shape[2]):
                 if isinstance(l, list):
-                    Kgrad[:,:,i] = -w2*Rk[:,:,i]/l[i]**2 * all_tmp**(-(a+1.0))
+                    Kgrad[:, :, i] = -w2 * Rk[:, :, i] / l[i]**2 * base**(-α-1)
                 else:
-                    Kgrad[:,:,i] = -w2*Rk[:,:,i]/l**2 * all_tmp**(-(a+1.0))
-            if grad_r != 'Hess':
-                return w2*K0, Kgrad
-            Khess = empty((Rk.shape[0], Rk.shape[1], Rk.shape[2], Rk.shape[2]))
-            for i in xrange(Rk.shape[2]):
-                for j in xrange(Rk.shape[2]):
-                    if i == j:
-                        if isinstance(l, list):
-                            Khess[:,:,i,j] = ( w2/l[i]**2 * (( (a+1.0)/a *
-                                        Rk[:,:,i]**2/l[i]**2 )/
-                                        (1.0 + R2l2/(2.0*a)) - 1.0) *
-                                        all_tmp**(-(a+1.0)) )
-                        else:
-                            Khess[:,:,i,j] = ( w2/l**2 * (( (a+1.0)/a *
-                                        Rk[:,:,i]**2/l**2 )/
-                                        (1.0 + R2l2/(2.0*a)) - 1.0) *
-                                        all_tmp**(-(a+1.0)) )
+                    Kgrad[:, :, i] = -w2 * Rk[:, :, i] / l**2 * base**(-α-1)
+            return w2*K0, Kgrad
+
+    def Kφ(self, φ, Rk, grad=False, trans=False, **kwargs):
+        p = self.update_p(φ, trans=trans, set=False)
+        w, l, α = p['w'], p['l'], p['α']
+        if not isinstance(l, list):
+            R2l2 = sum(Rk**2, 2) / l**2
+        else:
+            R2l2 = zeros(Rk.shape[:2])
+            for k in range(Rk.shape[2]):
+                R2l2 += (Rk[:, :, k] / l[k])**2
+        w2 = w**2
+        base = 1 + R2l2 / (2 * α)
+        K0 = base**(-α)
+        if not grad:
+            return w2*K0
+        else:
+            Kgrad = empty(Rk.shape[:2] + (self.Nφ,))
+            iφ = 0
+            if 'w' in self.φdist:
+                if not trans:
+                    Kgrad[:, :, iφ] = 2 * w  * K0
+                else:
+                    Kgrad[:, :, iφ] = 2 * w2 * K0
+                iφ += 1
+            if 'l' in self.φdist:
+                ld = self.φdist['l']
+                if not isinstance(ld, Iterable):
+                    if not trans:
+                        Kgrad[:, :, iφ] = w2 * R2l2 / (l * base) * K0
                     else:
-                        if isinstance(l, list):
-                            Khess[:,:,i,j] = ( (a+1.0)/a * (w2*Rk[:,:,i] *
-                                        Rk[:,:,j] / (l[i]**2 * l[j]**2) *
-                                        all_tmp**(-(a+2.0))) )
-                        else:
-                            Khess[:,:,i,j] = ( (a+1.0)/a * (w2*Rk[:,:,i] *
-                                        Rk[:,:,j] / l**4 *
-                                        all_tmp**(-(a+2.0))))
-            return w2*K0, Kgrad, Khess
+                        Kgrad[:, :, iφ] = w2 * R2l2 / base * K0
+                    iφ += 1
+                else:
+                    for i in range(len(ld)):
+                        if ld[i]:
+                            if not trans:
+                                Kgrad[:, :, iφ] = w2 * Rk[:, :, i]**2 / (l[i]**3 * base) * K0
+                            else:
+                                Kgrad[:, :, iφ] = w2 * Rk[:, :, i]**2 / (l[i]**2 * base) * K0
+                            iφ += 1
+            if 'α' in self.φdist:
+                α_tmp = 1 - 1 / base - log(base)
+                if not trans:
+                    Kgrad[:, :, iφ] = w2 * α_tmp * K0
+                else:
+                    Kgrad[:, :, iφ] = w2 * α_tmp * α * K0
+            return w2*K0, Kgrad
 
 
-class Error(Exception):
+class KernelError(Exception):
     """Base class for exceptions in the kernels module."""
     pass
 
 
-class InputError(Error):  # -- not a ValueError? --
+class InputError(KernelError):  # -- not a ValueError? --
     """Exception raised for errors in input arguments."""
     def __init__(self, msg, input_argument=None):
         """

@@ -7,9 +7,6 @@ from scipy import sin, exp
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from pyregress import *
-#from pyregress.features import *
-plt.close('all')
-
 
 # True function (create training data)
 def funcIn(x):
@@ -18,19 +15,19 @@ def funcIn(x):
 # Setup source GP with multiple hyper-parameter
 x_all = linspace(1.0,2.0).T
 y_all = funcIn(x_all)
-Xd1 = array([[ 1.0],[1.1],[1.3],[1.9],[2.0]])
+Xd1 = array([[ 1.0], [1.1], [1.3], [1.9], [2.0]])
 Yd1 = funcIn(Xd1)
 
-myK1 = Noise([0.1]) + SquareExp([1., .1])
+#myK1 = Noise(w=0.1) + SquareExp(w=1.0, l=0.1)
 
-shift = shift_to_zero()
+#shift = shift_to_zero()
 
 # Setup the GPR object
-myGPR1 = GPR(Xd1, Yd1, myK1)
+myGPR1 = GPP(Xd1, Yd1, Noise(w=0.1) + SquareExp(w=1.0, l=0.1))
 
 # Infered points
 Xi1 = linspace(1.0, 2.0, 100)
-(Yi1, Yi1std) = myGPR1(Xi1, infer_std=True)
+(Yi1, Yi1std) = myGPR1.inference(Xi1, infer_std=True)
 (Yi1, Yi1std) = (Yi1.reshape(-1), Yi1std.reshape(-1))
 ## Plot
 #fig1 = plt.figure(figsize=(5,3), dpi=150)
@@ -47,17 +44,18 @@ Xi1 = linspace(1.0, 2.0, 100)
 #------------------------------------------------------------------
 
 # Setup source GP with multiple hyper-parameter
-myK2 = Noise([0.1]) + SquareExp([1., .1])
+#myK2 = Noise(w=0.1) + SquareExp(w=1.0, l=0.1)
+myK2 = Noise(w=0.1) + SquareExp(w=1.0, l=Jeffreys(guess=0.5))
 #myHyper2 = [[False], [False, Gamma(1.,2.)]]
-myHyper2 = [[False], [False, LogNormal(mean=.5,std=.2)]]
+#myHyper2 = [[False], [False, LogNormal(mean=.5,std=.2)]]
 
 # Setup hyper-parameters in the kernel and map to an array
-myK2.declare_hyper(myHyper2)
-p_mapped2 = empty(1)
-myK2.map_hyper(p_mapped2)
+#myK2.declare_hyper(myHyper2)
+#p_mapped2 = empty(1)
+#myK2.map_hyper(p_mapped2)
 
 # Setup the GPR object
-myGPR2 = GPR(Xd1, Yd1, myK2)
+myGPR2 = GPP(Xd1, Yd1, myK2)
 
 ### Posterior of the hyper-parameter
 hyper = linspace(.1, 1., 100)
@@ -87,7 +85,7 @@ hyper = linspace(.1, 1., 100)
 p_mapped2[0] = hyper[len(hyper)/2]
 myK2.map_hyper(p_mapped2, unmap=True)
 (myGPR2, param) = myGPR2.maximize_hyper_posterior()
-print 'Optimized value of the hyper-parameter:', param
+print('Optimized value of the hyper-parameter:', param)
 myK2.map_hyper(p_mapped2)
 (hopt_post, hopt_grad) = myGPR2.hyper_posterior(param, p_mapped2)
 
