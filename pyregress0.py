@@ -32,7 +32,7 @@ __all__ = ['GPI', 'radius', 'InputError', 'ValidationError']
 
 from copy import deepcopy
 from warnings import warn
-from numpy import (array, empty, zeros, ones, eye, diag, squeeze, where,
+from numpy import (array, empty, zeros, ones, eye, diag, where, squeeze,
                    sum, std, count_nonzero, amin, amax, maximum,
                    abs, sqrt, log, pi as π)
 from numpy.random import randn
@@ -101,9 +101,10 @@ class GPI:
             specify a dependent variable transformation with the name of a
             BaseTransform class (as a string) or a BaseTransform object.
             Options include: Logarithm, Logit, Probit, or ProbitBeta.
-        optimize:  bool (optional),
+        optimize:  bool or string (optional),
             specify whether to optimize the hyper-parameters by maximizing
-            its log posterior.
+            its log posterior. If either 'verbose' or 'v', then also report
+            results of optimization.
 
         Raises
         ------
@@ -164,7 +165,10 @@ class GPI:
         # Do as many calculations as possible in preparation for the inference.
         self.Rdd = radius(self.Xd, self.Xd, self.xscale)
         if self.kernel.Nφ > 0 and optimize:
-            self.maximize_posterior_φ(optimize)
+            if optimize == 'verbose' or optimize == 'v':
+                self.maximize_posterior_φ(optimize, verbose=True)
+            else:
+                self.maximize_posterior_φ(optimize, verbose=False)
         else:
             self._one_time_prep()
 
@@ -230,8 +234,8 @@ class GPI:
         except LinAlgError:
             # Downshifting to the slower, but more stable, eigen method.
             self.LKdd = eigh(self.Kdd)
-            eig_solve = lambda Λ, V, b: (V @ ((V.T @ b) / Λ))
-            self.solve = lambda L, b: eig_solve(*L, squeeze(b))
+            eig_solve = lambda Λ, V, b: (V @ ((V.T @ b).T / Λ).T)
+            self.solve = lambda L, b: eig_solve(*L, b)
             Λ, V = self.LKdd
             Λmin = 1e-12 * Λ[-1]
             if Λ[0] < Λmin:
@@ -286,8 +290,8 @@ class GPI:
         except LinAlgError as e:
             # Downshifting to the slower, but more stable, eigen method.
             LK = eigh(K)
-            eig_solve = lambda Λ, V, b: (V @ ((V.T @ b) / Λ))
-            solve = lambda L, b: eig_solve(*L, squeeze(b))
+            eig_solve = lambda Λ, V, b: (V @ ((V.T @ b).T / Λ).T)
+            solve = lambda L, b: eig_solve(*L, b)
             Λ, V = LK
             Λmin = 1e-12 * Λ[-1]
             if Λ[0] < Λmin:
@@ -296,7 +300,8 @@ class GPI:
             ln_detK = sum(log(Λ))
         α = solve(LK, self.Yd)
 
-        lnP_neg = (Nd * HLOG2PI + ln_detK + 0.5 * self.Yd.T @ α - lnprior)
+        lnP_neg = Nd * HLOG2PI + ln_detK + 0.5 * self.Yd.T @ α - lnprior
+        lnP_neg = squeeze(lnP_neg)
 
         if self.basis is not None:
             Nθ = self.Nθ
@@ -306,8 +311,8 @@ class GPI:
             Σθ = cho_solve(LinvΣθ, eye(Nθ))
             μΘ = cho_solve(LinvΣθ, self.Hd.T @ α)
             βμΘ = β @ μΘ
-            lnP_neg -= (Nθ * HLOG2PI - sum(log(diag(LinvΣθ[0]))) +
-                        0.5 * μΘ.T @ invΣθ @ μΘ)
+            lnP_neg -= squeeze(Nθ * HLOG2PI - sum(log(diag(LinvΣθ[0]))) +
+                               0.5 * μΘ.T @ invΣθ @ μΘ)
 
         if not grad:
             return lnP_neg

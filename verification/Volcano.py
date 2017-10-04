@@ -1,18 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-Created on Mon Nov 17 08:16:48 2014
-
-@author: ben
-
 Validation case 'Volcano' from 
 H. Chen et al., "Analysis methods for computer 
     experiments: How to assess and what counts?" Submitted to Statistical 
     Science June 29, 2014.
+
+Created on Mon Nov 17, 2014 @author: Ben B. Schroeder
 """
 
 from numpy import arange, array, log10, sqrt, abs, max, zeros, ones
 from numpy.random import permutation
-from pyregress import *
+from pyregress import GPI, Noise, SquareExp, Jeffreys
 
 
 def Volcano(outputType, mean, errorType):
@@ -46,7 +44,7 @@ def Volcano(outputType, mean, errorType):
                         0.0, 2.39, 0.06, 27.26, 14.68, 30.43, 12.95, 
                         0.08, 1.83, 9.83, 0.0])
     Data = array([Run, Volume, BasalAngle,
-                  Height, log10(Height+1.), sqrt(Height)]).T
+                  Height, log10(Height + 1), sqrt(Height)]).T
                   
     # Types of Error
     #   y_mean - mean output of training set
@@ -60,30 +58,30 @@ def Volcano(outputType, mean, errorType):
         for i in range(N):
             topsum += (y_test[i] - y_pred[i])**2
             bottomsum += (y_mean - y_pred[i])**2
-        return sqrt(topsum/N)/sqrt(bottomsum/N)
+        return sqrt(topsum / N) / sqrt(bottomsum / N)
         
     # Maximum Absolute Error
     def MAE(y_test, y_pred, y_mean):
         N = len(y_test)
-        topmax = bottommax = 0.
+        topmax = bottommax = 0
         for i in range(N):
             topmax = max(abs(y_test[i] - y_pred[i]), topmax)
             bottommax = max(abs(y_mean - y_pred[i]), bottommax)
-        return topmax/bottommax
+        return topmax / bottommax
         
     error_return = zeros(25)
     for i in range(25):
 
         # filter data into training and testing sets
-        trainData_x = Data[:25,1:3]
-        testData_x  = Data[25:,1:3]
+        trainData_x = Data[:25, 1:3]
+        testData_x  = Data[25:, 1:3]
         if outputType == 'log':
-            trainData_y = Data[:25,4]
-            testData_y  = Data[25:,4]
+            trainData_y = Data[:25, 4]
+            testData_y  = Data[25:, 4]
             ybar = trainData_y.mean() # mean y value of training set
         if outputType == 'sqrt':
-            trainData_y = Data[:25,5]
-            testData_y  = Data[25:,5]
+            trainData_y = Data[:25, 5]
+            testData_y  = Data[25:, 5]
             ybar = trainData_y.mean() # mean y value of training set
             
         # Create GP (specify mean as basis)
@@ -91,10 +89,10 @@ def Volcano(outputType, mean, errorType):
             mean = [0]
         if mean == 'fl':
             mean = [0, 1] # specified as conts + linear term for all x
-        myKernel = Noise(w=1e-5) + SquareExp(w=Constant(guess=1.0), 
-                                             l=[Constant(guess=1.0),
-                                                Constant(guess=1.0)])
-        myGP = GPP( trainData_x, trainData_y, myKernel, explicit_basis=mean )
+        myKernel = Noise(w=1e-5) + SquareExp(w=Jeffreys(guess=1.0),
+                                             l=[Jeffreys(guess=1.0),
+                                                Jeffreys(guess=1.0)])
+        myGP = GPI( trainData_x, trainData_y, myKernel, explicit_basis=mean )
         
         # Evaluate GP at test points
         y_test = myGP( testData_x )
@@ -121,9 +119,9 @@ if __name__ == "__main__":
     
     With RMSE :
         constant mean with sqrt y should give errors between 0.05-0.3
-        full linear mean with sqrt y should give errrors between 0.05-0.15
+        full linear mean with sqrt y should give errors between 0.05-0.15
         constant mean with log10(y+1) should give errors between 0.1-0.6
-        full linear mean with log10(y+1) should give errrors between 0.05-0.4        
+        full linear mean with log10(y+1) should give errors between 0.05-0.4        
         
     '''
     error_type = 'RMSE'
@@ -131,17 +129,17 @@ if __name__ == "__main__":
     # Error Calculations based upon use of sqrt(y)
     errors_const_sr = Volcano('sqrt', 'constant', error_type)
     errors_fl_sr = Volcano('sqrt', 'fl', error_type)    
-    print('%s Const. Mean with Sqrt Y Data - ' %error_type)
+    print('{} Const. Mean with Sqrt Y Data - '.format(error_type))
     print(errors_const_sr)
-    print('%s Full Linear Mean with Sqrt Y Data - ' %error_type)
+    print('{} Full Linear Mean with Sqrt Y Data - '.format(error_type))
     print(errors_fl_sr)
     
     # Error Calculations based upon use of log10(y+1)
     errors_const_log = Volcano('log', 'constant', error_type)
     errors_fl_log = Volcano('log', 'fl', error_type)
-    print('%s Const. Mean with log10(Y+1) Data - ' %error_type)
+    print('{} Const. Mean with log10(Y+1) Data - '.format(error_type))
     print(errors_const_log)
-    print('%s Full Linear Mean with log10(Y+1) Data - ' %error_type)
+    print('{} Full Linear Mean with log10(Y+1) Data - '.format(error_type))
     print(errors_fl_log)
     
     # Plot
@@ -149,21 +147,21 @@ if __name__ == "__main__":
     fig.subplots_adjust(left=0.15, right=0.95, bottom=0.15, top=0.9, 
                         wspace=0.25)
     ax1=fig.add_subplot(121)
-    plt.plot(1.0*ones(25), errors_const_sr, 'o')
-    plt.plot(2.0*ones(25), errors_fl_sr, 'o')
-    plt.errorbar(1, .1725, yerr=.125 )
-    plt.errorbar(2, .15, yerr=0.1 )
+    plt.plot(1 * ones(25), errors_const_sr, 'o')
+    plt.plot(2 * ones(25), errors_fl_sr, 'o')
+    plt.errorbar(1, 0.1725, yerr=.125 )
+    plt.errorbar(2, 0.15, yerr=0.1 )
     plt.xticks([1, 2], 
                ['Constant', 'Full Linear'])
     plt.xlim(0.5, 2.5)
     #plt.ylim(0, 0.3) 
-    plt.ylabel('Normalized %s' %error_type, fontsize=10) 
+    plt.ylabel('Normalized {}'.format(error_type), fontsize=10)
     plt.title(' $\sqrt{y}$', fontsize=12)
     ax2=fig.add_subplot(122)
-    plt.plot(1.0*ones(25), errors_const_log, 'o')
-    plt.plot(2.0*ones(25), errors_fl_log, 'o')
-    plt.errorbar(1, .35, yerr=.25 )
-    plt.errorbar(2, .225, yerr=0.175 )
+    plt.plot(1 * ones(25), errors_const_log, 'o')
+    plt.plot(2 * ones(25), errors_fl_log, 'o')
+    plt.errorbar(1, 0.35, yerr=.25 )
+    plt.errorbar(2, 0.225, yerr=0.175 )
     plt.xticks([1, 2], 
                ['Constant', 'Full Linear'])
     plt.xlim(0.5, 2.5)
