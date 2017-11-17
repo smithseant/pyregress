@@ -32,7 +32,7 @@ __all__ = ['GPI', 'radius', 'InputError', 'ValidationError']
 
 from copy import deepcopy
 from warnings import warn
-from numpy import (array, empty, zeros, ones, eye, diag, where, squeeze,
+from numpy import (ndarray, array, empty, zeros, ones, eye, diag, where, squeeze,
                    sum, std, count_nonzero, amin, amax, maximum,
                    abs, sqrt, log, pi as π)
 from numpy.random import randn
@@ -120,14 +120,14 @@ class GPI:
         else:
             raise InputError("GPI argument Xd must be a 2D array.", Xd)
         self.Nd, self.Nx = Xd.shape
-        if not Xscaling:
+        if Xscaling is None:
             self.xscale = ones(self.Nx)
+        elif isinstance(Xscaling, ndarray):
+            self.xscale = Xscaling
         elif Xscaling == 'range':
             self.xscale = Xd.max(0) - Xd.min(0)
         elif Xscaling == 'std':
             self.xscale = std(Xd, axis=0)
-        elif Xscaling.shape == (self.Nx,):
-            self.xscale = Xscaling
         else:
             raise InputError("GPI argument Xscaling must be one of: "
                              "None, False, True, 'range', 'std', or 1D array "

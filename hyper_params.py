@@ -117,7 +117,7 @@ class LogNormal(HyperPrior):
         f(x; μ, σ) = 1 / (x * σ * \sqrt(2 π)) *
                      \exp(-(ln(x) - μ)^2 / (2 σ^2)) , x > 0
     """
-    def __init__(self, guess=1, μ=0, σ=1, R=None, **kwargs):
+    def __init__(self, guess=None, μ=0, σ=1, R=None, **kwargs):
         if R is None:
             self.guess = guess
             self.μ = μ
@@ -129,9 +129,8 @@ class LogNormal(HyperPrior):
         else:
             # Infer μ and σ, specifically for a correlation-length
             # hyper-parameter, from the data distance matrix (from Xd).
-            lnR = log(R)
-            n = 0
-            my_sum = 0.0
+            lnR = log(abs(R))
+            n, my_sum = 0, 0.0
             for i in range(1, R.shape[0]):
                 for j in range(i):
                     n += 1
@@ -143,7 +142,10 @@ class LogNormal(HyperPrior):
                     my_sum += (lnR[i, j] - self.μ)**2
             self.σ = my_sum / n
             trguess = self.μ + self.σ**2 / 2
-            self.guess = exp(trguess)
+            if guess:
+                self.guess = guess
+            else:
+                self.guess = exp(trguess)
             self.transformed = Normal(guess=trguess, μ=self.μ, σ=self.σ)
 
     def __call__(self, x=None, grad=False, trans=False):
