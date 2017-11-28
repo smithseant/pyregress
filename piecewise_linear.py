@@ -57,14 +57,13 @@ if __name__ == '__main__':
     from mpl_toolkits.mplot3d import Axes3D
 
     from pyregress import GPI, SquareExp
-    from DOE_spacefilling import (Design, optmaximin_naive,
-                                  optmaximin_potentialfield)
+    from DOE_spacefilling import Design, optmaximin, potentialfield
 
     n_points = 11
     lhd = Design(n_points, 2, 'lhd', position='edges')
-    # lhd = optmaximin_naive(n_points, 2, n_samples=2000, verbose=False,
-    #                        position='edges').x
-    lhd = optmaximin_potentialfield(lhd).x
+    # lhd = optmaximin(n_points, 2, n_samples=2000, verbose=False,
+    #                  position='edges').x
+    lhd = potentialfield(lhd, verbose=False).x
     myGPI = GPI(empty((0, 2)), empty(0), SquareExp(w=10, l=[0.4, 0.8]))
     Y = myGPI.sample(lhd)
 
