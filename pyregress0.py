@@ -33,7 +33,7 @@ __all__ = ['GPI', 'radius', 'InputError', 'ValidationError']
 from copy import deepcopy
 from warnings import warn
 from numpy import (ndarray, array, empty, zeros, ones, eye, diag, where, squeeze,
-                   sum, std, count_nonzero, amin, amax, maximum,
+                   sum, std, count_nonzero, amin, amax, maximum, argmax,
                    abs, sqrt, log, pi as π)
 from numpy.random import randn
 from numba import jit
@@ -71,7 +71,7 @@ class GPI:
     """
     def __init__(self, Xd, Yd, Cov, Xscaling=None,
                  Ymean=None, explicit_basis=None, transform=None,
-                 optimize=True):
+                 optimize=True, fast=True):
         """
         Create a GPI object and prepare for inference.
 
@@ -161,6 +161,7 @@ class GPI:
         self.kernel = Cov
         if not isinstance(Cov, Kernel):
             raise InputError("GPI argument Cov must be a Kernel object.", Cov)
+        self.fast = fast
 
         # Do as many calculations as possible in preparation for the inference.
         self.Rdd = radius(self.Xd, self.Xd, self.xscale)
@@ -228,20 +229,25 @@ class GPI:
         """
         self.Kdd = self.kernel(self.Rdd, on_diag=True)
         try:
-            # For covariance matrices Cholesky is fast, but less stable.
+            if not self.fast:
+                raise InputError('not fast')
+            # Attempt Cholesky since it is fast, but it can go unstable.
             self.LKdd = cho_factor_gen(self.Kdd)
             self.solve = cho_solve_gen
-        except LinAlgError:
-            # Downshifting to the slower, but more stable, eigen method.
-            self.LKdd = eigh(self.Kdd)
+        except (InputError, LinAlgError):
+            # Downshift to the slower, but more stable, eigen-decomposition.
+            self.LKdd = eigh(self.Kdd)  # sorts eigenvalues small to large
             eig_solve = lambda Λ, V, b: (V @ ((V.T @ b).T / Λ).T)
             self.solve = lambda L, b: eig_solve(*L, b)
             Λ, V = self.LKdd
-            Λmin = 1e-12 * Λ[-1]
-            if Λ[0] < Λmin:
+            i_keep = argmax(Λ > 1e-14 * Λ[-1])
+            if i_keep > 0:  # Further intervene...
                 warn('The data kernel was automatically modified to maintain'
-                     ' positive definiteness.', RuntimeWarning)
-                Λ = where(Λ < Λmin, Λmin, Λ)
+                     ' positive definiteness & avoid round-off error buildup.',
+                     RuntimeWarning)
+                Λ = Λ[i_keep:]
+                V = V[:, i_keep:]
+                # Λ[:i_keep] = 1e-14  # Targeted noise
                 self.LKdd = (Λ, V)
         self.α = self.solve(self.LKdd, self.Yd)
         if self.basis is not None:

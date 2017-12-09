@@ -9,7 +9,7 @@ from numpy.random import randn
 from numba import jit
 from pyregress import (GPI, Noise, SquareExp, GammaExp, RatQuad, KernelError,
                        Jeffreys, Uniform)
-from DOE_spacefilling import optmaximin_naive
+from DOE_spacefilling import optmaximin
 
 Δ = 1e-4
 @jit(nopython=True)
@@ -86,8 +86,8 @@ class PyregressTesting(TestCase):
                     self.Xd[ik] = ones((Nx, Nd))
                 else:
                     Nd = len(kern.terms[-1].p['l'])
-                    design = optmaximin_naive(Nx**Nd, Nd, method='lhd',
-                                              n_samples=100, verbose=False)
+                    design = optmaximin(Nx**Nd, Nd, method='lhd',
+                                        n_samples=100, verbose=False)
                     self.Xd[ik] = 5 * design.x
             else:
                 if not isinstance(kern.p['l'], list):
@@ -95,8 +95,8 @@ class PyregressTesting(TestCase):
                     self.Xd[ik] = linspace(0, 5, Nx).reshape([Nx, Nd])
                 else:
                     Nd = len(kern.p['l'])
-                    design = optmaximin_naive(Nx**Nd, Nd, method='lhd',
-                                              n_samples=100, verbose=False)
+                    design = optmaximin(Nx**Nd, Nd, method='lhd',
+                                        n_samples=100, verbose=False)
                     self.Xd[ik] = 5 * design.x
             self.Rk[ik] = radius(self.Xd[ik])
             Xe = empty((0, Nd))
