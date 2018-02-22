@@ -114,7 +114,7 @@ class GPI:
 
         # Independent variables
         if Xd.ndim == 1:
-            self.Xd = Xd.reshape((-1, 1))
+            self.Xd = Xd.reshape((-1, 1))  # assume multiple observations in 1D
         elif Xd.ndim == 2:
             self.Xd = Xd
         else:
