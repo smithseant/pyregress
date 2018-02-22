@@ -24,55 +24,55 @@ def radius(X):
 
 class PyregressTesting(TestCase):
     def setUp(self):
-        Nx = 10   # Number of points in x use to create the kernels
+        Nx = 6   # Number of points in each dim of x to create the kernels
         self.kernels = [
-            Noise(w=1.5),
-            Noise(w=Jeffreys(1.5)),
-            SquareExp(w=Jeffreys(1.5), l=0.8),
-            SquareExp(w=1.5, l=Jeffreys(0.8)),
-            SquareExp(w=Jeffreys(1.5), l=[0.8, 1.3]),
-            SquareExp(w=1.5, l=[Jeffreys(0.8), 1.3]),
-            SquareExp(w=1.5, l=[0.8, Jeffreys(1.3)]),
-            SquareExp(w=Jeffreys(1.5), l=Jeffreys(0.8)),
-            SquareExp(w=Jeffreys(1.5), l=[Jeffreys(0.8), 1.3]),
-            SquareExp(w=Jeffreys(1.5), l=[0.8, Jeffreys(1.3)]),
-            SquareExp(w=1.5, l=[Jeffreys(0.8), Jeffreys(1.3)]),
-            GammaExp(w=Jeffreys(1.5), l=0.8, γ=1.5),
-            GammaExp(w=1.5, l=Jeffreys(0.8), γ=1.5),
-            GammaExp(w=Jeffreys(1.5), l=[0.8, 1.3], γ=1.5),
-            GammaExp(w=1.5, l=[Jeffreys(0.8), 1.3], γ=1.5),
-            GammaExp(w=1.5, l=[0.8, Jeffreys(1.3)], γ=1.5),
-            GammaExp(w=1.5, l=0.8, γ=Uniform(2, 1.5)),
-            GammaExp(w=1.5, l=[0.8, 1.3], γ=Uniform(2, 1.5)),
-            GammaExp(w=Jeffreys(1.5), l=Jeffreys(0.8), γ=1.5),
-            GammaExp(w=Jeffreys(1.5), l=[Jeffreys(0.8), 1.3], γ=1.5),
-            GammaExp(w=Jeffreys(1.5), l=[0.8, Jeffreys(1.3)], γ=1.5),
-            GammaExp(w=Jeffreys(1.5), l=0.8, γ=Uniform(2, 1.5)),
-            GammaExp(w=Jeffreys(1.5), l=[0.8, 1.3], γ=Uniform(2, 1.5)),
-            GammaExp(w=1.5, l=[Jeffreys(0.8), Jeffreys(1.3)], γ=1.5),
-            GammaExp(w=1.5, l=Jeffreys(0.8), γ=Uniform(2, 1.5)),
-            GammaExp(w=1.5, l=[Jeffreys(0.8), 1.3], γ=Uniform(2, 1.5)),
-            GammaExp(w=1.5, l=[0.8, Jeffreys(1.3)], γ=Uniform(2, 1.5)),
-            RatQuad(w=Jeffreys(1.5), l=0.8, α=1.5),
-            RatQuad(w=1.5, l=Jeffreys(0.8), α=1.5),
-            RatQuad(w=Jeffreys(1.5), l=[0.8, 1.3], α=1.5),
-            RatQuad(w=1.5, l=[Jeffreys(0.8), 1.3], α=1.5),
-            RatQuad(w=1.5, l=[0.8, Jeffreys(1.3)], α=1.5),
-            RatQuad(w=1.5, l=0.8, α=Jeffreys(1.5)),
-            RatQuad(w=1.5, l=[0.8, 1.3], α=Jeffreys(1.5)),
-            RatQuad(w=Jeffreys(1.5), l=Jeffreys(0.8), α=1.5),
-            RatQuad(w=Jeffreys(1.5), l=[Jeffreys(0.8), 1.3], α=1.5),
-            RatQuad(w=Jeffreys(1.5), l=[0.8, Jeffreys(1.3)], α=1.5),
-            RatQuad(w=Jeffreys(1.5), l=0.8, α=Jeffreys(1.5)),
-            RatQuad(w=Jeffreys(1.5), l=[0.8, 1.3], α=Jeffreys(1.5)),
-            RatQuad(w=1.5, l=[Jeffreys(0.8), Jeffreys(1.3)], α=1.5),
-            RatQuad(w=1.5, l=Jeffreys(0.8), α=Jeffreys(1.5)),
-            RatQuad(w=1.5, l=[Jeffreys(0.8), 1.3], α=Jeffreys(1.5)),
-            RatQuad(w=1.5, l=[0.8, Jeffreys(1.3)], α=Jeffreys(1.5)),
-            Noise(w=Jeffreys(1.5)) +
-               SquareExp(w=1.5, l=[0.8, Jeffreys(1.3)])]#,
-            # SquareExp(w=1.5, l=Jeffreys(0.8)) *
-            #    SquareExp(w=1.5, l=Jeffreys(1.3))]
+            Noise(w=2.0),
+            Noise(w=Jeffreys(2.0)),
+            SquareExp(w=Jeffreys(2.0), l=1.2),
+            SquareExp(w=2.0, l=Jeffreys(1.2)),
+            SquareExp(w=Jeffreys(2.0), l=[1.2, 0.8]),
+            SquareExp(w=2.0, l=[Jeffreys(1.2), 0.8]),
+            SquareExp(w=2.0, l=[1.2, Jeffreys(0.8)]),
+            SquareExp(w=Jeffreys(2.0), l=Jeffreys(1.2)),
+            SquareExp(w=Jeffreys(2.0), l=[Jeffreys(1.2), 0.8]),
+            SquareExp(w=Jeffreys(2.0), l=[1.2, Jeffreys(0.8)]),
+            SquareExp(w=2.0, l=[Jeffreys(1.2), Jeffreys(0.8)]),
+            GammaExp(w=Jeffreys(2.0), l=1.2, γ=1.9),
+            GammaExp(w=2.0, l=Jeffreys(1.2), γ=1.9),
+            GammaExp(w=Jeffreys(2.0), l=[1.2, 0.8], γ=1.9),
+            GammaExp(w=2.0, l=[Jeffreys(1.2), 0.8], γ=1.9),
+            GammaExp(w=2.0, l=[1.2, Jeffreys(0.8)], γ=1.9),
+            GammaExp(w=2.0, l=1.2, γ=Uniform(2, 1.9)),
+            GammaExp(w=2.0, l=[1.2, 0.8], γ=Uniform(2, 1.9)),
+            GammaExp(w=Jeffreys(2.0), l=Jeffreys(1.2), γ=1.9),
+            GammaExp(w=Jeffreys(2.0), l=[Jeffreys(1.2), 0.8], γ=1.9),
+            GammaExp(w=Jeffreys(2.0), l=[1.2, Jeffreys(0.8)], γ=1.9),
+            GammaExp(w=Jeffreys(2.0), l=1.2, γ=Uniform(2, 1.9)),
+            GammaExp(w=Jeffreys(2.0), l=[1.2, 0.8], γ=Uniform(2, 1.9)),
+            GammaExp(w=2.0, l=[Jeffreys(1.2), Jeffreys(0.8)], γ=1.9),
+            GammaExp(w=2.0, l=Jeffreys(1.2), γ=Uniform(2, 1.9)),
+            GammaExp(w=2.0, l=[Jeffreys(1.2), 0.8], γ=Uniform(2, 1.9)),
+            GammaExp(w=2.0, l=[1.2, Jeffreys(0.8)], γ=Uniform(2, 1.9)),
+            RatQuad(w=Jeffreys(2.0), l=1.2, α=1.5),
+            RatQuad(w=2.0, l=Jeffreys(1.2), α=1.5),
+            RatQuad(w=Jeffreys(2.0), l=[1.2, 0.8], α=1.5),
+            RatQuad(w=2.0, l=[Jeffreys(1.2), 0.8], α=1.5),
+            RatQuad(w=2.0, l=[1.2, Jeffreys(0.8)], α=1.5),
+            RatQuad(w=2.0, l=1.2, α=Jeffreys(1.5)),
+            RatQuad(w=2.0, l=[1.2, 0.8], α=Jeffreys(1.5)),
+            RatQuad(w=Jeffreys(2.0), l=Jeffreys(1.2), α=1.5),
+            RatQuad(w=Jeffreys(2.0), l=[Jeffreys(1.2), 0.8], α=1.5),
+            RatQuad(w=Jeffreys(2.0), l=[1.2, Jeffreys(0.8)], α=1.5),
+            RatQuad(w=Jeffreys(2.0), l=1.2, α=Jeffreys(1.5)),
+            RatQuad(w=Jeffreys(2.0), l=[1.2, 0.8], α=Jeffreys(1.5)),
+            RatQuad(w=2.0, l=[Jeffreys(1.2), Jeffreys(0.8)], α=1.5),
+            RatQuad(w=2.0, l=Jeffreys(1.2), α=Jeffreys(1.5)),
+            RatQuad(w=2.0, l=[Jeffreys(1.2), 0.8], α=Jeffreys(1.5)),
+            RatQuad(w=2.0, l=[1.2, Jeffreys(0.8)], α=Jeffreys(1.5)),
+            Noise(w=Jeffreys(2.0)) +
+               SquareExp(w=2.0, l=[1.2, Jeffreys(0.8)])]  #,
+            # SquareExp(w=2.0, l=Jeffreys(1.2)) *
+            #    SquareExp(w=2.0, l=Jeffreys(0.8))]
         self.Nk = len(self.kernels)
         self.Nφ = [0] + [1]*6 + [2]*4 + [1]*7 + [2]*9 + [1]*7 + [2]*11
         self.Xd = [None] * self.Nk
@@ -83,21 +83,21 @@ class PyregressTesting(TestCase):
                 if (isinstance(kern, Noise) or
                     not isinstance(kern.terms[-1].p['l'], list)):
                     Nd = 1
-                    self.Xd[ik] = ones((Nx, Nd))
+                    self.Xd[ik] = 0.55 * ones((Nx, Nd))
                 else:
                     Nd = len(kern.terms[-1].p['l'])
                     design = optmaximin(Nx**Nd, Nd, method='lhd',
                                         n_samples=100, verbose=False)
-                    self.Xd[ik] = 5 * design.x
+                    self.Xd[ik] = 1.1 * design.x
             else:
                 if not isinstance(kern.p['l'], list):
                     Nd = 1
-                    self.Xd[ik] = linspace(0, 5, Nx).reshape([Nx, Nd])
+                    self.Xd[ik] = linspace(0, 1.1, Nx).reshape([Nx, Nd])
                 else:
                     Nd = len(kern.p['l'])
                     design = optmaximin(Nx**Nd, Nd, method='lhd',
                                         n_samples=100, verbose=False)
-                    self.Xd[ik] = 5 * design.x
+                    self.Xd[ik] = 1.1 * design.x
             self.Rk[ik] = radius(self.Xd[ik])
             Xe = empty((0, Nd))
             Ye = empty(0)
@@ -185,7 +185,7 @@ class PyregressTesting(TestCase):
         """
         Ensure that an interpolant can reproduce its source data.
         """
-        tol = 1e-7
+        tol = 1e-7  # When eigenvalues are dropped, this will need to go up.
         for ik, kern in zip(range(self.Nk), self.kernels):
             if (isinstance(kern, Noise) or hasattr(kern, 'terms') and
                 any([isinstance(t, Noise) for t in kern.terms])):
@@ -196,36 +196,28 @@ class PyregressTesting(TestCase):
             self.assertLess(rel_err.max(), tol, msg='Kernel No. {}'.format(ik))
 
     # TODO: The test to reproduce φ may not be well posed - fix.
-    # def test_convergence_of_maximize_posterior_φ(self):
-    #     """
-    #     Ensure the optimization can reproduce the φ that was used in the
-    #     random generation of its source data.
-    #     Stated chronologically:  Start with a kernel that has specified
-    #     parameters. Next, sample function values from the prior (GPI with
-    #     empty data arrays). Then, make a new inference that uses
-    #     those function values as data and uses the same kernel type but
-    #     unknown φ values. Finally, check that the optimization converges to
-    #     the φ values used in the initial sampling.
-    #     """
-    #     tol = 1e-2
-    #     for ik, kern in zip(range(self.Nk), self.kernels):
-    #         if kern.Nφ == 0 or isinstance(kern, Noise):
-    #             continue
-    #         φ_old = kern.get_φ(trans=False).copy()
-    #         from numpy.linalg import LinAlgError
-    #         try:
-    #             GPIk = GPI(self.Xd[ik], self.Ys[ik], kern,
-    #                        optimize=True)
-    #         except LinAlgError as e:
-    #             from pickle import dump
-    #             with open('failing_kernel_1.p', 'wb') as file:
-    #                 dump((ik, self.Xd[ik], self.Ys[ik]), file)
-    #             raise e
-    #         φ_new = kern.get_φ(trans=False)
-    #         rel_err = abs((φ_old - φ_new) / (φ_old + 1e-8))
-    #         print(ik, rel_err.max())
-    #         # self.assertLess(rel_err.max(), tol, msg='Kernel No. {}'.format(ik))
-    #         kern.update_p(φ_old, trans=False, set=True)
+    def test_convergence_of_maximize_posterior_φ(self):
+        """
+        Ensure the optimization can reproduce the φ that was used in the
+        random generation of its source data.
+        - Start from a generating kernel with pre-specified parameter values.
+        - Next, sample source data from the prior using empty input arrays.
+        - Then, make a new inference based on those data - use the same
+          kernel type but unknown φ values that require optimization.
+        - Finally, check if the optimization converged to the source φ values.
+        """
+        tol = 1e-2
+        for ik, kern in zip(range(self.Nk), self.kernels):
+            if kern.Nφ == 0 or isinstance(kern, Noise):
+                continue
+            φ_old = kern.get_φ(trans=False).copy()
+            GPIk = GPI(self.Xd[ik], self.Ys[ik], kern, optimize=True)
+            φ_new = GPIk.kernel.get_φ(trans=False)
+            rel_err = abs((φ_old - φ_new) / (φ_old + 1e-8))
+            if rel_err.max() > tol:
+                print(ik, rel_err.max(), φ_old, φ_new)
+            # self.assertLess(rel_err.max(), tol, msg='Kernel No. {}'.format(ik))
+            kern.update_p(φ_old, trans=False, set=True)
 
     # TODO: Test if the explicit bases reproduce the expected polynomials.
     # TODO: Test whether the transformations behave as expected.

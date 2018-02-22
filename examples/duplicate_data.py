@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 This is a demonstration of Gaussian processes for which the length scale
-is large and two data points are very close. The behavior of the error
-is shown as as the smallest kernel eigenvalue drops below the effective
-machine precision
+is large and two data points are very close (becoming redundant). The
+behavior of the error is shown as as the smallest kernel eigenvalue drops
+below the effective machine precision
 """
 from numpy import array, empty, zeros, linspace, sin, exp, pi as π
 import matplotlib.pyplot as plt

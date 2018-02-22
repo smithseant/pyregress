@@ -32,9 +32,9 @@ __all__ = ['GPI', 'radius', 'InputError', 'ValidationError']
 
 from copy import deepcopy
 from warnings import warn
-from numpy import (ndarray, array, empty, zeros, ones, eye, diag, where, squeeze,
-                   sum, std, count_nonzero, amin, amax, maximum, argmax,
-                   abs, sqrt, log, pi as π)
+from numpy import (ndarray, array, empty, zeros, ones, arange, eye, diag,
+                   where, squeeze, sum, prod, std, count_nonzero,
+                   amin, amax, maximum, argmax, abs, sqrt, log, pi as π)
 from numpy.random import randn
 from numba import jit
 from scipy.linalg import cho_factor, cho_solve, eigh, LinAlgError
@@ -181,7 +181,7 @@ class GPI:
     def _basis(self, X, grad=False):
         """Calculate the basis functions given independent variables."""
         if not (isinstance(self.basis, list) and
-                all([[0, 1, 2].count(entry) == 1 for entry in self.basis])):
+                all([[0, 1, 2].count(val) == 1 for val in self.basis])):
             # TODO: Compare number of data points to degrees of freedom.
             raise InputError("GPI argument explicit_basis must be a list "
                              "with: 0, 1, and/or 2.", self.basis)
@@ -189,18 +189,19 @@ class GPI:
         # elif isinstance(self.basis, basis_callable):
 
         N = X.shape[0]
-        Nθ = sum(self.Nx**array(self.basis))
+        Nθ = sum([int(prod(arange(self.Nx, self.Nx + p)) /
+                      prod(arange(1, p+1))) for p in self.basis])  # general
         H = empty((N, Nθ))
         j = 0
-        if self.basis.count(0):
+        if 0 in self.basis:
             H[:, j] = 1.0
             j += 1
-        if self.basis.count(1):
+        if 1 in self.basis:
             H[:, j:j+self.Nx] = X
             j += self.Nx
-        if self.basis.count(2):
+        if 2 in self.basis:
             for ix in range(self.Nx):
-                for jx in range(self.Nx):
+                for jx in range(ix, self.Nx):
                     H[:, j] = X[:, ix] * X[:, jx]
                     j += 1
         if not grad:
@@ -208,15 +209,15 @@ class GPI:
         else:
             Hp = zeros((N, self.Nx, Nθ))
             j = 0
-            if self.basis.count(0):
+            if 0 in self.basis:
                 j += 1
-            if self.basis.count(1):
+            if 1 in self.basis:
                 for ix in range(self.Nx):
                     Hp[:, ix, j] = 1.0
                     j += 1
-            if self.basis.count(2):
+            if 2 in self.basis:
                 for ix in range(self.Nx):
-                    for jx in range(self.Nx):
+                    for jx in range(ix, self.Nx):
                         Hp[:, ix, j] += X[:, jx]
                         Hp[:, jx, j] += X[:, ix]
                         j += 1
@@ -532,6 +533,7 @@ class GPI:
 
         Z = randn(Nx, Nsamples)
         Λ, V = eigh(Σ)
+        Λ = maximum(Λ, 0)
         Ys = empty((Nx, Nsamples))
         for i in range(Nsamples):
             Ys[:, i] = μpost[:, 0] + V @ (sqrt(Λ) * Z[:, i])
