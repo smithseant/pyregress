@@ -195,7 +195,7 @@ if __name__ == '__main__':
     # b = [const, one]
     # θ = array([0, 1, 2])
     b = [const, one, two]
-    θ = array([0, 0.5, 0.3, 1, 1.5, -2])
+    θ = array([0, 0.5, 0.3, 1, 1.5, 2])
     σ = 0.1
     Xd = 2 * rand(n, nx) - 1
     Hd = concatenate([f(Xd) for f in b], axis=1)

@@ -241,8 +241,9 @@ class GPI:
             eig_solve = lambda Λ, V, b: (V @ ((V.T @ b).T / Λ).T)
             self.solve = lambda L, b: eig_solve(*L, b)
             Λ, V = self.LKdd
+            # Eigenvalues that are too small require further intervention...
             i_keep = argmax(Λ > 1e-14 * Λ[-1])
-            if i_keep > 0:  # Further intervene...
+            if i_keep < self.Nd:
                 warn('The data kernel was automatically modified to maintain'
                      ' positive definiteness & avoid round-off error buildup.',
                      RuntimeWarning)
@@ -254,7 +255,7 @@ class GPI:
         if self.basis is not None:
             self.β = self.solve(self.LKdd, self.Hd)
             LinvΣθ = cho_factor_gen(self.Hd.T @ self.β)
-            self.Σθ = cho_solve_gen(LinvΣθ, eye(self.Nθ))
+            self.Σθ = cho_solve_gen(LinvΣθ, eye(self.Nθ))  # ...results in an unnecessary matrix product: (V.T @ I).T, but this should not be very expensive.
             self.μΘ = cho_solve_gen(LinvΣθ, self.Hd.T @ self.α)
             HdμΘ = self.Hd @ self.μΘ
             self.βμΘ = self.solve(self.LKdd, HdμΘ)
@@ -696,6 +697,7 @@ class ValidationError(GPError):
 if __name__ == "__main__":
     from numpy import linspace, hstack, meshgrid, rot90
     import matplotlib as mpl
+    mpl.use('Qt5Agg')
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
     from pyregress import *
