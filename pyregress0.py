@@ -13,7 +13,7 @@ Notation used throughout the code:
     Z => transformed dependent variable,
     d => data values (observations),
     i => inferred values,
-    s => sampled values,
+    yd_s => sampled values,
     μ => Gaussian location parameter & expected value (for various values),
     K => kernel values (prior covariance matrix),
     φ => (unknown) hyper-parameters of the kernel,

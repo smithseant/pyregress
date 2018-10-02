@@ -23,7 +23,7 @@ and then combine f with other bases: bases=[const, one, f].
 
 Created Feb. 2018 @author: Sean T. Smith
 """
-from numpy import empty, ones, arange, concatenate, atleast_2d, prod
+from numpy import empty, ones, arange, concatenate, atleast_2d, sum, prod
 from numpy.linalg import solve
 
 
@@ -55,7 +55,11 @@ class OrdLinRegress:
         self.bases = bases
         Hd = concatenate([f(Xd) for f in self.bases], axis=1)
         # Least-squares solution:
-        self.θ = solve((Hd.T * W) @ Hd, Hd.T @ (W * Yd))
+        self.Σinv = (Hd.T * W) @ Hd
+        self.θ = solve(self.Σinv, Hd.T @ (W * Yd))
+        sq_err = sum((Yd - self(Xd))**2 / W)
+        self.σ2_mean = sq_err / (n - nx - 2)
+        self.σ2_mode = sq_err / (n - nx + 2)
 
     def __call__(self, X):
         """
@@ -70,6 +74,20 @@ class OrdLinRegress:
         H = concatenate([f(X) for f in self.bases], axis=1)
         Y = H @ self.θ
         return Y
+
+    def regression_error(self, X):
+        """
+        Arguments:
+            X:  array-2D,
+                locations in x where to evaluate the regression,
+                shape: (# of x dims., # of points).
+        Returns:
+            σy2:  array-1D,
+                variance of the regression uncertainty at each point in X.
+        """
+        H = concatenate([f(X) for f in self.bases], axis=1)
+        σy2 = sum(H * solve(self.Σinv, H.T).T, axis=1)
+        return σy2
 
 
 def const(x):
@@ -156,7 +174,7 @@ def _recurse_poly(x, p, ip, H, iH, index):
 
 
 if __name__ == '__main__':
-    from numpy import array, linspace, meshgrid, sum, sqrt
+    from numpy import array, linspace, meshgrid, sqrt
     from numpy.random import rand, randn
     from matplotlib import use as mpl_use
     mpl_use('Qt5Agg')
@@ -168,56 +186,61 @@ if __name__ == '__main__':
     n = 20
     b = [const, one]
     θ = array([0.2, 2])
-    σ = 0.1
-    Xd = rand(n, nx)
+    σ = 0.2
+    Xd = 3 * rand(n, nx) + 5
     Hd = concatenate([f(Xd) for f in b], axis=1)
     Yd = Hd @ θ + σ * randn(n)
 
     my_regress = OrdLinRegress(Xd, Yd, b)
-    err = sqrt(sum((Yd - my_regress(Xd))**2) / n)
-    Xr = linspace(0, 1, 50).reshape((-1, 1))
+    err = sqrt(my_regress.σ2_mean)
+    Xr = linspace(0, 3, 50).reshape((-1, 1)) + 5
     Yr = my_regress(Xr)
     print('Example 1:  RMS error = {}'.format(err))
 
     fig = plt.figure()
     ax = fig.add_subplot(1, 1, 1)
     ax.plot(Xd[:, 0], Yd, 'k.', label='data')
-    ax.plot(Xr[:, 0], Yr, 'b', label='regression')
+    ax.plot(Xr[:, 0], Yr, 'b', label='regression (mean)')
+    ax.fill_between(Xr[:, 0], Yr + err, Yr - err, facecolor='r',
+                    alpha=0.25, edgecolor='None', label='data error')
+    reg_err = sqrt(my_regress.regression_error(Xr))
+    ax.fill_between(Xr[:, 0], Yr + reg_err, Yr - reg_err, facecolor='g',
+                    alpha=0.25, edgecolor='None', label='regression error')
     ax.set_title('Example 1')
     ax.set_xlabel('x')
     ax.set_ylabel('y')
     ax.legend()
 
 
-    # Example 2:
-    nx = 2
-    n = 30
-    # b = [const, one]
-    # θ = array([0, 1, 2])
-    b = [const, one, two]
-    θ = array([0, 0.5, 0.3, 1, 1.5, 2])
-    σ = 0.1
-    Xd = 2 * rand(n, nx) - 1
-    Hd = concatenate([f(Xd) for f in b], axis=1)
-    Yd = Hd @ θ + σ * randn(n)
-
-    my_regress = OrdLinRegress(Xd, Yd, b)
-    err = sqrt(sum((Yd - my_regress(Xd))**2) / n)
-    x1 = linspace(-1, 1, 20)
-    X1, X2 = meshgrid(x1, x1, indexing='ij')
-    Xr = concatenate([X1.reshape(-1, 1), X2.reshape(-1, 1)], axis=1)
-    Yr = my_regress(Xr)
-    print('Example 1:  RMS error = {}'.format(err))
-
-    fig = plt.figure()
-    ax = fig.add_subplot(1, 1, 1, projection='3d')
-    ax.plot_surface(X1, X2, Yr.reshape(20, 20), alpha=0.75,
-                    linewidth=0.5, cmap=cm.viridis, rstride=1, cstride=1)
-    ax.scatter(Xd[:, 0], Xd[:, 1], Yd, c='k')
-    ax.set_title('Example 2')
-    ax.set_xlabel('x$_1$')
-    ax.set_ylabel('x$_2$')
-    ax.set_zlabel('y')
+    # # Example 2:
+    # nx = 2
+    # nd = 30
+    # # b = [const, one]
+    # # θ = array([0, 1, 2])
+    # b = [const, one, two]
+    # θ = array([0, 0.5, 0.3, 1, 1.5, 2])
+    # σ = 0.1
+    # Xd = 2 * rand(nd, nx) - 1
+    # Hd = concatenate([f(Xd) for f in b], axis=1)
+    # Yd = Hd @ θ + σ * randn(nd)
+    #
+    # my_regress = OrdLinRegress(Xd, Yd, b)
+    # err = sqrt(sum((Yd - my_regress(Xd))**2) / nd)
+    # x1 = linspace(-1, 1, 20)
+    # X1, X2 = meshgrid(x1, x1, indexing='ij')
+    # Xr = concatenate([X1.reshape(-1, 1), X2.reshape(-1, 1)], axis=1)
+    # Yr = my_regress(Xr)
+    # print('Example 1:  RMS error = {}'.format(err))
+    #
+    # fig = plt.figure()
+    # ax = fig.add_subplot(1, 1, 1, projection='3d')
+    # ax.plot_surface(X1, X2, Yr.reshape(20, 20), alpha=0.75,
+    #                 linewidth=0.5, cmap=cm.viridis, rstride=1, cstride=1)
+    # ax.scatter(Xd[:, 0], Xd[:, 1], Yd, c='k')
+    # ax.set_title('Example 2')
+    # ax.set_xlabel('x$_1$')
+    # ax.set_ylabel('x$_2$')
+    # ax.set_zlabel('y')
 
 
     plt.show()
