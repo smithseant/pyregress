@@ -464,7 +464,7 @@ class GPI:
         # Inference of posterior covariance
         if infer_std:
             Rii = radius(Xi, Xi, self.xscale)
-            Kii = self.kernel(Rii, block_diag=True, sum_terms=sum_terms)
+            Kii = self.kernel(Rii, on_diag=True, sum_terms=sum_terms)
             Σ_post = Kii - Kid @ self.solve(self.LKdd, Kid.T)
             if self.basis is not None:
                 A = Hi - Kid @ self.β
@@ -561,7 +561,7 @@ class GPI:
         Raises
         ------
         ValidationError:
-            an exception is thrown when any standardized residues are
+            an exception is thrown when any standardized residuals are
             greater in magnitude than three.
         """
         Xd_red, Yd_red = empty((self.Nd-1, self.Nx)), empty((self.Nd-1, 1))

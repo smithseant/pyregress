@@ -465,11 +465,11 @@ class Noise(Kernel):
     def __init__(self, w):
         super().__init__(w=w)
 
-    def __call__(self, Rk, grad=False, **kwargs):
+    def __call__(self, Rk, on_diag=False, grad=False, **kwargs):
         w = self.p['w']
         w2 = w**2
-        if 'on_diag' in kwargs and kwargs['on_diag'] == True:
-                K0 = eye(Rk.shape[0], Rk.shape[1])
+        if on_diag:
+            K0 = eye(Rk.shape[0], Rk.shape[1])
         else:
             K0 = zeros(Rk.shape[:2])
         if not grad:
@@ -661,12 +661,12 @@ class RatQuad(Kernel):
     r"""
     Rational-quadratic kernel object.
     .. math::
-        K(R; w, l, alpha) = w^2*( 1 + \frac{R^2}{2*\alpha*l^2} )^{-\alpha},
+        K(R; w, l, \alpha) = w^2*( 1 + \frac{R^2}{2*\alpha*l^2} )^{-\alpha},
     with the parameters of weight, w, length, l, and length-variance
-    parameter, alpha. The length can be a single value applied to all
+    parameter, α. The length can be a single value applied to all
     directions or a list with a separate value in each direction.
     Rational quadratic is SE over a gamma distribution of length scales
-    with a mean of alpha*l^2 and variance of alpha*l^4.
+    with a mean of α*l^2 and variance of α*l^4.
     """
     def __init__(self, w, l, α):
         super().__init__(w=w, l=l, α=α)

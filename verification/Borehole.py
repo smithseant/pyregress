@@ -30,19 +30,19 @@ def Borehole(mean, samples=27, permutations=1, errorType='RMSE'):
     '''
 
     # Given Parameter Space
-    rw = [0.05,   0.15]    # radius of borehole (m)
-    r  = [100.,   5000.]   # radius of influence (m)
+    rw = [0.05,   0.15]    # radius of borehole (yd_m)
+    r  = [100.,   5000.]   # radius of influence (yd_m)
     Tu = [63070., 115600.] # transmissivity of upper aquifer (m2/yr)
-    Hu = [990.,   1110.]   # potentiometric head of upper aquifer (m)
+    Hu = [990.,   1110.]   # potentiometric head of upper aquifer (yd_m)
     Tl = [63.1,   116.]    # transmissivity of lower aquifer (m2/yr)
-    Hl = [700.,   820.]    # potentiometric head of lower aquifer (m)
-    L  = [1120.,  1680.]   # length of borehole (m)
-    Kw = [9855.,  12045.]  # hydraulic conductivity of borehole (m/yr)
+    Hl = [700.,   820.]    # potentiometric head of lower aquifer (yd_m)
+    L  = [1120.,  1680.]   # length of borehole (yd_m)
+    Kw = [9855.,  12045.]  # hydraulic conductivity of borehole (yd_m/yr)
 
     # Create maximized latin hypercube design for training set
     #   then scale by parameter ranges
     parameters = 8
-    # lhd = lhs(parameters, samples=samples, criterion='m')
+    # lhd = lhs(parameters, samples=samples, criterion='yd_m')
     lhd = optmaximin_naive(samples, parameters, 'lhd', verbose=False,
                            n_samples=50, position='random').x
     doe = empty((samples, parameters))
@@ -64,7 +64,7 @@ def Borehole(mean, samples=27, permutations=1, errorType='RMSE'):
     #   then scale by parameter ranges
     samples_test = 10000
     parameters = 8
-    # lhd_test = lhs(parameters, samples=samples_test, criterion='m')
+    # lhd_test = lhs(parameters, samples=samples_test, criterion='yd_m')
     lhd_test = optmaximin_naive(samples_test, parameters, 'lhd', verbose=False,
                                 n_samples=50, position='random').x
     doe_test = empty((samples_test, parameters))

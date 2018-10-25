@@ -5,11 +5,11 @@ Created Sep 2017  @author: Sean T. Smith
 """
 from unittest import TestCase
 from numpy import empty, ones, linspace
-from numpy.random import randn
+from numpy.random import rand, randn
 from numba import jit
 from pyregress import (GPI, Noise, SquareExp, GammaExp, RatQuad, KernelError,
                        Jeffreys, Uniform)
-from DOE_spacefilling import optmaximin
+from DOE_spacefilling import Maximin
 
 Δ = 1e-4
 @jit(nopython=True)
@@ -24,55 +24,59 @@ def radius(X):
 
 class PyregressTesting(TestCase):
     def setUp(self):
-        Nx = 6   # Number of points in each dim of x to create the kernels
+        Nx = 10   # Number of points in each dim of x to create the kernels
         self.kernels = [
+            # Use noise weight smaller (factor of 10) than correlated weight.
+            # Use a length-scale smaller (factor of 2 or 3) than range of data.
+            # Without a length-scale that is much smaller (factor >5), with a
+            #    corresponding Nx, it can be difficult to identify w, γ & α.
             Noise(w=2.0),
             Noise(w=Jeffreys(2.0)),
-            SquareExp(w=Jeffreys(2.0), l=1.2),
-            SquareExp(w=2.0, l=Jeffreys(1.2)),
-            SquareExp(w=Jeffreys(2.0), l=[1.2, 0.8]),
-            SquareExp(w=2.0, l=[Jeffreys(1.2), 0.8]),
-            SquareExp(w=2.0, l=[1.2, Jeffreys(0.8)]),
-            SquareExp(w=Jeffreys(2.0), l=Jeffreys(1.2)),
-            SquareExp(w=Jeffreys(2.0), l=[Jeffreys(1.2), 0.8]),
-            SquareExp(w=Jeffreys(2.0), l=[1.2, Jeffreys(0.8)]),
-            SquareExp(w=2.0, l=[Jeffreys(1.2), Jeffreys(0.8)]),
-            GammaExp(w=Jeffreys(2.0), l=1.2, γ=1.9),
-            GammaExp(w=2.0, l=Jeffreys(1.2), γ=1.9),
-            GammaExp(w=Jeffreys(2.0), l=[1.2, 0.8], γ=1.9),
-            GammaExp(w=2.0, l=[Jeffreys(1.2), 0.8], γ=1.9),
-            GammaExp(w=2.0, l=[1.2, Jeffreys(0.8)], γ=1.9),
-            GammaExp(w=2.0, l=1.2, γ=Uniform(2, 1.9)),
-            GammaExp(w=2.0, l=[1.2, 0.8], γ=Uniform(2, 1.9)),
-            GammaExp(w=Jeffreys(2.0), l=Jeffreys(1.2), γ=1.9),
-            GammaExp(w=Jeffreys(2.0), l=[Jeffreys(1.2), 0.8], γ=1.9),
-            GammaExp(w=Jeffreys(2.0), l=[1.2, Jeffreys(0.8)], γ=1.9),
-            GammaExp(w=Jeffreys(2.0), l=1.2, γ=Uniform(2, 1.9)),
-            GammaExp(w=Jeffreys(2.0), l=[1.2, 0.8], γ=Uniform(2, 1.9)),
-            GammaExp(w=2.0, l=[Jeffreys(1.2), Jeffreys(0.8)], γ=1.9),
-            GammaExp(w=2.0, l=Jeffreys(1.2), γ=Uniform(2, 1.9)),
-            GammaExp(w=2.0, l=[Jeffreys(1.2), 0.8], γ=Uniform(2, 1.9)),
-            GammaExp(w=2.0, l=[1.2, Jeffreys(0.8)], γ=Uniform(2, 1.9)),
-            RatQuad(w=Jeffreys(2.0), l=1.2, α=1.5),
-            RatQuad(w=2.0, l=Jeffreys(1.2), α=1.5),
-            RatQuad(w=Jeffreys(2.0), l=[1.2, 0.8], α=1.5),
-            RatQuad(w=2.0, l=[Jeffreys(1.2), 0.8], α=1.5),
-            RatQuad(w=2.0, l=[1.2, Jeffreys(0.8)], α=1.5),
-            RatQuad(w=2.0, l=1.2, α=Jeffreys(1.5)),
-            RatQuad(w=2.0, l=[1.2, 0.8], α=Jeffreys(1.5)),
-            RatQuad(w=Jeffreys(2.0), l=Jeffreys(1.2), α=1.5),
-            RatQuad(w=Jeffreys(2.0), l=[Jeffreys(1.2), 0.8], α=1.5),
-            RatQuad(w=Jeffreys(2.0), l=[1.2, Jeffreys(0.8)], α=1.5),
-            RatQuad(w=Jeffreys(2.0), l=1.2, α=Jeffreys(1.5)),
-            RatQuad(w=Jeffreys(2.0), l=[1.2, 0.8], α=Jeffreys(1.5)),
-            RatQuad(w=2.0, l=[Jeffreys(1.2), Jeffreys(0.8)], α=1.5),
-            RatQuad(w=2.0, l=Jeffreys(1.2), α=Jeffreys(1.5)),
-            RatQuad(w=2.0, l=[Jeffreys(1.2), 0.8], α=Jeffreys(1.5)),
-            RatQuad(w=2.0, l=[1.2, Jeffreys(0.8)], α=Jeffreys(1.5)),
-            Noise(w=Jeffreys(2.0)) +
-               SquareExp(w=2.0, l=[1.2, Jeffreys(0.8)])]  #,
-            # SquareExp(w=2.0, l=Jeffreys(1.2)) *
-            #    SquareExp(w=2.0, l=Jeffreys(0.8))]
+            SquareExp(w=Jeffreys(2.0), l=0.3),
+            SquareExp(w=2.0, l=Jeffreys(0.3)),
+            SquareExp(w=Jeffreys(2.0), l=[0.3, 0.4]),
+            SquareExp(w=2.0, l=[Jeffreys(0.3), 0.4]),
+            SquareExp(w=2.0, l=[0.3, Jeffreys(0.4)]),
+            SquareExp(w=Jeffreys(2.0), l=Jeffreys(0.3)),
+            SquareExp(w=Jeffreys(2.0), l=[Jeffreys(0.3), 0.4]),
+            SquareExp(w=Jeffreys(2.0), l=[0.3, Jeffreys(0.4)]),
+            SquareExp(w=2.0, l=[Jeffreys(0.3), Jeffreys(0.4)]),
+            GammaExp(w=Jeffreys(2.0), l=0.3, γ=1.9),
+            GammaExp(w=2.0, l=Jeffreys(0.3), γ=1.9),
+            GammaExp(w=Jeffreys(2.0), l=[0.3, 0.4], γ=1.9),
+            GammaExp(w=2.0, l=[Jeffreys(0.3), 0.4], γ=1.9),
+            GammaExp(w=2.0, l=[0.3, Jeffreys(0.4)], γ=1.9),
+            GammaExp(w=2.0, l=0.3, γ=Uniform(2, 1.9)),
+            GammaExp(w=2.0, l=[0.3, 0.4], γ=Uniform(2, 1.9)),
+            GammaExp(w=Jeffreys(2.0), l=Jeffreys(0.3), γ=1.9),
+            GammaExp(w=Jeffreys(2.0), l=[Jeffreys(0.3), 0.4], γ=1.9),
+            GammaExp(w=Jeffreys(2.0), l=[0.3, Jeffreys(0.4)], γ=1.9),
+            GammaExp(w=Jeffreys(2.0), l=0.3, γ=Uniform(2, 1.9)),
+            GammaExp(w=Jeffreys(2.0), l=[0.3, 0.4], γ=Uniform(2, 1.9)),
+            GammaExp(w=2.0, l=[Jeffreys(0.3), Jeffreys(0.4)], γ=1.9),
+            GammaExp(w=2.0, l=Jeffreys(0.3), γ=Uniform(2, 1.9)),
+            GammaExp(w=2.0, l=[Jeffreys(0.3), 0.4], γ=Uniform(2, 1.9)),
+            GammaExp(w=2.0, l=[0.3, Jeffreys(0.4)], γ=Uniform(2, 1.9)),
+            RatQuad(w=Jeffreys(2.0), l=0.3, α=1.5),
+            RatQuad(w=2.0, l=Jeffreys(0.3), α=1.5),
+            RatQuad(w=Jeffreys(2.0), l=[0.3, 0.4], α=1.5),
+            RatQuad(w=2.0, l=[Jeffreys(0.3), 0.4], α=1.5),
+            RatQuad(w=2.0, l=[0.3, Jeffreys(0.4)], α=1.5),
+            RatQuad(w=2.0, l=0.3, α=Jeffreys(1.5)),
+            RatQuad(w=2.0, l=[0.3, 0.4], α=Jeffreys(1.5)),
+            RatQuad(w=Jeffreys(2.0), l=Jeffreys(0.3), α=1.5),
+            RatQuad(w=Jeffreys(2.0), l=[Jeffreys(0.3), 0.4], α=1.5),
+            RatQuad(w=Jeffreys(2.0), l=[0.3, Jeffreys(0.4)], α=1.5),
+            RatQuad(w=Jeffreys(2.0), l=0.3, α=Jeffreys(1.5)),
+            RatQuad(w=Jeffreys(2.0), l=[0.3, 0.4], α=Jeffreys(1.5)),
+            RatQuad(w=2.0, l=[Jeffreys(0.3), Jeffreys(0.4)], α=1.5),
+            RatQuad(w=2.0, l=Jeffreys(0.3), α=Jeffreys(1.5)),
+            RatQuad(w=2.0, l=[Jeffreys(0.3), 0.4], α=Jeffreys(1.5)),
+            RatQuad(w=2.0, l=[0.3, Jeffreys(0.4)], α=Jeffreys(1.5)),
+            Noise(w=Jeffreys(0.2)) +
+               SquareExp(w=2.0, l=[0.3, Jeffreys(0.4)])]  #,
+            # SquareExp(w=2.0, l=Jeffreys(0.3)) *
+            #    SquareExp(w=2.0, l=Jeffreys(0.4))]
         self.Nk = len(self.kernels)
         self.Nφ = [0] + [1]*6 + [2]*4 + [1]*7 + [2]*9 + [1]*7 + [2]*11
         self.Xd = [None] * self.Nk
@@ -86,17 +90,16 @@ class PyregressTesting(TestCase):
                     self.Xd[ik] = 0.55 * ones((Nx, Nd))
                 else:
                     Nd = len(kern.terms[-1].p['l'])
-                    design = optmaximin(Nx**Nd, Nd, method='lhd',
-                                        n_samples=100, verbose=False)
+                    design = Maximin(Nx**Nd, Nd, n_samples=100, verbose=False)
                     self.Xd[ik] = 1.1 * design.x
             else:
                 if not isinstance(kern.p['l'], list):
                     Nd = 1
                     self.Xd[ik] = linspace(0, 1.1, Nx).reshape([Nx, Nd])
+                    # self.Xd[ik] = 1.1 * rand(Nx).reshape([Nx, Nd])
                 else:
                     Nd = len(kern.p['l'])
-                    design = optmaximin(Nx**Nd, Nd, method='lhd',
-                                        n_samples=100, verbose=False)
+                    design = Maximin(Nx**Nd, Nd, n_samples=100, verbose=False)
                     self.Xd[ik] = 1.1 * design.x
             self.Rk[ik] = radius(self.Xd[ik])
             Xe = empty((0, Nd))
@@ -185,7 +188,7 @@ class PyregressTesting(TestCase):
         """
         Ensure that an interpolant can reproduce its source data.
         """
-        tol = 1e-7  # When eigenvalues are dropped, this will need to go up.
+        tol = 1e-6  # When eigenvalues are dropped, this will need to go up.
         for ik, kern in zip(range(self.Nk), self.kernels):
             if (isinstance(kern, Noise) or hasattr(kern, 'terms') and
                 any([isinstance(t, Noise) for t in kern.terms])):
@@ -206,7 +209,7 @@ class PyregressTesting(TestCase):
           kernel type but unknown φ values that require optimization.
         - Finally, check if the optimization converged to the source φ values.
         """
-        tol = 1e-2
+        tol = 5e-1
         for ik, kern in zip(range(self.Nk), self.kernels):
             if kern.Nφ == 0 or isinstance(kern, Noise):
                 continue
