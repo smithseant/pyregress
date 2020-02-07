@@ -58,7 +58,7 @@ class GPI:
     >>> Yd = array([[0.0], [1.0], [0.5]])
     >>> myGPI = GPI( Xd, Yd, Noise(w=0.1) + SquareExp(w=1, l=0.3) )
     >>> print(myGPI( array([[0.2]]) ))
-    [[ 0.56465214]]
+    [[0.57653506]]
 
     >>> Xd = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
     ...             [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
@@ -66,8 +66,8 @@ class GPI:
     >>> myGPI = GPI(Xd, Yd, RatQuad(w=0.6, l=0.3, α=1),
     ...             explicit_basis=[0, 1], transform='Probit')
     >>> print(myGPI( array([[0.10, 0.10], [0.50, 0.42]]) ))
-    [[ 0.21117381]
-     [ 0.74764254]]
+    [[0.21117381]
+     [0.74764254]]
     """
     def __init__(self, Xd, Yd, Cov, Xscaling=None,
                  Ymean=None, explicit_basis=None, transform=None,
@@ -173,8 +173,8 @@ class GPI:
         else:
             self._one_time_prep()
 
-    def __call__(self, Xi, infer_std=False, untransform=True, sum_terms=True,
-                 exclude_mean=False, grad=False):
+    def __call__(self, Xi, infer_std=False, untransform=True,
+                 sum_terms='underlying', exclude_mean=False, grad=False):
         return self.inference(Xi, infer_std, untransform, sum_terms,
                               exclude_mean, grad)
 
@@ -294,7 +294,7 @@ class GPI:
             # For covariance matrices Cholesky is fast, but less stable.
             LK = cho_factor(K)
             solve = cho_solve
-            ln_detK = sum(log(diag(LK[0])))
+            ln_detK = sum(log(diag(LK[0])))  # actually: ln(det(K))/2
         except LinAlgError as e:
             # Downshifting to the slower, but more stable, eigen method.
             LK = eigh(K)
@@ -305,7 +305,7 @@ class GPI:
             if Λ[0] < Λmin:
                 Λ = where(Λ < Λmin, Λmin, Λ)
                 LK = (Λ, V)
-            ln_detK = sum(log(Λ))
+            ln_detK = 0.5 * sum(log(Λ))  # actually: ln(det(K))/2
         α = solve(LK, self.Yd)
 
         lnP_neg = Nd * HLOG2PI + ln_detK + 0.5 * self.Yd.T @ α - lnprior
@@ -366,8 +366,8 @@ class GPI:
         self._one_time_prep()
         return self, φ
 
-    def inference(self, Xi, infer_std=False, untransform=True, sum_terms=True,
-                  exclude_mean=False, grad=False):
+    def inference(self, Xi, infer_std=False, untransform=True,
+                  sum_terms='underlying', exclude_mean=False, grad=False):
         """
         Make inferences (interpolation or regression) at specified locations.
         Limited to a single value of each hyper-parameters.
@@ -384,10 +384,15 @@ class GPI:
             if 'covar', return the full posterior covariance matrix.
         untransform:  bool (optional),
             if False, any inverse transformation is suppressed.
-        sum_terms:  bool, int or list of ints (optional),
-            if int or list of ints, then use only this subset of terms of the
-            sum kernel, by index (Cov in GPI.__init__ must be a KernelSum).
-            If True, all terms are included.
+        sum_terms:  'underlying', 'all', int or list of ints (optional),
+            Important for regression: the entire kernel represents the data
+            (including its noise), but evaluation is almost always intended
+            to provide the value of the underlying function without noise.
+            Applies only when Cov in GPI.__init__ is a KernelSum:
+            if 'underlying', then evaluate the kernel using all terms in the
+            sum except Noise kernels, resulting in the underlying regression;
+            if 'all', use all the terms (representing hypothetical new data);
+            if int or list of ints, then use only that indexed subset of terms.
         exclude_mean:  bool (optional),
             if False include prior mean and basis functions, otherwise don't.
         grad:  bool (optional),
@@ -493,8 +498,8 @@ class GPI:
         else:
             return μ_post, σ_post
 
-    def sample(self, Xs, Nsamples=1, sum_terms=True, exclude_mean=False,
-               grad=False):
+    def sample(self, Xs, Nsamples=1, sum_terms="underlying",
+               exclude_mean=False, grad=False):
         """
         Sample the Gaussian process at specified locations.
 
@@ -506,11 +511,12 @@ class GPI:
             the second dimension of the argument Xd from GPI.__init__.
         Nsamples: int (optional),
             allows the calculation of multiple samples at once.
-        sum_terms:  bool, int or list of ints (optional),
-            if int or list of ints, then use only this subset of terms of the
-            sum kernel, by index (Cov in GPI.__init__ must be a KernelSum).
-            For regression, standard use includes all terms except the noise.
-            If True, all terms are included.
+        sum_terms:  'underlying', 'all', int or list of ints (optional),
+            Applies only when Cov in GPI.__init__ is a KernelSum:
+            if 'underlying', then evaluate the kernel using all terms in the
+            sum except Noise kernels, resulting in the underlying regression;
+            if 'all', use all the terms (representing hypothetical new data);
+            if int or list of ints, then use only that indexed subset of terms.
         exclude_mean:  bool (optional),
             if False include prior mean and basis functions, otherwise don't.
 
@@ -697,7 +703,6 @@ class ValidationError(GPError):
 if __name__ == "__main__":
     from numpy import linspace, hstack, meshgrid, rot90
     import matplotlib as mpl
-    mpl.use('Qt5Agg')
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
     from pyregress import *
@@ -710,10 +715,10 @@ if __name__ == "__main__":
     Yd1 = array([[0.0], [1.0], [1.2], [0.5], [.6]])
     xi1 = array([[0.2]])
     myGPI1 = GPI(Xd1, Yd1, Noise(w=0.1) + SquareExp(w=0.75, l=0.25))
-    yi1, yi1_grad = myGPI1(xi1, grad=True, sum_terms=[1])
+    yi1, yi1_grad = myGPI1(xi1, grad=True)
     print('Example 1:')
     print('x = ', xi1, ',  y = ', yi1)
-    yi1_, yi1_grad_ = myGPI1(Xd1, grad=True, sum_terms=[1])
+    yi1_, yi1_grad_ = myGPI1(Xd1, grad=True)
 
     # Example 2:
     # 2D with six data points and two regression points
@@ -732,7 +737,7 @@ if __name__ == "__main__":
     # Figures to support the examples
     # fig. example 1
     Xi1 = linspace(0.0, 0.75, 200)
-    Yi1, Yi1std = myGPI1(Xi1, infer_std=True, sum_terms=1)
+    Yi1, Yi1std = myGPI1(Xi1, infer_std=True)
     Yi1, Yi1std = Yi1.reshape(-1), Yi1std.reshape(-1)
 
     Xig1 = (xi1 + 0.025*array([-1.0, 1.0])).reshape(-1, 1)

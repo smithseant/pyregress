@@ -355,13 +355,14 @@ class KernelSum(CombiningKernel):
         return self
 
     def __call__(self, Rk, grad=False, **kwargs):
-        if 'sum_terms' in kwargs and not kwargs['sum_terms'] is True:
-            if type(kwargs['sum_terms']) is list:
-                terms = [self.terms[i] for i in kwargs['sum_terms']]
-            elif type(kwargs['sum_terms']) is int:
-                terms = [self.terms[kwargs['sum_terms']]]
-        else:
+        if 'sum_terms' not in kwargs or kwargs['sum_terms'] == 'underlying':
+            terms = [term for term in self.terms if not isinstance(term, Noise)]
+        elif kwargs['sum_terms'] == 'all':
             terms = self.terms
+        elif type(kwargs['sum_terms']) is list:
+            terms = [self.terms[i] for i in kwargs['sum_terms']]
+        elif type(kwargs['sum_terms']) is int:
+            terms = [self.terms[kwargs['sum_terms']]]
         if not grad:
             K = zeros(Rk.shape[:2])
             for kern in terms:
