@@ -379,13 +379,14 @@ class KernelSum(CombiningKernel):
 
 
     def Kφ(self, φ, Rk, grad=False, trans=False, **kwargs):
-        if 'sum_terms' in kwargs and not kwargs['sum_terms'] is True:
-            if type(kwargs['sum_terms']) is list:
-                terms = [self.terms[i] for i in kwargs['sum_terms']]
-            elif type(kwargs['sum_terms']) is int:
-                terms = [self.terms[kwargs['sum_terms']]]
-        else:
+        if 'sum_terms' not in kwargs or kwargs['sum_terms'] == 'underlying':
+            terms = [term for term in self.terms if not isinstance(term, Noise)]
+        elif kwargs['sum_terms'] == 'all':
             terms = self.terms
+        elif type(kwargs['sum_terms']) is list:
+            terms = [self.terms[i] for i in kwargs['sum_terms']]
+        elif type(kwargs['sum_terms']) is int:
+            terms = [self.terms[kwargs['sum_terms']]]
         if not grad:
             K = zeros(Rk.shape[:2])
             iφ = 0

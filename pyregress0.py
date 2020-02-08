@@ -58,7 +58,7 @@ class GPI:
     >>> Yd = array([[0.0], [1.0], [0.5]])
     >>> myGPI = GPI( Xd, Yd, Noise(w=0.1) + SquareExp(w=1, l=0.3) )
     >>> print(myGPI( array([[0.2]]) ))
-    [[0.57653506]]
+    [[0.56465214]]
 
     >>> Xd = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
     ...             [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
@@ -228,7 +228,7 @@ class GPI:
         Pre-calculate the expensive operations that need only be performed
         once in preparation for the inference.
         """
-        self.Kdd = self.kernel(self.Rdd, on_diag=True)
+        self.Kdd = self.kernel(self.Rdd, on_diag=True, sum_terms='all')
         try:
             if not self.fast:
                 raise InputError('not fast')
@@ -285,10 +285,12 @@ class GPI:
             φ = φ[0]           # Corrects odd behavior of scipy's minimize
         Nd, Nφ = self.Nd, self.kernel.Nφ
         if not grad:
-            K = self.kernel.Kφ(φ, self.Rdd, trans=trans, on_diag=True)
+            K = self.kernel.Kφ(φ, self.Rdd, trans=trans, on_diag=True,
+                               sum_terms='all')
             lnprior = self.kernel.ln_priors(φ, trans=trans)
         else:
-            K, Kp = self.kernel.Kφ(φ, self.Rdd, grad=grad, trans=trans, on_diag=True)
+            K, Kp = self.kernel.Kφ(φ, self.Rdd, grad=grad, trans=trans,
+                                   on_diag=True, sum_terms='all')
             lnprior, dlnprior = self.kernel.ln_priors(φ, grad=grad, trans=trans)
         try:
             # For covariance matrices Cholesky is fast, but less stable.

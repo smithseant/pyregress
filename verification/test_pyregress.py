@@ -122,8 +122,8 @@ class PyregressTesting(TestCase):
         tol = 1e-12
         for ik, kern, Rk in zip(range(self.Nk), self.kernels, self.Rk):
             φ = kern.get_φ(trans=False)
-            Kx = kern(Rk)
-            Kφ = kern.Kφ(φ, Rk)
+            Kx = kern(Rk, sum_terms='all')
+            Kφ = kern.Kφ(φ, Rk, sum_terms='all')
             rel_err = abs((Kx - Kφ) / (Kx + 1e-8))
             self.assertLess(rel_err.max(), tol)
 
