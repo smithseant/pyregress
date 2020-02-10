@@ -355,10 +355,10 @@ class KernelSum(CombiningKernel):
         return self
 
     def __call__(self, Rk, grad=False, **kwargs):
-        if 'sum_terms' not in kwargs or kwargs['sum_terms'] == 'underlying':
-            terms = [term for term in self.terms if not isinstance(term, Noise)]
-        elif kwargs['sum_terms'] == 'all':
+        if 'sum_terms' not in kwargs or kwargs['sum_terms'] == 'all':
             terms = self.terms
+        elif kwargs['sum_terms'] == 'underlying':
+            terms = [t for t in self.terms if not isinstance(t, Noise)]
         elif type(kwargs['sum_terms']) is list:
             terms = [self.terms[i] for i in kwargs['sum_terms']]
         elif type(kwargs['sum_terms']) is int:
@@ -379,10 +379,10 @@ class KernelSum(CombiningKernel):
 
 
     def Kφ(self, φ, Rk, grad=False, trans=False, **kwargs):
-        if 'sum_terms' not in kwargs or kwargs['sum_terms'] == 'underlying':
-            terms = [term for term in self.terms if not isinstance(term, Noise)]
-        elif kwargs['sum_terms'] == 'all':
+        if 'sum_terms' not in kwargs or kwargs['sum_terms'] == 'all':
             terms = self.terms
+        elif kwargs['sum_terms'] == 'underlying':
+            terms = [t for t in self.terms if not isinstance(t, Noise)]
         elif type(kwargs['sum_terms']) is list:
             terms = [self.terms[i] for i in kwargs['sum_terms']]
         elif type(kwargs['sum_terms']) is int:
@@ -467,13 +467,10 @@ class Noise(Kernel):
     def __init__(self, w):
         super().__init__(w=w)
 
-    def __call__(self, Rk, on_diag=False, grad=False, **kwargs):
+    def __call__(self, Rk, grad=False, **kwargs):
         w = self.p['w']
         w2 = w**2
-        if on_diag:
-            K0 = eye(Rk.shape[0], Rk.shape[1])
-        else:
-            K0 = zeros(Rk.shape[:2])
+        K0 = eye(Rk.shape[0], Rk.shape[1])
         if not grad:
             # K = w2 * K0
             return w2 * K0
@@ -485,10 +482,7 @@ class Noise(Kernel):
         p = self.update_p(φ, trans=trans, set=False)
         w = p['w']
         w2 = w**2
-        if 'on_diag' in kwargs and kwargs['on_diag'] == True:
-                K0 = eye(Rk.shape[0], Rk.shape[1])
-        else:
-            K0 = zeros(Rk.shape[:2])
+        K0 = eye(Rk.shape[0], Rk.shape[1])
         if not grad:
             return w2 * K0
         else:

@@ -52,6 +52,7 @@ class GPI:
 
     Examples
     --------
+    Simple regression in one dimension:
     >>> from numpy import array
     >>> from pyregress import GPI, Noise, SquareExp, RatQuad
     >>> Xd = array([[0.1], [0.3], [0.6]])
@@ -60,6 +61,7 @@ class GPI:
     >>> print(myGPI( array([[0.2]]) ))
     [[0.56465214]]
 
+    Simple interpolation in two dimensions:
     >>> Xd = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
     ...             [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     >>> Yd = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
@@ -174,9 +176,9 @@ class GPI:
             self._one_time_prep()
 
     def __call__(self, Xi, infer_std=False, untransform=True,
-                 sum_terms='underlying', exclude_mean=False, grad=False):
-        return self.inference(Xi, infer_std, untransform, sum_terms,
-                              exclude_mean, grad)
+                 exclude_mean=False, grad=False):
+        return self.inference(Xi, infer_std=infer_std, untransform=untransform,
+                              exclude_mean=exclude_mean, grad=grad)
 
     def _basis(self, X, grad=False):
         """Calculate the basis functions given independent variables."""
@@ -228,7 +230,7 @@ class GPI:
         Pre-calculate the expensive operations that need only be performed
         once in preparation for the inference.
         """
-        self.Kdd = self.kernel(self.Rdd, on_diag=True, sum_terms='all')
+        self.Kdd = self.kernel(self.Rdd)
         try:
             if not self.fast:
                 raise InputError('not fast')
@@ -285,12 +287,10 @@ class GPI:
             φ = φ[0]           # Corrects odd behavior of scipy's minimize
         Nd, Nφ = self.Nd, self.kernel.Nφ
         if not grad:
-            K = self.kernel.Kφ(φ, self.Rdd, trans=trans, on_diag=True,
-                               sum_terms='all')
+            K = self.kernel.Kφ(φ, self.Rdd, trans=trans)
             lnprior = self.kernel.ln_priors(φ, trans=trans)
         else:
-            K, Kp = self.kernel.Kφ(φ, self.Rdd, grad=grad, trans=trans,
-                                   on_diag=True, sum_terms='all')
+            K, Kp = self.kernel.Kφ(φ, self.Rdd, grad=grad, trans=trans)
             lnprior, dlnprior = self.kernel.ln_priors(φ, grad=grad, trans=trans)
         try:
             # For covariance matrices Cholesky is fast, but less stable.
@@ -362,8 +362,9 @@ class GPI:
         φ = out.x
         self.kernel.update_p(φ, trans=trans, set=True)
         if verbose:
-            print('Optimize φ: {} post. evals. & {} iters. gave p = {}'.format(
-                out.nfev, out.nit, self.kernel.p))
+            print('Optimize φ: {} post. evals. &'
+                  '{} iters. gave p = {}'.format(out.nfev, out.nit,
+                                                 self.kernel.p))
         # Reevaluate the variables needed for inference:
         self._one_time_prep()
         return self, φ
@@ -387,13 +388,10 @@ class GPI:
         untransform:  bool (optional),
             if False, any inverse transformation is suppressed.
         sum_terms:  'underlying', 'all', int or list of ints (optional),
-            Important for regression: the entire kernel represents the data
-            (including its noise), but evaluation is almost always intended
-            to provide the value of the underlying function without noise.
             Applies only when Cov in GPI.__init__ is a KernelSum:
             if 'underlying', then evaluate the kernel using all terms in the
-            sum except Noise kernels, resulting in the underlying regression;
-            if 'all', use all the terms (representing hypothetical new data);
+            sum except Noise kernels, referring to the underlying regression;
+            if 'all', use all the terms (referring to hypothetical new data);
             if int or list of ints, then use only that indexed subset of terms.
         exclude_mean:  bool (optional),
             if False include prior mean and basis functions, otherwise don't.
@@ -431,10 +429,9 @@ class GPI:
         Rid = radius(Xi, self.Xd, self.xscale)
 
         if not grad:
-            Kid = self.kernel(Rid, on_diag=False, sum_terms=sum_terms)
+            Kid = self.kernel(Rid, sum_terms=sum_terms)
         else:
-            Kid, Kid_grad = self.kernel(Rid, on_diag=False,
-                                        sum_terms=sum_terms, grad=grad)
+            Kid, Kid_grad = self.kernel(Rid, sum_terms=sum_terms, grad=grad)
 
         if self.basis is None or exclude_mean:
             μ_post = Kid @ self.α
@@ -471,7 +468,7 @@ class GPI:
         # Inference of posterior covariance
         if infer_std:
             Rii = radius(Xi, Xi, self.xscale)
-            Kii = self.kernel(Rii, on_diag=True, sum_terms=sum_terms)
+            Kii = self.kernel(Rii, sum_terms=sum_terms)
             Σ_post = Kii - Kid @ self.solve(self.LKdd, Kid.T)
             if self.basis is not None:
                 A = Hi - Kid @ self.β
@@ -500,7 +497,7 @@ class GPI:
         else:
             return μ_post, σ_post
 
-    def sample(self, Xs, Nsamples=1, sum_terms="underlying",
+    def sample(self, Xs, Nsamples=1, sum_terms='underlying',
                exclude_mean=False, grad=False):
         """
         Sample the Gaussian process at specified locations.
@@ -516,8 +513,8 @@ class GPI:
         sum_terms:  'underlying', 'all', int or list of ints (optional),
             Applies only when Cov in GPI.__init__ is a KernelSum:
             if 'underlying', then evaluate the kernel using all terms in the
-            sum except Noise kernels, resulting in the underlying regression;
-            if 'all', use all the terms (representing hypothetical new data);
+            sum except Noise kernels, referring to the underlying regression;
+            if 'all', use all the terms (referring to hypothetical new data);
             if int or list of ints, then use only that indexed subset of terms.
         exclude_mean:  bool (optional),
             if False include prior mean and basis functions, otherwise don't.
