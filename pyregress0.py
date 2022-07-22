@@ -176,9 +176,9 @@ class GPI:
             self._one_time_prep()
 
     def __call__(self, Xi, infer_std=False, untransform=True,
-                 exclude_mean=False, grad=False):
+                 sum_terms='underlying', exclude_mean=False, grad=False):
         return self.inference(Xi, infer_std=infer_std, untransform=untransform,
-                              exclude_mean=exclude_mean, grad=grad)
+                              sum_terms='underlying', exclude_mean=exclude_mean, grad=grad)
 
     def _basis(self, X, grad=False):
         """Calculate the basis functions given independent variables."""
@@ -257,7 +257,9 @@ class GPI:
         if self.basis is not None:
             self.β = self.solve(self.LKdd, self.Hd)
             LinvΣθ = cho_factor_gen(self.Hd.T @ self.β)
-            self.Σθ = cho_solve_gen(LinvΣθ, eye(self.Nθ))  # ...results in an unnecessary matrix product: (V.T @ I).T, but this should not be very expensive.
+            self.Σθ = cho_solve_gen(LinvΣθ, eye(self.Nθ))
+            # ...results in an unnecessary matrix product: (V.T @ I).T,
+            #    but it should not be very expensive.
             self.μΘ = cho_solve_gen(LinvΣθ, self.Hd.T @ self.α)
             HdμΘ = self.Hd @ self.μΘ
             self.βμΘ = self.solve(self.LKdd, HdμΘ)
@@ -354,17 +356,17 @@ class GPI:
         φ = self.kernel.get_φ(trans=trans)
         f = self.posterior_φ
         # Perform minimization
-        # out = minimize(f, φ, (False, trans), method='Nelder-Mead')
+        out = minimize(f, φ, (False, trans), method='Nelder-Mead',
+                       options={'maxiter':10000, 'xatol':1e-5, 'fatol':3e-5})
         # out = minimize(f, φ, (False, trans), method='Powell')
         # out = minimize(f, φ, (False, trans), method='CG')
-        out = minimize(f, φ, (True, trans), method='BFGS', jac=True)
+        # out = minimize(f, φ, (True, trans), method='BFGS', jac=True)
         # Use the optimized value:
         φ = out.x
         self.kernel.update_p(φ, trans=trans, set=True)
         if verbose:
-            print('Optimize φ: {} post. evals. &'
-                  '{} iters. gave p = {}'.format(out.nfev, out.nit,
-                                                 self.kernel.p))
+            print(f'Optimize φ: {out.nfev} post. evals. & {out.nit} iters. '
+                  f'gave f={out.fun:5.2g} & p = {self.kernel.p}')
         # Reevaluate the variables needed for inference:
         self._one_time_prep()
         return self, φ
@@ -724,7 +726,7 @@ if __name__ == "__main__":
     Xd2 = array([[0.00, 0.00], [0.50, -0.10], [1.00, 0.00],
                  [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     Yd2 = array([[0.10], [0.30], [0.60], [0.70], [0.90], [0.90]])
-    K2 = RatQuad(w=0.6, l=LogNormal(guess=0.3, std=0.25), α=1)
+    K2 = RatQuad(w=0.6, l=LogNormal(guess=0.3, σ=0.25), α=1)
     myGPI2 = GPI(Xd2, Yd2, K2, explicit_basis=[0, 1], transform='Probit')
     print('Example 2:')
     print('Optimized value of the hyper-parameters:', myGPI2.kernel.get_φ())

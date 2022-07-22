@@ -70,4 +70,4 @@ Be aware: this project licensing has not yet been decided.
 
 ## Acknowledgments
 
-Work was paid for by the DOE - NNSA - PPSAP II program - CCMSC
+Work was partially paid for by the DOE - NNSA - PPSAP II program - CCMSC
