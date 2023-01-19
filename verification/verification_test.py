@@ -23,7 +23,7 @@ Yd1 = funcIn(Xd1)
 #shift = shift_to_zero()
 
 # Setup the GPR object
-myGPR1 = GPP(Xd1, Yd1, Noise(w=0.1) + SquareExp(w=1.0, l=0.1))
+myGPR1 = GPI(Xd1, Yd1, Noise(w=0.1) + SquareExp(w=1.0, l=0.1))
 
 # Infered points
 Xi1 = linspace(1.0, 2.0, 100)
@@ -55,7 +55,7 @@ myK2 = Noise(w=0.1) + SquareExp(w=1.0, l=Jeffreys(guess=0.5))
 #myK2.map_hyper(p_mapped2)
 
 # Setup the GPR object
-myGPR2 = GPP(Xd1, Yd1, myK2)
+myGPR2 = GPI(Xd1, Yd1, myK2)
 
 ### Posterior of the hyper-parameter
 hyper = linspace(.1, 1., 100)

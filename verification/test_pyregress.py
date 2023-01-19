@@ -14,22 +14,22 @@ from DOE_spacefilling import Maximin
 Δ = 1e-4
 @jit(nopython=True)
 def radius(X):
-    Nd, Nx = X.shape
-    Rk = empty((Nd, Nd, Nx))
-    for i in range(Nd):
-        for j in range(Nd):
-            for k in range(Nx):
+    n_pts, n_dims = X.shape
+    Rk = empty((n_pts, n_pts, n_dims))
+    for i in range(n_pts):
+        for j in range(n_pts):
+            for k in range(n_dims):
                 Rk[i, j, k] = Rk[j, i, k] = X[i, k] - X[j, k]
     return Rk
 
 class PyregressTesting(TestCase):
     def setUp(self):
-        Nx = 10   # Number of points in each dim of x to create the kernels
+        n_pts = 10   # Number of points in each dim of x to create the kernels
         self.kernels = [
             # Use noise weight smaller (factor of 10) than correlated weight.
             # Use a length-scale smaller (factor of 2 or 3) than range of data.
             # Without a length-scale that is much smaller (factor >5), with a
-            #    corresponding Nx, it can be difficult to identify w, γ & α.
+            #    corresponding n_pts, it can be difficult to identify w, γ & α.
             Noise(w=2.0),
             Noise(w=Jeffreys(2.0)),
             SquareExp(w=Jeffreys(2.0), l=0.3),
@@ -73,12 +73,11 @@ class PyregressTesting(TestCase):
             RatQuad(w=2.0, l=Jeffreys(0.3), α=Jeffreys(1.5)),
             RatQuad(w=2.0, l=[Jeffreys(0.3), 0.4], α=Jeffreys(1.5)),
             RatQuad(w=2.0, l=[0.3, Jeffreys(0.4)], α=Jeffreys(1.5)),
-            Noise(w=Jeffreys(0.2)) +
-               SquareExp(w=2.0, l=[0.3, Jeffreys(0.4)])]  #,
+            Noise(w=Jeffreys(0.2)) + SquareExp(w=2.0, l=[0.3, Jeffreys(0.4)])]  #,
             # SquareExp(w=2.0, l=Jeffreys(0.3)) *
             #    SquareExp(w=2.0, l=Jeffreys(0.4))]
         self.Nk = len(self.kernels)
-        self.Nφ = [0] + [1]*6 + [2]*4 + [1]*7 + [2]*9 + [1]*7 + [2]*11
+        self.n_φ = [0] + [1]*6 + [2]*4 + [1]*7 + [2]*9 + [1]*7 + [2]*11
         self.Xd = [None] * self.Nk
         self.Rk = [None] * self.Nk
         self.Ys = [None] * self.Nk
@@ -86,33 +85,33 @@ class PyregressTesting(TestCase):
             if 'l' not in kern.p:
                 if (isinstance(kern, Noise) or
                     not isinstance(kern.terms[-1].p['l'], list)):
-                    Nd = 1
-                    self.Xd[ik] = 0.55 * ones((Nx, Nd))
+                    n_dims = 1
+                    self.Xd[ik] = 0.55 * ones((n_pts, n_dims))
                 else:
-                    Nd = len(kern.terms[-1].p['l'])
-                    design = Maximin(Nx**Nd, Nd, n_samples=100, verbose=False)
+                    n_dims = len(kern.terms[-1].p['l'])
+                    design = Maximin(n_pts**n_dims, n_dims, n_samples=100, verbose=False)
                     self.Xd[ik] = 1.1 * design.x
             else:
                 if not isinstance(kern.p['l'], list):
-                    Nd = 1
-                    self.Xd[ik] = linspace(0, 1.1, Nx).reshape([Nx, Nd])
-                    # self.Xd[ik] = 1.1 * rand(Nx).reshape([Nx, Nd])
+                    n_dims = 1
+                    self.Xd[ik] = linspace(0, 1.1, n_pts).reshape([n_pts, n_dims])
+                    # self.Xd[ik] = 1.1 * rand(n_pts).reshape([n_pts, n_dims])
                 else:
-                    Nd = len(kern.p['l'])
-                    design = Maximin(Nx**Nd, Nd, n_samples=100, verbose=False)
+                    n_dims = len(kern.p['l'])
+                    design = Maximin(n_pts**n_dims, n_dims, n_samples=100, verbose=False)
                     self.Xd[ik] = 1.1 * design.x
             self.Rk[ik] = radius(self.Xd[ik])
-            Xe = empty((0, Nd))
+            Xe = empty((0, n_dims))
             Ye = empty(0)
             eGPI = GPI(Xe, Ye, kern, optimize=False)
             self.Ys[ik] = eGPI.sample(self.Xd[ik])
 
-    def test_kernel_Nφ(self):
+    def test_kernel_n_φ(self):
         """
         Ensure kernel has identified the expected number of hyper-parameters.
         """
         for ik in range(self.Nk):
-            self.assertEqual(self.Nφ[ik], self.kernels[ik].Nφ,
+            self.assertEqual(self.n_φ[ik], self.kernels[ik].n_φ,
                              msg='Kernel No. {}'.format(ik))
 
     def test_kernel_Kφ(self):
@@ -138,9 +137,9 @@ class PyregressTesting(TestCase):
                 K, gradK = kern(self.Rk[ik], grad=True, trans=False)
             except KernelError:
                 continue
-            Nd = self.Xd[ik].shape[1]
+            n_dims = self.Xd[ik].shape[1]
             diffK = empty(gradK.shape)
-            for ix in range(Nd):
+            for ix in range(n_dims):
                 R = self.Rk[ik].copy()
                 R[:, :, ix] = self.Rk[ik][:, :, ix] - Δ
                 Kneg = kern(R)
@@ -157,18 +156,18 @@ class PyregressTesting(TestCase):
         gradients that are consistent (within a numerical tolerance).
         """
         tol = 5e-3  # tolerance on the gradient error
-        Ns = 10  # Number of points in φ where the test is performed
+        n_samp = 10  # Number of points in φ where the test is performed
         for ik, kern in zip(range(self.Nk), self.kernels):
-            if kern.Nφ == 0:
+            if kern.n_φ == 0:
                 continue
             φ0 = kern.get_φ(trans=False)
-            Φ = empty((Ns, kern.Nφ))
-            for iφ, φdist in zip(range(kern.Nφ), kern.iter_φdist()):
-                Φ[:, iφ] = φdist.invtr(randn(Ns) / 4 + φdist.transformed.guess)
-            for j in range(Ns):
+            Φ = empty((n_samp, kern.n_φ))
+            for iφ, φdist in zip(range(kern.n_φ), kern.iter_φdist()):
+                Φ[:, iφ] = φdist.invtr(randn(n_samp) / 4 + φdist.transformed.guess)
+            for j in range(n_samp):
                 φ = Φ[j].copy()
                 _, gradK = kern.Kφ(φ, self.Rk[ik], grad=True, trans=False)
-                for iφ in range(kern.Nφ):
+                for iφ in range(kern.n_φ):
                     φ[iφ] = Φ[j, iφ] - Δ
                     kern.update_p(φ, trans=False, set=True)
                     Kneg = kern.Kφ(φ, self.Rk[ik])
@@ -211,7 +210,7 @@ class PyregressTesting(TestCase):
         """
         tol = 5e-1
         for ik, kern in zip(range(self.Nk), self.kernels):
-            if kern.Nφ == 0 or isinstance(kern, Noise):
+            if kern.n_φ == 0 or isinstance(kern, Noise):
                 continue
             φ_old = kern.get_φ(trans=False).copy()
             GPIk = GPI(self.Xd[ik], self.Ys[ik], kern, optimize=True)
