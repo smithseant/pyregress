@@ -65,8 +65,7 @@ Please read [CONTRIBUTING.md](https://gist.github.com/PurpleBooth/b24679402957c6
 * **Benjamin B. Schroeder** - *Heavy lifting* -
 
 ## License
-
-Be aware: this project licensing has not yet been decided.
+GPLv3.0
 
 ## Acknowledgments
 
