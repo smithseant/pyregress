@@ -177,7 +177,7 @@ if __name__ == '__main__':
     from numpy import array, linspace, meshgrid, sqrt
     from numpy.random import rand, randn
     from matplotlib import use as mpl_use
-    mpl_use('Qt5Agg')
+    # mpl_use('Qt5Agg')
     from matplotlib import cm, pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
 

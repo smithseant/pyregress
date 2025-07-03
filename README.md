@@ -37,9 +37,13 @@ examples. Anaconda provides all of these by default.
 
 ### Installing
 
-No special steps are required to install the module - simply clone the repository
+Start by simply cloning the repository:
 ```buildoutcfg
 $ git clone git@bitbucket.org:team_sean/pyregress.git
+```
+Then install locally
+```buildoutcfg
+$pip install --editable path_to_containing_dir/pyregress
 ```
 
 ### Running the tests

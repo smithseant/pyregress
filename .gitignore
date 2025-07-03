@@ -2,7 +2,11 @@
 *
 # ...except the following list:
 !.gitignore
-!*.py
+!LICENSE.md
+!pyproject.toml
 !README.md
-!examples/
-!verification/
+!pyregress/
+!pyregress/gaussian_processes/
+!pyregress/gaussian_processes/examples/
+!tests/
+!*.py

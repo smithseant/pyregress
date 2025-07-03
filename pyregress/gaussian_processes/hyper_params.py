@@ -12,9 +12,6 @@ Provided prior distributions (log(P) and dlog(P))
 
 Created Sep 2013  @authors: Sean T. Smith & Benjamin B. Schroeder
 """
-__all__ = ['HyperPrior', 'Constant', 'Normal', 'Jeffreys', 'LogNormal',
-           'Gamma', 'Uniform', 'Beta', 'Bounded']
-
 from numpy import array, inf, sqrt, exp, log, pi as π
 from scipy.special import gamma, beta, erf, erfinv
 

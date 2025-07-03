@@ -3,7 +3,7 @@
 The Kernels themselves are rather straight forward.
 The kernel parameters are not so much due to the flexibility offered
 by GPI. Some comments about the handling of parameters as well as
-hyper-parameters (unknown parameters):
+hyper-parameters (unknown kernel parameters):
    -The Kernel object will contain a dict (p) which stores the
     current value of all parameters - known or unknown.
    -Isotropic or 1-D lengthscales can be stored as a scalar,
@@ -18,15 +18,12 @@ hyper-parameters (unknown parameters):
 
 Created Sep 2013  @authors: Sean T. Smith & Benjamin B. Schroeder
 """
-
-__all__ = ['Kernel', 'Noise', 'SquareExp', 'GammaExp', 'RatQuad', 'KernelError']
-
 from abc import ABCMeta, abstractmethod
 from collections import Iterable
 from re import search
 from numpy import (empty, zeros, ones, eye, expand_dims, tile,
                    sum, abs, sqrt, exp, log, pi as π)
-from pyregress.hyper_params import *
+from .hyper_params import HyperPrior
 
 # TODO: Add a periodic kernel (..but flexible for dims. that are not periodic.)
 # TODO: I would love to add heuristics so users are required to specify less.
@@ -126,7 +123,6 @@ class Kernel(metaclass=ABCMeta):
                     yield el
 
     def update_p(self, φ, trans=True, set=True):
-        # TODO: Currently relying on the dicts to maintain order (python 3.6)!
         p = {}
         iφ = 0
         for key, val in self.p.items():
@@ -290,13 +286,11 @@ class CombiningKernel(Kernel):
         return _φ
 
     def iter_φdist(self):
-        # TODO: Currently relying on the dicts to maintain order (python 3.6)!
         for kern in self.terms:
             for φdist in kern.iter_φdist():
                 yield φdist
 
     def get_φ(self, trans=True):
-        # TODO: Currently relying on the dicts to maintain order (python 3.6)!
         φ = empty(self.n_φ)
         iφ = 0
         for kern in self.terms:
@@ -305,7 +299,6 @@ class CombiningKernel(Kernel):
         return φ
 
     def update_p(self, φ, trans=True, set=True):
-        # TODO: Currently relying on the dicts to maintain order (python 3.6)!
         p = {}
         iφ = 0
         for kern in self.terms:
@@ -352,19 +345,19 @@ class KernelSum(CombiningKernel):
     def __call__(self, Rk, grad=False, **kwargs):
         if 'sum_terms' not in kwargs or kwargs['sum_terms'] == 'all':
             terms = self.terms
-        elif kwargs['sum_terms'] == 'underlying':
+        elif kwargs['sum_terms'] == 'noiseless':
             terms = [t for t in self.terms if not isinstance(t, Noise)]
         elif type(kwargs['sum_terms']) is list:
             terms = [self.terms[i] for i in kwargs['sum_terms']]
         elif type(kwargs['sum_terms']) is int:
             terms = [self.terms[kwargs['sum_terms']]]
         if not grad:
-            K = zeros(Rk.shape[:2])
+            K = zeros(Rk.shape[1:])
             for kern in terms:
                 K += kern(Rk, **kwargs)
             return K
         else:
-            K = zeros(Rk.shape[:2])
+            K = zeros(Rk.shape[1:])
             Kgrad = zeros(Rk.shape)
             for kern in terms:
                 Kt, Ktgrad = kern(Rk, grad=grad, **kwargs)
@@ -376,14 +369,14 @@ class KernelSum(CombiningKernel):
     def Kφ(self, φ, Rk, grad=False, trans=False, **kwargs):
         if 'sum_terms' not in kwargs or kwargs['sum_terms'] == 'all':
             terms = self.terms
-        elif kwargs['sum_terms'] == 'underlying':
+        elif kwargs['sum_terms'] == 'noiseless':
             terms = [t for t in self.terms if not isinstance(t, Noise)]
         elif type(kwargs['sum_terms']) is list:
             terms = [self.terms[i] for i in kwargs['sum_terms']]
         elif type(kwargs['sum_terms']) is int:
             terms = [self.terms[kwargs['sum_terms']]]
         if not grad:
-            K = zeros(Rk.shape[:2])
+            K = zeros(Rk.shape[1:])
             iφ = 0
             for kern in terms:
                 n_φ = kern.n_φ
@@ -391,8 +384,8 @@ class KernelSum(CombiningKernel):
                 iφ += n_φ
             return K
         else:
-            K = zeros(Rk.shape[:2])
-            Kgrad = zeros((Rk.shape[0], Rk.shape[1], self.n_φ))
+            K = zeros(Rk.shape[1:])
+            Kgrad = zeros((Rk.shape[1], Rk.shape[2], self.n_φ))
             iφ = 0
             for kern in terms:
                 n_φ = kern.n_φ
@@ -419,14 +412,14 @@ class KernelProd(CombiningKernel):
         if grad is not False:
             raise InputError("Kernel product does not currently support" +
                              " radial gradients.")
-        K = ones(Rk.shape[:2])
+        K = ones(Rk.shape[1:])
         for kern in self.terms:
             K *= kern(Rk, **kwargs)
         return K
 
     def Kφ(self, φ, Rk, grad=False, trans=False, **kwargs):
         if not grad:
-            K = ones(Rk.shape[:2])
+            K = ones(Rk.shape[1:])
             iφ = 0
             for kern in self.terms:
                 n_φ = kern.n_φ
@@ -434,8 +427,8 @@ class KernelProd(CombiningKernel):
                 iφ += n_φ
             return K
         else:
-            K = ones(Rk.shape[:2])
-            Kgrad = ones((Rk.shape[0], Rk.shape[1], self.n_φ))
+            K = ones(Rk.shape[1:])
+            Kgrad = ones((Rk.shape[1], Rk.shape[2], self.n_φ))
             iφ = 0
             for kern in self.terms:
                 n_φ = kern.n_φ
@@ -463,23 +456,23 @@ class Noise(Kernel):
     def __call__(self, Rk, grad=False, **kwargs):
         w = self.p['w']
         w2 = w**2
-        K0 = eye(Rk.shape[0], Rk.shape[1])
+        K0 = eye(Rk.shape[1], Rk.shape[2])
         if not grad:
             # K = w2 * K0
             return w2 * K0
         else:
-            raise InputError("Noise Kernel is not differentiable, separate kernels before"
+            raise InputError("Noise Kernel is not differentiable, separate kernels before "
                              "differentiation")
 
     def Kφ(self, φ, Rk, grad=False, trans=False, **kwargs):
         p = self.update_p(φ, trans=trans, set=False)
         w = p['w']
         w2 = w**2
-        K0 = eye(Rk.shape[0], Rk.shape[1])
+        K0 = eye(Rk.shape[1], Rk.shape[2])
         if not grad:
             return w2 * K0
         else:
-            Kgrad = empty((Rk.shape[0], Rk.shape[1], self.n_φ))
+            Kgrad = empty((Rk.shape[1], Rk.shape[2], self.n_φ))
             if 'w' in self.φ_dist:
                 if not trans:
                     Kgrad[:, :, 0] = 2 * w  * K0
@@ -503,39 +496,49 @@ class SquareExp(Kernel):
     def __call__(self, Rk, grad=False, **kwargs):
         w, l = self.p['w'], self.p['l']
         if not isinstance(l, Iterable):
-            Rl2 = sum(Rk**2, 2) / l**2
+            Rl2 = sum(Rk**2, axis=0) / l**2
         else:
-            Rl2 = zeros(Rk.shape[:2])
-            for k in range(Rk.shape[2]):
-                Rl2 += (Rk[:, :, k] / l[k])**2
+            Rl2 = zeros(Rk.shape[1:])
+            for k in range(Rk.shape[0]):
+                Rl2 += (Rk[k, :, :] / l[k])**2  # rearrange all of the indices & change loops to range(Rk.shape[0])
         w2 = w**2
         K0 = exp(-0.5 * Rl2)
         if not grad:
             return w2 * K0
         else:
             Kgrad = empty(Rk.shape)
-            for i in range(Rk.shape[2]):
+            for i in range(Rk.shape[0]):
                 if isinstance(l, Iterable):
-                    Kgrad[:, :, i] = -w2 * Rk[:, :, i] / l[i]**2 * K0
+                    Kgrad[i, :, :] = -w2 * Rk[i, :, :] / l[i]**2 * K0
                 else:
-                    Kgrad[:, :, i] = -w2 * Rk[:, :, i] / l**2 * K0
-            return w2 * K0, Kgrad
+                    Kgrad[i, :, :] = -w2 * Rk[i, :, :] / l**2 * K0
+            if grad is True:
+                return w2 * K0, Kgrad
+            elif grad == 'gg':
+                Kgg = empty((Rk.shape[0], Rk.shape[0], *Rk.shape[1:]))
+                for i in range(Rk.shape[0]):
+                    if isinstance(l, Iterable):
+                        Kgg[i, :, :] = w2 * (1 - (Rk[i, :, :] / l[i])**2) * K0 / l[i]**2
+                    else:
+                        Kgg[i, :, :] = w2 * (1 - (Rk[i, :, :] / l)**2) * K0 / l**2
+                return w2 * K0, Kgrad, Kgg
+
 
     def Kφ(self, φ, Rk, grad=False, trans=False, **kwargs):
         p = self.update_p(φ, trans=trans, set=False)
         w, l = p['w'], p['l']
         if not isinstance(l, Iterable):
-            Rl2 = sum(Rk**2, 2) / l**2
+            Rl2 = sum(Rk**2, axis=0) / l**2
         else:
-            Rl2 = zeros(Rk.shape[:2])
-            for k in range(Rk.shape[2]):
-                Rl2 += (Rk[:, :, k] / l[k])**2
+            Rl2 = zeros(Rk.shape[1:])
+            for k in range(Rk.shape[0]):
+                Rl2 += (Rk[k, :, :] / l[k])**2
         w2 = w**2
         K0 = exp(-0.5 * Rl2)
         if not grad:
             return w2 * K0
         else:
-            Kgrad = empty(Rk.shape[:2] + (self.n_φ,))
+            Kgrad = empty(Rk.shape[1:] + (self.n_φ,))
             iφ = 0
             if 'w' in self.φ_dist:
                 if not trans:
@@ -554,9 +557,9 @@ class SquareExp(Kernel):
                     for i in range(len(ld)):
                         if ld[i]:
                             if not trans:
-                                Kgrad[:, :, iφ] = w2 * Rk[:, :, i]**2 / l[i]**3 * K0
+                                Kgrad[:, :, iφ] = w2 * Rk[i, :, :]**2 / l[i]**3 * K0
                             else:
-                                Kgrad[:, :, iφ] = w2 * (Rk[:, :, i] / l[i])**2 * K0
+                                Kgrad[:, :, iφ] = w2 * (Rk[i, :, :] / l[i])**2 * K0
                             iφ += 1
             return w2 * K0, Kgrad
 
@@ -579,8 +582,8 @@ class GammaExp(Kernel):
             Rl = abs(Rk / l)
         else:
             Rl = empty(Rk.shape)
-            for k in range(Rk.shape[2]):
-                Rl[:, :, k] = abs(Rk[:, :, k] / l[k])
+            for k in range(Rk.shape[0]):
+                Rl[:, :, k] = abs(Rk[k, :, :] / l[k])
         Rlγ = sum(Rl**γ, 2)
         w2 = w**2
         K0 = exp(-Rlγ)
@@ -597,15 +600,15 @@ class GammaExp(Kernel):
             Rl = abs(Rk / l)
         else:
             Rl = empty(Rk.shape)
-            for k in range(Rk.shape[2]):
-                Rl[:, :, k] = abs(Rk[:, :, k] / l[k])
+            for k in range(Rk.shape[0]):
+                Rl[k, :, :] = abs(Rk[k, :, :] / l[k])
         Rlγ = sum(Rl**γ, 2)
         w2 = w**2
         K0 = exp(-Rlγ)
         if not grad:
             return w2 * K0
         else:
-            Kgrad = empty(Rk.shape[:2] + (self.n_φ,))
+            Kgrad = empty(Rk.shape[1:] + (self.n_φ,))
             iφ = 0
             if 'w' in self.φ_dist:
                 if not trans:
@@ -625,9 +628,9 @@ class GammaExp(Kernel):
                     for i in range(len(ld)):
                         if ld[i]:
                             if not trans:
-                                Kgrad[:, :, iφ] = γ * w2 * Rl[:, :, i]**γ / l[i] * K0
+                                Kgrad[:, :, iφ] = γ * w2 * Rl[i, :, :]**γ / l[i] * K0
                             else:
-                                Kgrad[:, :, iφ] = γ * w2 * Rl[:, :, i]**γ * K0
+                                Kgrad[:, :, iφ] = γ * w2 * Rl[i, :, :]**γ * K0
                             iφ += 1
             if 'γ' in self.φ_dist:
                 tmp1 = zeros(Rk.shape)
@@ -659,33 +662,33 @@ class RatQuad(Kernel):
     def __call__(self, Rk, grad=False, **kwargs):
         w, l, α = self.p['w'], self.p['l'], self.p['α']
         if not isinstance(l, list):
-            R2l2 = sum(Rk**2, 2) / l**2
+            R2l2 = sum(Rk**2, axis=0) / l**2
         else:
-            R2l2 = zeros(Rk.shape[:2])
-            for k in range(Rk.shape[2]):
-                R2l2 += (Rk[:, :, k] / l[k])**2
+            R2l2 = zeros(Rk.shape[1:])
+            for k in range(Rk.shape[0]):
+                R2l2 += (Rk[k, :, :] / l[k])**2
         w2 = w**2
         base = 1 + R2l2 / (2 * α)
         K0 = base**(-α)
         if not grad:
             return w2*K0
         else:
-            Kgrad = empty(Rk.shape)
-            for i in range(Rk.shape[2]):
+            Kgrad = empty(Rk.shape[1:] + (Rk.shape[0],))
+            for i in range(Rk.shape[0]):
                 if isinstance(l, list):
-                    Kgrad[:, :, i] = -w2 * Rk[:, :, i] / l[i]**2 * base**(-α-1)
+                    Kgrad[:, :, i] = -w2 * Rk[i, :, :] / l[i]**2 * base**(-α-1)
                 else:
-                    Kgrad[:, :, i] = -w2 * Rk[:, :, i] / l**2 * base**(-α-1)
+                    Kgrad[:, :, i] = -w2 * Rk[i, :, :] / l**2 * base**(-α-1)
             return w2*K0, Kgrad
 
     def Kφ(self, φ, Rk, grad=False, trans=False, **kwargs):
         p = self.update_p(φ, trans=trans, set=False)
         w, l, α = p['w'], p['l'], p['α']
         if not isinstance(l, list):
-            R2l2 = sum(Rk**2, 2) / l**2
+            R2l2 = sum(Rk**2, axis=0) / l**2
         else:
-            R2l2 = zeros(Rk.shape[:2])
-            for k in range(Rk.shape[2]):
+            R2l2 = zeros(Rk.shape[1:])
+            for k in range(Rk.shape[0]):
                 R2l2 += (Rk[:, :, k] / l[k])**2
         w2 = w**2
         base = 1 + R2l2 / (2 * α)
@@ -693,7 +696,7 @@ class RatQuad(Kernel):
         if not grad:
             return w2*K0
         else:
-            Kgrad = empty(Rk.shape[:2] + (self.n_φ,))
+            Kgrad = empty(Rk.shape[1:] + (self.n_φ,))
             iφ = 0
             if 'w' in self.φ_dist:
                 if not trans:
@@ -713,9 +716,9 @@ class RatQuad(Kernel):
                     for i in range(len(ld)):
                         if ld[i]:
                             if not trans:
-                                Kgrad[:, :, iφ] = w2 * Rk[:, :, i]**2 / (l[i]**3 * base) * K0
+                                Kgrad[:, :, iφ] = w2 * Rk[i, :, :]**2 / (l[i]**3 * base) * K0
                             else:
-                                Kgrad[:, :, iφ] = w2 * Rk[:, :, i]**2 / (l[i]**2 * base) * K0
+                                Kgrad[:, :, iφ] = w2 * Rk[i, :, :]**2 / (l[i]**2 * base) * K0
                             iφ += 1
             if 'α' in self.φ_dist:
                 α_tmp = 1 - 1 / base - log(base)
