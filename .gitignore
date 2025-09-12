@@ -6,7 +6,8 @@
 !pyproject.toml
 !README.md
 !src/
-!src/gaussian_processes/
-!src/gaussian_processes/examples/
+!src/pyregress
+!src/pyregress/gaussian_processes
+!src/pyregress/gaussian_processes/examples
 !tests/
 !*.py
