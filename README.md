@@ -43,7 +43,7 @@ $ git clone git@bitbucket.org:team_sean/pyregress.git
 ```
 Then install locally
 ```buildoutcfg
-$pip install --editable path_to_containing_dir/pyregress
+$pip install --editable <path_to_containing_dir>/pyregress_project
 ```
 
 ### Running the tests

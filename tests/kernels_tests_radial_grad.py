@@ -1,7 +1,7 @@
 from numpy import ndarray, zeros, empty, tile, abs, nanmax
 from numpy.random import randn
 
-from pyregress import *
+from src import *
 
 n_pts = 10
 δx = 1e-4  # This doesn't seem to behave well smaller than 1e-4.

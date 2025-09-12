@@ -5,8 +5,8 @@
 !LICENSE.md
 !pyproject.toml
 !README.md
-!pyregress/
-!pyregress/gaussian_processes/
-!pyregress/gaussian_processes/examples/
+!src/
+!src/gaussian_processes/
+!src/gaussian_processes/examples/
 !tests/
 !*.py
