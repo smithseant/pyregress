@@ -680,7 +680,9 @@ if __name__ == "__main__":
     from numpy import array, linspace, meshgrid
     import matplotlib as mpl
     import matplotlib.pyplot as plt
-    from src import GPI,  Noise, SquareExp, RatQuad, LogNormal, Probit
+    from .kernels import Noise, SquareExp, RatQuad
+    from .transforms import Probit
+    from .hyper_params import LogNormal
 
     # Example 1  (1D regression w/ six data points & a known kernel):
     # setup...

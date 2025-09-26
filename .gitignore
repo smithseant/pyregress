@@ -8,6 +8,8 @@
 !src/
 !src/pyregress
 !src/pyregress/gaussian_processes
-!src/pyregress/gaussian_processes/examples
 !tests/
+!examples/
 !*.py
+!*.json
+!.vscode/

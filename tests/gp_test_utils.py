@@ -9,7 +9,7 @@ from scipy.spatial.distance import cdist
 from scipy.stats.qmc import Sobol
 
 from pyregress import GPI, Noise, SquareExp, Logit, Probit, InputError
-from pyregress.gaussian_processes.gaussian_process import (radius, warn_trans_μ, warn_trans_σ,
+from pyregress.gaussian_processes.gp import (radius, warn_trans_μ, warn_trans_σ,
                                         error_trans_exclude, error_trans_covar, error_trans_grad)
 
 # Setup of Examples:

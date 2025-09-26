@@ -1,0 +1,46 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run module (ask each time)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "${input:moduleToRun}",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "envFile": "${workspaceFolder}/.env"
+    },
+
+    {
+      "name": "Run module (quick pick)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "${input:modulePick}",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "envFile": "${workspaceFolder}/.env"
+    },
+  ],
+
+  "inputs": [
+    {
+      "id": "moduleToRun",
+      "type": "promptString",
+      "description": "Fully-qualified module to run (e.g., pyregress.gaussian_processes.gaussian_process)",
+      "default": "pyregress"
+    },
+    {
+      "id": "modulePick",
+      "type": "pickString",
+      "description": "Pick a module to run",
+      "options": [
+        "pyregress.gaussian_processes.gp",
+        "pyregress.lin_regress",
+        "pyregress.piecewise_linear"
+      ],
+      "default": "pyregress.gaussian_processes.gp"
+    }
+  ]
+}

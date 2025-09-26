@@ -7,7 +7,7 @@ __all__ = ['PiecewiseLinear']
 from numpy import empty, ones
 from numpy.linalg import solve
 from scipy.spatial import Delaunay
-from .gaussian_processes.gaussian_process import radius
+from .gaussian_processes.gp import radius
 
 class PiecewiseLinear:
     """

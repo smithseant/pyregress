@@ -1,0 +1,15 @@
+{
+  // Testing
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["tests"],
+
+  // Pylance / IntelliSense (handy for src/ layout)
+  "python.analysis.extraPaths": ["${workspaceFolder}/src"],
+
+  // Make VS Code terminals auto-activate your venv if present
+  "python.terminal.activateEnvironment": true,
+
+  // Load local (ignored) environment variables if present
+  "python.envFile": "${workspaceFolder}/.env"
+}

@@ -1,19 +1,13 @@
 # Pyregress/GPI:
 
-This project provides a suite of Bayesian methods for regression and
-interpolation in python - specifically using Gaussian-processes. Gaussian
-process methods are one of the few tools that require little additional
-complexity for generalization to multiple dimensions without a grid. They also offer
-the unique ability for non-parametric regression (meaning there is no need to
-pre-specify basis functions). This tool is intended to be flexible in many
-regards:
+This project provides a suite of Bayesian methods for regression and interpolation in python - specifically using Gaussian-processes. Gaussian process methods are one of the few tools that require little additional complexity for generalization to multiple dimensions without a grid. They also offer the unique ability for non-parametric regression (meaning there is no need to pre-specify basis functions). This tool is intended to be flexible in many regards:
 
 * Use one tool for either interpolation or regression,
 * The independent variables may be in one or multiple dimensions,
 * Independent variables can be automatically pre-scaled,
 * Dependent variables can be automatically transformed,
 * Use a variety of predefined kernels - or specified your own,
-* Combine kernels with '+' or '*' operators,
+* Combine kernels with `+` or `*` operators,
 * Length-scale parameters in kernels may be universal or unique to each dimension,
 * Any kernel parameter may be known or uncertain,
 * Optimizes the uncertain kernel parameters (in their natural space or a transformed one),
@@ -23,41 +17,46 @@ regards:
 
 ## Getting Started
 
-These instructions will get you a copy of the project up and running on your
-local machine for development and testing purposes. See deployment for notes
-on how to deploy the project on a live system.
+These instructions will get you a copy of the project up and running on your local machine for development and testing purposes. See deployment for notes on how to deploy the project on a live system.
 
 ### Prerequisites
 
-Python 2.7 and 3.6 are both supported - on separate branches. Python 3.6 is highly
-recommended, and is currently required on the master branch. Be aware that the
-recent commits on this branch only work with Python 3.6 or newer (broken for 3.5 & earlier).
-Prerequisites include only numpy, scipy & numba, but matplotlib is needed for the
-examples. Anaconda provides all of these by default.
+Python 3.8 is highly recommended, and is currently required on the master branch.
+Prerequisite libraries include only `numpy`, `scipy` & `numba`, but `matplotlib` is needed for the examples and `pytest` is required for development.
 
 ### Installing
 
 Start by simply cloning the repository:
-```buildoutcfg
-$ git clone git@bitbucket.org:team_sean/pyregress.git
+```bash
+$ git clone https://github.com/smithseant/pyregress.git pyregress_project
 ```
 Then install locally
-```buildoutcfg
-$pip install --editable <path_to_containing_dir>/pyregress_project
+```bash
+$ cd pyregress_project
+$ python -m venv .venv
+$ source .venv/bin/activate
+$ python -m pip install -e '.[plot,dev]'
+```
+...depending on your preferred options.
+
+### Running the demonstration
+
+The basic examples are in the documentation of `GPI.__init__` and in the `if __name__ == "__main__":` block of `pyregress/lin_regress.py` and `pyregress/gaussian_processes/gp.py` (but should be run from the project directory):
+```bash
+$ python -m pyregress.lin_regress
+$ python -m pyregress.gaussian_processes.gp
 ```
 
-### Running the tests
+### Running the tests (development)
 
-The basic examples are in the documentation of GPI.__init__ and in the if-main
-of pyregress0.py:
-```buildoutcfg
-$ python pyregress0
+```bash
+$ python -m pytest -q tests/test_PolySet.py
+$ python -m pytest -q tests/test_GPI.py
 ```
 
 ## Deployment
 
-As for most utility modules it is preferable to reference this project as a
-prerequisite to your projects rather than embedding it directly.
+As for most utility modules it is preferable to reference this project as a prerequisite to your projects rather than embedding it directly.
 
 ## Contributing
 

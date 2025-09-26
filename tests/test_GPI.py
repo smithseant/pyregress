@@ -10,7 +10,7 @@ from numpy.testing import assert_allclose
 
 from gp_test_utils import example_1D, example_nD, gold_standard_GPs, consolidated
 from pyregress import GPI, Noise, SquareExp, Logarithm, Logit, Probit, InputError
-from pyregress.gaussian_processes.gaussian_process import (warn_trans_μ, warn_trans_σ,
+from pyregress.gaussian_processes.gp import (warn_trans_μ, warn_trans_σ,
                                         error_trans_exclude, error_trans_covar, error_trans_grad)
 
 

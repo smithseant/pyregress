@@ -1,4 +1,5 @@
-__all__ = ['OrdLinRegress', 'const', 'one', 'two', 'three', 'four', 'five', 'six',
+__all__ = ['OrdLinRegress', 'BasisSet', 'Const', 'FirstOrd', 'MOrderUnivar', 'SecondOrd',
+           'BasesList', 'PolySet',
            'PiecewiseLinear',
            'GPI', 'radius', 'Kernel', 'Noise', 'SquareExp', 'GammaExp', 'RatQuad',
            'HyperPrior', 'Constant', 'Normal', 'Jeffreys', 'LogNormal',
@@ -6,6 +7,6 @@ __all__ = ['OrdLinRegress', 'const', 'one', 'two', 'three', 'four', 'five', 'six
            'BaseTransform', 'Logarithm', 'Logit', 'Probit',# 'ProbitBeta',
            'InputError']
 
-from .lin_regress import OrdLinRegress, const, one, two, three, four, five, six
+from .lin_regress import OrdLinRegress, BasisSet, Const, FirstOrd, MOrderUnivar, SecondOrd, BasesList, PolySet
 from .piecewise_linear import PiecewiseLinear
 from .gaussian_processes import *
