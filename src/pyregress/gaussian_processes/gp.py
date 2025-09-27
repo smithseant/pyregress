@@ -15,7 +15,7 @@ Notation used throughout the code:
     β => linear coefficients to the basis functions,
     L => lower diagonal of a Cholesky factorization,
     Λ => eigenvalues,
-    V => eigenvectors.
+    V => eigenvectors,
     μ => Gaussian location parameter, expected value, median & mode (refers to the posterior),
     Σ => other covariance matrices (refers to the posterior),
   - Additional Subscripts:
@@ -26,16 +26,14 @@ Notation used throughout the code:
 
 Created Sep 2013 @authors: Sean T. Smith & Benjamin B. Schroeder
 """
-from copy import deepcopy
 from warnings import warn
-from numpy import (ndarray, array, empty, full, arange, eye, diag,
-                   where, squeeze, sum, prod, std, count_nonzero,
-                   amin, amax, argmax, abs, sqrt, log, pi as π)
+from numpy import (ndarray, array, empty, full, arange, eye, diag, where, squeeze, swapaxes,
+                   sum, std, argmax, sqrt, log, pi as π)
 from numpy.random import randn
 from scipy.linalg import cho_factor, cho_solve, eigh, LinAlgError
 from scipy.optimize import minimize
 from .kernels import radius, Kernel
-from .transforms import BaseTransform, Logarithm, Logit, Probit  #, ProbitBeta
+from .transforms import BaseTransform
 
 HLOG2PI = 0.5 * log(2 * π)
 
@@ -149,7 +147,9 @@ class GPI:
         # Explicit bases
         self.basis = explicit_basis
         if self.basis is not None:
-            self.n_β, self.Hd = self._basis(self.Xd)
+            self.bases = explicit_basis
+            self.n_β = self.bases.n_bases
+            self.Hd = self.bases(self.Xd)
 
         # Kernel (prior covariance)
         if not isinstance(kernel, Kernel):
@@ -166,65 +166,6 @@ class GPI:
                 self.maximize_posterior_φ(optimize, verbose=False)
         else:
             self._one_time_prep()
-
-    def _basis(self, X, grad=False):
-        """Calculate the basis functions given independent variables."""
-        if not (isinstance(self.basis, list) and
-                all([[0, 1, 2, 3].count(val) == 1 for val in self.basis])):
-            raise InputError("GPI argument explicit_basis must be a list with: 0, 1, 2 and/or 3.",
-                             self.basis)
-        # TODO: implement an interface for user defined basis functions.
-        # elif isinstance(self.basis, basis_callable):
-
-        n_dims = self.n_xdims
-        n_pts = X.shape[0]
-        n_β = sum([int(prod(arange(n_dims, n_dims + p)) /
-                       prod(arange(1, p + 1))) for p in self.basis])  # general
-        H = empty((n_pts, n_β))
-        j = 0
-        if 0 in self.basis:
-            H[:, j] = 1.0
-            j += 1
-        if 1 in self.basis:
-            H[:, j:(j + n_dims)] = X
-            j += n_dims
-        if 2 in self.basis:
-            for ix in range(n_dims):
-                for jx in range(ix, n_dims):
-                    H[:, j] = X[:, ix] * X[:, jx]
-                    j += 1
-        if 3 in self.basis:
-            for ix in range(n_dims):
-                for jx in range(ix, n_dims):
-                    for kx in range(jx, n_dims):
-                        H[:, j] = X[:, ix] * X[:, jx] * X[:, kx]
-                        j += 1
-        if not grad:
-            return n_β, H
-        else:
-            Hg = full((n_pts, n_dims, n_β), 0, dtype='float64')
-            j = 0
-            if 0 in self.basis:
-                j += 1
-            if 1 in self.basis:
-                for ix in range(n_dims):
-                    Hg[:, ix, j] = 1.0
-                    j += 1
-            if 2 in self.basis:
-                for ix in range(n_dims):
-                    for jx in range(ix, n_dims):
-                        Hg[:, ix, j] += X[:, jx]
-                        Hg[:, jx, j] += X[:, ix]
-                        j += 1
-            if 3 in self.basis:
-                for ix in range(n_dims):
-                    for jx in range(ix, n_dims):
-                        for kx in range(jx, n_dims):
-                            Hg[:, ix, j] += X[:, jx] * X[:, kx]
-                            Hg[:, jx, j] += X[:, ix] * X[:, kx]
-                            Hg[:, kx, j] += X[:, ix] * X[:, jx]
-                            j += 1
-            return n_β, H, Hg
 
     def _one_time_prep(self):
         """
@@ -457,10 +398,11 @@ class GPI:
         # Evaluate the explicit bases
         if self.basis is not None:
             if not grad:
-                n_β, Hi = self._basis(Xi)
+                Hi = self.bases(Xi)
             else:
-                Hig = full((n_inf, (1 + self.n_xdims), (1 + self.n_xdims)), 0, dtype='float64')
-                n_β, Hi, Hg = self._basis(Xi, grad=True)
+                Hig = full((n_inf, (1 + self.n_xdims), self.n_β), 0, dtype='float64')
+                Hi, Hg = self.bases(Xi, grad)
+                Hg = swapaxes(Hg, 1, 2)
                 Hig[:, 0, :] = Hi
                 Hig[:, 1:, :] = Hg
 
@@ -680,6 +622,7 @@ if __name__ == "__main__":
     from numpy import array, linspace, meshgrid
     import matplotlib as mpl
     import matplotlib.pyplot as plt
+    from ..lin_regress import PolySet
     from .kernels import Noise, SquareExp, RatQuad
     from .transforms import Probit
     from .hyper_params import LogNormal
@@ -724,8 +667,9 @@ if __name__ == "__main__":
     Xd = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
                 [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     Yd = array([0.10, 0.30, 0.60, 0.70, 0.90, 0.90])
+    bases = PolySet(2, 1, x_range=array([[0, -0.5], [1, 1]]))
     K = RatQuad(w=0.6, l=LogNormal(guess=0.3, σ=0.25), α=1)
-    myGPI = GPI(Xd, Yd, K, explicit_basis=[0, 1], transform='Probit', Xscaling='range')
+    myGPI = GPI(Xd, Yd, K, explicit_basis=bases, transform='Probit', Xscaling='range')
     # inference...
     print('Example 2: optimized value of the hyper-parameter:', myGPI.kernel.get_φ())
     xi = array([[0.10, 0.10], [0.50, 0.42]])

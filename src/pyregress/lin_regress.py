@@ -311,7 +311,12 @@ class PolySet(BasisSet):
             self.powers = order
         self.n_bases = sum([PolySet.calc_nH(i, self.n_xdims) for i in self.powers])
         self.ptype = ptype
-        self.recurse_upoly = PolySet.poly_recursion[self.ptype]
+        poly_recursion = dict(power=PolySet.recursion_power,
+                              Legendre=PolySet.recursion_Legendre,
+                              Chebyshev=PolySet.recursion_Chebyshev,
+                              Laguerre=PolySet.recursion_Laguerre,
+                              Hermite=PolySet.recursion_Hermite)
+        self.recurse_upoly = poly_recursion[self.ptype]
         if x_range is not None:
             self.x_lo = x_range[0].reshape((1, -1))
             self.x_hi = x_range[1].reshape((1, -1))
@@ -365,11 +370,6 @@ class PolySet(BasisSet):
         else:
             dp_next = p_n + x * dp_n - n * dp_prev
             return p_next, dp_next
-    poly_recursion = dict(power=recursion_power,
-                          Legendre=recursion_Legendre,
-                          Chebyshev=recursion_Chebyshev,
-                          Laguerre=recursion_Laguerre,
-                          Hermite=recursion_Hermite)
     @staticmethod
     def multi_polys(poly_set, order, j_poly, univar_polys, grad_set=None, univar_grads=None,
                     k_dim=0, cum_order=0, product=1, grad_prod=None):

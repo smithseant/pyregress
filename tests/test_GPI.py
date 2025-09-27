@@ -9,7 +9,7 @@ from numpy import array, full
 from numpy.testing import assert_allclose
 
 from gp_test_utils import example_1D, example_nD, gold_standard_GPs, consolidated
-from pyregress import GPI, Noise, SquareExp, Logarithm, Logit, Probit, InputError
+from pyregress import GPI, Noise, SquareExp, Logarithm, Logit, Probit, PolySet, InputError
 from pyregress.gaussian_processes.gp import (warn_trans_μ, warn_trans_σ,
                                         error_trans_exclude, error_trans_covar, error_trans_grad)
 
@@ -68,7 +68,7 @@ def test_GPI(example_type, scale_type, trans_ret, mean_flags, basis_type, ret_st
     prior_flag, exclude_mean = mean_flags
     if prior_flag is None:
         f_mean = None
-    bases = {None:None, "planar":[0, 1]}[basis_type]
+    bases = {None:None, "planar":PolySet(n_xdims, 1)}[basis_type]
     K = Noise(φ['σd']) + SquareExp(w=φ['w'], l=φ['ℓ'])
 
     # Retrieve the gold standard for these options & setup for the routine being tested
