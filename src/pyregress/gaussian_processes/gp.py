@@ -30,6 +30,7 @@ from warnings import warn
 from numpy import (ndarray, array, empty, full, arange, eye, diag, where, squeeze, swapaxes,
                    sum, std, argmax, sqrt, log, pi as π)
 from numpy.random import randn
+from scipy.special import erfinv
 from scipy.linalg import cho_factor, cho_solve, eigh, LinAlgError
 from scipy.optimize import minimize
 from .kernels import radius, Kernel
@@ -50,8 +51,8 @@ class GPI:
     >>> from pyregress import GPI, Noise, SquareExp
     >>> Xd = array([0.5, 2.7, 3.6, 6.8, 5.7, 3.4])
     >>> Yd = array([0.0, 1.0, 1.2, 0.5, 0.8, 1.16])
-    >>> myGPI = GPI(Xd, Yd, Noise(w=0.05) + SquareExp(w=2.5, l=2.0))
-    >>> print(myGPI(1.6))
+    >>> my_gpi = GPI(Xd, Yd, Noise(w=0.05) + SquareExp(w=2.5, l=2.0))
+    >>> print(my_gpi(1.6))
     [0.50832402]
 
     Probit interpolation in two dimensions w/ underlying linear basis:
@@ -61,8 +62,8 @@ class GPI:
     ...             [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     >>> Yd = array([0.10, 0.30, 0.60, 0.70, 0.90, 0.90])
     >>> K = RatQuad(w=0.6, l=LogNormal(guess=0.3, σ=0.25), α=1)
-    >>> myGPI = GPI(Xd, Yd, K, explicit_basis=[0, 1], transform='Probit', Xscaling='range')
-    >>> print(myGPI( array([[0.10, 0.10], [0.50, 0.42]]) ))
+    >>> my_gpi = GPI(Xd, Yd, K, explicit_basis=[0, 1], transform='Probit', Xscaling='range')
+    >>> print(my_gpi( array([[0.10, 0.10], [0.50, 0.42]]) ))
     [0.2361803 0.7968571]
     """
     def __init__(self, Xd, Yd, kernel, Xscaling=None, Ymean=None, explicit_basis=None,
@@ -205,7 +206,7 @@ class GPI:
             self.KinvZd = self.solve(self.LKdd, self.Zd_prime - self.Hd @ self.μβ)
         return self
 
-    def posterior_φ(self, φ, grad=True, trans=True):
+    def posterior_φ(self, φ, ret_grad=True, trans=True):
         """
         Negative log of the hyper-parameter posterior & its gradient.
 
@@ -213,8 +214,8 @@ class GPI:
         ---------
         φ:  array-1D,
             hyper parameters in an array for the minimization routine.
-        grad:  bool or string (optional),
-            when grad is True, also return lnP_grad.
+        ret_grad:  bool or string (optional),
+            when ret_grad is True, also return lnP_grad.
         trans:  bool (optional),
             indicate whether the provided φ is in its transformed space.
 
@@ -222,15 +223,15 @@ class GPI:
         -------
         lnP_neg:  float,
             negative log of the hyper-parameter posterior.
-        lnP_grad:  array-1D (optional - depending on argument grad),
+        lnP_grad:  array-1D (optional - depending on argument ret_grad),
             gradient of lnP_neg with respect to each hyper-parameter.
         """
         if len(φ.shape) > 1:   # Corrects odd behavior of scipy's minimize
             φ = φ[0]           # Corrects odd behavior of scipy's minimize
         n_pts, n_φ = self.n_data, self.kernel.n_φ
-        K = self.kernel.Kφ(φ, self.Rdd, grad=grad, trans=trans)
-        lnprior = self.kernel.ln_priors(φ, grad=grad, trans=trans)
-        if grad:
+        K = self.kernel.Kφ(φ, self.Rdd, ret_grad=ret_grad, trans=trans)
+        lnprior = self.kernel.ln_priors(φ, ret_grad=ret_grad, trans=trans)
+        if ret_grad:
             K, Kg = K
             lnprior, dlnprior = lnprior
         try:
@@ -265,9 +266,9 @@ class GPI:
             lnP_neg -= squeeze(n_β * HLOG2PI - sum(log(diag(LinvΣβ[0]))) +
                                0.5 * μβ.T @ invΣβ @ μβ)
 
-        if not grad:
+        if not ret_grad:
             return lnP_neg
-        # else grad:
+        # else ret_grad:
         Kinv = solve(LK, eye(n_pts))
         Kinv_αα = Kinv - KinvZd @ KinvZd.T
         lnP_grad = empty(n_φ)
@@ -311,7 +312,7 @@ class GPI:
         return self, φ
 
     def __call__(self, Xi, kernel_terms='noisefree', infer_std=False, exclude_mean=False,
-                 untransform=True, grad=False):
+                 untransform=True, infer_grad=False):
         """
         Make inferences (interpolation or regression) of the posterior's sufficient statistics,
         μ_Y|Yd & (σ_Y|Yd or Σ_Y|Yd) at the provided locations, `Xi`. This inference is limited to
@@ -330,15 +331,16 @@ class GPI:
             if 'all', use all of the terms in the specified kernel (eg. simulate new observations);
             if int or list of ints, then use only that indexed subset of terms in order;
             Note: including a Noise term at this stage is not compatible with gradient inference.
-        infer_std:  bool or 'covar' (optional),
+        infer_std:  bool, float, or 'covar' (optional),
             if True, return the inferred standard deviation;
+            if float in (0, 1), return the uncertainty for this inner quantile,
             if 'covar', return the full posterior covariance matrix.
         exclude_mean:  bool (optional),
             if `False` make inference inclusive of the prior mean & basis functions,
             if `True` return the partial inference that is relative to them.
         untransform:  bool (optional),
             if False, any inverse transformation is suppressed.
-        grad:  bool (optional),
+        infer_grad:  bool (optional),
             whether to return the inferred gradient of the dependent variable.
 
         Returns
@@ -347,12 +349,12 @@ class GPI:
             inferred mean/median/mode at each location in the argument Xi
             (for a non-linear inverse transform, this value represents only the median —
              and only for monotonic transforms).
-        μ_post_grad:  array-2D (optional — depending on grad),
+        μ_post_grad:  array-2D (optional — depending on infer_grad),
             inferred mean/median/mode of the gradient at each location in Xi.
         σ_post:  array - 1D or 2D or list (optional - depending on infer_std),
-            inferred standard deviation or full covariance (for an inverse transformation, returns
-            the distance from μ_post to both ends of the 68.2% inner percentile — lower then upper).
-        σ_post_grad:  array-2D (optional — depending on both infer_std & grad),
+            inferred standard deviation, analogous half-width (given an inner quantile), or the
+            full covariance (for an inv. trans, returns the low & high ends of the inner quantile).
+        σ_post_grad:  array-2D (optional — depending on both infer_std & infer_grad),
             inferred standard deviation of the gradient, or full covariance.
 
         Raises
@@ -364,7 +366,7 @@ class GPI:
         if self.trans and untransform is True:
             if infer_std == "covar":
                 raise InputError(error_trans_covar)
-            if infer_std and grad:
+            if infer_std and infer_grad:
                 raise InputError(error_trans_grad)
             if (self.μ_prior or self.basis is not None) and exclude_mean:
                 raise InputError(error_trans_exclude)
@@ -382,14 +384,14 @@ class GPI:
 
         # Evaluate the prior mean at Xi and shift to the transformed space
         if self.μ_prior:
-            if not grad:
+            if not infer_grad:
                 μYi_prior = self.μ_prior(Xi)
                 if self.trans:
                     μZi_prior = self.trans(μYi_prior)
                 else:
                     μZi_prior = μYi_prior  # apply the identity transform (using a pointer)
             else:
-                μYi_prior, μYg_prior = self.μ_prior(Xi, grad=True)
+                μYi_prior, μYg_prior = self.μ_prior(Xi, ret_grad=True)
                 if self.trans:
                     μZi_prior, μZg_prior = self.trans(μYi_prior, grad_y=μYg_prior)
                 else:
@@ -397,39 +399,44 @@ class GPI:
 
         # Evaluate the explicit bases
         if self.basis is not None:
-            if not grad:
+            if not infer_grad:
                 Hi = self.bases(Xi)
             else:
                 Hig = full((n_inf, (1 + self.n_xdims), self.n_β), 0, dtype='float64')
-                Hi, Hg = self.bases(Xi, grad)
+                Hi, Hg = self.bases(Xi, infer_grad)
                 Hg = swapaxes(Hg, 1, 2)
                 Hig[:, 0, :] = Hi
                 Hig[:, 1:, :] = Hg
 
         # Distance & auto-covariance
         Rid = radius(Xi, self.Xd, self.xscale)
-        Kid = self.kernel(Rid, sum_terms=kernel_terms, i_grad=grad, s=self.xscale)
+        Kid = self.kernel(Rid, sum_terms=kernel_terms, i_grad=infer_grad, s=self.xscale)
         if infer_std:
             Rii = radius(Xi, Xi, self.xscale)
-            Kii = self.kernel(Rii, sum_terms=kernel_terms, ii_grad=grad, s=self.xscale)
+            Kii = self.kernel(Rii, sum_terms=kernel_terms, ii_grad=infer_grad, s=self.xscale)
 
         # Inference
         μZi = Kid[:n_inf] @ self.KinvZd
-        if grad:
+        if infer_grad:
             μZg = (Kid[n_inf:] @ self.KinvZd).reshape((self.n_xdims, n_inf)).T
         if not exclude_mean:
             if self.μ_prior:
                 μZi += μZi_prior
-                if grad:
+                if infer_grad:
                     μZg += μZg_prior
             if self.basis is not None:
                 μZi += Hi @ self.μβ
-                if grad:
+                if infer_grad:
                     μZg += Hg @ self.μβ.reshape(-1)
         if infer_std:
+            if isinstance(infer_std, float):
+                zp = sqrt(2) * erfinv(infer_std)
+                infer_std = True
+            elif infer_std is True:
+                zp = 1
             Σii = Kii - Kid @ self.solve(self.LKdd, Kid.T)
             if self.basis is not None:
-                if not grad:
+                if not infer_grad:
                     tmp = Hi - Kid @ self.KinvHd
                 else:
                     tmp = Hig.T.reshape(((1 + self.n_xdims), -1)).T - Kid @ self.KinvHd
@@ -439,46 +446,46 @@ class GPI:
         if not self.trans or not untransform:
             # when `not self.trans`, imply the identity untransform...
             if infer_std is False:
-                if not grad:
+                if not infer_grad:
                     return μZi.reshape(-1)
                 else:
                     return μZi.reshape(-1), μZg
             elif infer_std is True:
-                if not grad:
+                if not infer_grad:
                     σZi = sqrt(Σii[ind_i, ind_i]).reshape((-1, 1))
-                    return μZi.reshape(-1), σZi.reshape(-1)
+                    return μZi.reshape(-1), zp * σZi.reshape(-1)
                 else:
                     σZig = sqrt(Σii[ind_ig, ind_ig]).reshape(-1)
                     σZi, σZg = σZig[:n_inf], σZig[n_inf:].reshape((self.n_xdims, n_inf)).T
-                    return (μZi.reshape(-1), μZg), (σZi.reshape(-1), σZg)
+                    return (μZi.reshape(-1), μZg), (zp * σZi.reshape(-1), zp * σZg)
             elif infer_std == "covar":
-                if not grad:
+                if not infer_grad:
                     return μZi.reshape(-1), Σii
                 else:
                     return (μZi.reshape(-1), μZg), Σii
         else:
             if infer_std is False:
                 warn(warn_trans_μ, RuntimeWarning)
-                if not grad:
+                if not infer_grad:
                     μYi = self.trans(μZi, inverse=True)
                     return μYi.reshape(-1)
                 else:
                     μYi, μYg = self.trans(μZi, grad_z=μZg, inverse=True)
                     return μYi.reshape(-1), μYg
-            elif infer_std is True:
+            elif infer_std is True or isinstance(infer_std, float):
                 warn(warn_trans_μ + warn_trans_σ, RuntimeWarning)
-                if not grad:
+                if not infer_grad:
                     μYi = self.trans(μZi, inverse=True)
                     σZi = sqrt(Σii[ind_i, ind_i]).reshape((-1, 1))
-                    Zi_lohi = array([(μZi - σZi).reshape(-1), (μZi + σZi).reshape(-1)])
+                    Zi_lohi = array([(μZi - zp * σZi).reshape(-1), (μZi + zp * σZi).reshape(-1)])
                     Yi_lohi = self.trans(Zi_lohi, inverse=True)
-                    return μYi.reshape(-1), Yi_lohi - μYi.reshape(-1)
+                    return μYi.reshape(-1), Yi_lohi
                 else:
                     raise InputError(error_trans_grad)  # raised above, here for logical symmetry
             elif infer_std == "covar":
                 raise InputError(error_trans_covar)  # raised above, here for logical symmetry
 
-    def sample(self, Xs, n_samples=1, kernel_terms='noisefree', exclude_mean=False, grad=False):
+    def sample(self, Xs, n_samples=1, kernel_terms='noisefree', exclude_mean=False, sample_grad=False):
         """
         Sample the Gaussian process at specified locations.
 
@@ -499,7 +506,7 @@ class GPI:
             Note: including a Noise term at this stage is not compatible with gradient inference.
         exclude_mean:  bool (optional),
             if False include prior mean and basis functions, otherwise don't.
-        grad:  bool (optional),
+        sample_grad:  bool (optional),
             whether to return the inferred gradient of the dependent variable.
 
         Returns
@@ -515,10 +522,17 @@ class GPI:
             an exception is thrown for incompatible format of any inputs.
         """
         n_xdims = self.n_xdims
+        if isinstance(Xs, float) or isinstance(Xs, int) and self.Xd.shape[1] == 1:
+            Xs = array([[Xs]], dtype='f8')  # a 1D problem at a single point
+        elif Xs.ndim == 1 and self.n_xdims == 1:
+            Xs = Xs.copy().reshape((-1, 1))  # a 1D problem at n points
+        elif Xs.ndim == 1 and self.n_xdims == Xs.shape[0]:
+            Xs = Xs.copy().reshape((1, -1))  # an nD problem at a single point
         n_pts = Xs.shape[0]
         μ_post, Σ = self.__call__(Xs, infer_std='covar', untransform=False,
-                                  kernel_terms=kernel_terms, exclude_mean=exclude_mean, grad=grad)
-        if not grad:
+                                  kernel_terms=kernel_terms, exclude_mean=exclude_mean,
+                                  infer_grad=sample_grad)
+        if not sample_grad:
             n_z = n_pts
         else:
             μ_post, μ_post_grad = μ_post
@@ -531,7 +545,7 @@ class GPI:
         Z = randn(n_z, n_samples)
         Λ, V = eigh(Σ)
         Ys = μ_post + (sqrt(Λ.clip(min=0)) * Z.T) @ V.T
-        if not grad:
+        if not sample_grad:
             Ys = Ys.reshape((n_samples, n_pts))
             if self.trans:
                 Ys = self.trans(Ys, inverse=True)
@@ -567,7 +581,7 @@ def cho_solve_gen(C, b, **others):
 warn_trans_μ = ("Using `untransform=True`, limits the meaning of the returned `μ` values to the"
                 " median (& only for monotonic transformations).  ")
 warn_trans_σ = ("`infer_std=True` limits the meaning of the returned `σ` values to the 68.2% inner"
-                " percentile region.  For other quantiles use the sample method.")
+                " quantile region.  For other quantiles use the sample method.")
 error_trans_exclude = ("Inference parameter `exclude_mean=True` is incompatible with transformation"
                        " & untransform.")
 error_trans_covar = ("Inference parameter `infer_std=='covar'` is incompatible with transformation"
@@ -628,34 +642,41 @@ if __name__ == "__main__":
     from .hyper_params import LogNormal
 
     # Example 1  (1D regression w/ six data points & a known kernel):
-    # setup...
-    # Xd = array([0.5, 2.7, 3.6, 6.8, 5.7, 3.4]).reshape((-1, 1))
-    Xd = array([0.5, 2.7, 3.6, 6.8, 5.7, 3.4])  # for 1D problems, this form is accepted
-    Yd = array([0.0, 1.0, 1.2, 0.5, 0.8, 1.16])
-    # Yd = array([0.0, 1.0, 1.2, 0.5, 0.8, 1.16]).reshape((-1, 1))  # also accepted
-    myGPI = GPI(Xd, Yd, Noise(w=0.05) + SquareExp(w=2.5, l=2.0))
-    # inference...
-    # print(myGPI(1.6))  # no gradient
-    xi = 1.6  # for 1D problems w/ a single point, any of these three forms are accepted
-    # xi = array([1.6])
-    # xi = array([1.6]).reshape((-1, 1))
-    yi, yi_grad = myGPI(xi, grad=True)  # infer the gradient as well
-    # create a tangent line (for plotting)...
+    # Setup...
+    # (for 1D problems, the shape of the input data is flexible)
+    Xd = array([0.5, 2.7, 3.6, 6.8, 5.7, 3.4])  # or w/ `.reshape((-1, 1))`
+    Yd = array([0.0, 1.0, 1.2, 0.5, 0.8, 1.16])  # or w/ `.reshape((-1, 1))`
+    my_gpi = GPI(Xd, Yd, Noise(w=0.05) + SquareExp(w=2.5, l=2.0))
+    # Inference at a point...
+    # (again, for 1D problems w/ a single point, any of these three forms are accepted)
+    xi = 1.6  # `array([1.6])`  or  `array([1.6]).reshape((-1, 1))`
+    yi_μ = my_gpi(xi)  # infer the posterior mean (underlying regression function) at this point
+    yi_μ, yi_σ = my_gpi(xi, infer_std=True)  # infer the posterior σ as well
+    yi_μ, dyi_μ = my_gpi(xi, infer_grad=True)  # infer the gradient as well
+    (yi_μ, dyi_μ), (yi_σ, dyi_σ) = my_gpi(xi, infer_std=True, infer_grad=True)  # get both
+    yi_samp = my_gpi.sample(xi, 100)  # sample the posterior at this point
+    # Plotting (w/ inference of the whole function)...
+    Xi = linspace(0, 7.5, 200)
+    Yi_μ, Yi_65 = my_gpi(Xi, infer_std=0.65)  # specified inner quantile of the posterior
+    Yi_μ, Yi_95 = my_gpi(Xi, infer_std=0.95)  # specified inner quantile of the posterior
+    Yi_samp = my_gpi.sample(Xi, 30)
+    # create a tangent line from the gradient
     δ = 0.25  # half width of the tangent line
     Xig = (xi + δ * array([-1.0, 1.0])).reshape(-1, 1)
-    Yig = (yi + yi_grad * δ * array([-1.0, 1.0])).reshape(-1, 1)
-    # across x for visual effect...
-    Xi = linspace(0, 7.5, 200)
-    Yi, Yistd = myGPI(Xi, infer_std=True)
-    # plot it all...
+    Yig = (yi_μ + dyi_μ * δ * array([-1.0, 1.0])).reshape(-1, 1)
     plt.figure(figsize=(7, 5))
-    plt.plot(Xd, Yd, 'ko', label='observed data')
-    plt.plot(Xi, Yi, 'b-', linewidth=2.0, label='inferred mean')
-    plt.fill_between(Xi, Yi-Yistd, Yi+Yistd, alpha=0.25,
-                    label='inferred mean +/- std')
-    plt.plot(xi, yi, 'ro', label='example regression point')
-    plt.plot(Xig, Yig, 'r-', linewidth=3.0, label='inferred slope')
+    plt.plot(Xd, Yd, 'bo', label='observed data')
+    plt.plot(xi, yi_μ, 'go', label='example regression point')
+    plt.plot(Xig, Yig, 'g-', linewidth=3.0, label='inferred slope at that point')
+    plt.plot(Xi, Yi_μ, 'g-', linewidth=1.5, alpha=0.65, label='inferred mean')
+    plt.fill_between(Xi, Yi_μ - Yi_65, Yi_μ + Yi_65, color='tab:green', alpha=0.50,
+                     label='posterior inner 65% quantile')
+    plt.fill_between(Xi, Yi_μ - Yi_95, Yi_μ + Yi_95, color='tab:green', alpha=0.15,
+                     label='posterior inner 95% quantile')
+    plt.plot(Xi, Yi_samp[0], 'b-', linewidth=0.5, alpha=0.15, label='posterior samples')
+    plt.plot(Xi, Yi_samp[1:].T, 'k-', linewidth=0.5, alpha=0.15)
     plt.xlim(Xi[0], Xi[-1])
+    plt.grid(True, alpha=0.1)
     plt.title('Example #1  (1D regression w/ 6 data points & a known kernel)',
             fontsize=12)
     plt.xlabel('independent variable, X', fontsize=12)
@@ -663,34 +684,31 @@ if __name__ == "__main__":
     plt.legend(loc='lower right', fontsize=10)
 
     # Example 2  (probit interpolation in 2D w/ a linear basis & 6 data points):
-    # setup...
+    # Setup...
     Xd = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
                 [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     Yd = array([0.10, 0.30, 0.60, 0.70, 0.90, 0.90])
     bases = PolySet(2, 1, x_range=array([[0, -0.5], [1, 1]]))
     K = RatQuad(w=0.6, l=LogNormal(guess=0.3, σ=0.25), α=1)
-    myGPI = GPI(Xd, Yd, K, explicit_basis=bases, transform='Probit', Xscaling='range')
-    # inference...
-    print('Example 2: optimized value of the hyper-parameter:', myGPI.kernel.get_φ())
+    my_gpi = GPI(Xd, Yd, K, explicit_basis=bases, transform='Probit', Xscaling='range')
+    # Inference at a point...
+    print('Example 2: optimized value of the hyper-parameter:', my_gpi.kernel.get_φ())
     xi = array([[0.10, 0.10], [0.50, 0.42]])
-    yi = myGPI(xi)
-    print('x = ', xi)
-    print('y = ', yi)
-    # across all (x1, x2) for visual effect...
+    yi_μ = my_gpi(xi)
+    # Plotting (w/ inference of the whole function)...
     Ni = (30, 32)
     xi_1 = linspace(-0.2, 1.2, Ni[0])
     xi_2 = linspace(-0.3, 1.0, Ni[1])
     Xi_1, Xi_2 = meshgrid(xi_1, xi_2, indexing='ij')
     Xi = array([Xi_1.reshape(-1), Xi_2.reshape(-1)]).T
-    Yi, Yistd = myGPI(Xi, infer_std=True)
-    # plot it all...
+    Yi_μ, Yi_lohi = my_gpi(Xi, infer_std=0.99)
     fig = plt.figure(figsize=(7, 5))
     ax = fig.add_subplot(1, 1, 1, projection='3d')
-    ax.plot_surface(Xi_1, Xi_2, Yi.reshape(Ni),
+    ax.plot_surface(Xi_1, Xi_2, Yi_μ.reshape(Ni),
                     alpha=0.75, linewidth=0.5, cmap=mpl.colormaps['jet'], rstride=1, cstride=1)
-    ax.plot_surface(Xi_1, Xi_2, (Yi + Yistd[0]).reshape(Ni),
+    ax.plot_surface(Xi_1, Xi_2, Yi_lohi[0].reshape(Ni),
                     alpha=0.25, linewidth=0.25, color='black', rstride=1, cstride=1)
-    ax.plot_surface(Xi_1, Xi_2, (Yi - Yistd[1]).reshape(Ni),
+    ax.plot_surface(Xi_1, Xi_2, Yi_lohi[1].reshape(Ni),
                     alpha=0.25, linewidth=0.25, color='black', rstride=1, cstride=1)
     ax.scatter(Xd[:, 0], Xd[:, 1], Yd, c='black', s=35)
     ax.set_zlim([0.0, 1.0])

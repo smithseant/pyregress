@@ -15,11 +15,9 @@ from pyregress.gaussian_processes.gp import (warn_trans_μ, warn_trans_σ,
 
 
 # Task list:
+# - consider adding an inner-percentile option to `infer_std` (for the `untranspose` case),
 # - consider adding ranges to scale the transformations,
 # - add unit testing for the transformations,
-# - consider adding an inner-percentile option to `infer_std` (for the `untranspose` case),
-# - consider adding gradients to the bases in lin_regress incorporating those as explicit_bases in gaussian_process,
-# - add unit testing for basis functions,
 # - consider adding a parametrization for `kernel_terms`,
 # - add unit testing for the kernels & gradients,
 # - consider re-adding the basis when excluding the mean (question why that option was available in the first place),
@@ -33,7 +31,7 @@ abs_tol = 1e-6
 @pytest_param("trans_ret", [(None, True), ("Log", True), ("Log", False)])  # (trans., untrans.)
 @pytest_param("mean_flags", [(None, False), (True, False), (True, True)])  # (prior, exclude_mean)
 @pytest_param("basis_type", [None, "planar"])  # TODO: needs work (pull from linregress.py)
-@pytest_param("ret_std", [False, True, "covar"])
+@pytest_param("ret_std", [False, True, 0.9, "covar"])
 @pytest_param("ret_grad", [False, True])
 def test_GPI(example_type, scale_type, trans_ret, mean_flags, basis_type, ret_std, ret_grad):
     """
@@ -98,7 +96,7 @@ def test_GPI(example_type, scale_type, trans_ret, mean_flags, basis_type, ret_st
             with pytest.warns(RuntimeWarning, match=re.escape(warn_trans_μ)):
                 # out = consolidated(*test_opts)
                 out = my_gpi(Xi, 'noisefree', ret_std, exclude_mean, untrans, ret_grad)
-        elif ret_std is True:
+        elif ret_std is True or isinstance(ret_std, float):
             with pytest.warns(RuntimeWarning, match=re.escape(warn_trans_μ + warn_trans_σ)):
                 # out = consolidated(*test_opts)
                 out = my_gpi(Xi, 'noisefree', ret_std, exclude_mean, untrans, ret_grad)

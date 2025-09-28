@@ -16,26 +16,26 @@ from pyregress.gaussian_processes.gp import (radius, warn_trans_μ, warn_trans_�
 def example_1D(seed=42, nd=8, ni=300, plot=False):
     my_rng = default_rng(seed=seed)
     std_norm = my_rng.standard_normal
-    def transformed_mean(x, grad=False):
+    def transformed_mean(x, ret_grad=False):
         y = log(1 / (1 / exp(x - 4) + 1 / exp(0.1 * x - 0.4))) + 2 * exp(-x / 2)
-        if not grad:
+        if not ret_grad:
             return y
         else:
             grad_y = ((exp(0.1 * x - 0.4) + 0.1 * exp(x - 4)) /
                       (exp(0.1 * x - 0.4) +  1  * exp(x - 4)) -
                       exp(-x / 2))
             return y, grad_y
-    def prior_mean(x, grad=False):
-        if not grad:
+    def prior_mean(x, ret_grad=False):
+        if not ret_grad:
             return (1 + erf(transformed_mean(x) / sqrt(2))) / 2
         else:
-            z, grad_z = transformed_mean(x, grad)
+            z, grad_z = transformed_mean(x, ret_grad)
             y = (1 + erf(z / sqrt(2))) / 2
             grad_y = exp(-z**2 / 2) / sqrt(2 * π) * grad_z
             return y, grad_y
-    def poly(x, x0=10, y0=-0.6, yi=0.4, grad=False):
+    def poly(x, x0=10, y0=-0.6, yi=0.4, ret_grad=False):
         y = yi - 2 * (yi - y0) / x0 * x + (yi - y0) / x0**2 * x**2
-        if not grad:
+        if not ret_grad:
             return y
         else:
             grad_y = -2 * (yi - y0) / x0 + 2 * (yi - y0) / x0**2 * x
@@ -109,10 +109,10 @@ class MultiDimFunc:
         self.a = a
         self.λ = λ.reshape((1, -1))
         self.φ = φ.reshape((1, -1))
-    def __call__(self, x, grad=False):
+    def __call__(self, x, ret_grad=False):
         xm = atleast_2d(x)
         y = self.a / 2 * (cos(2 * π * (self.λ * xm - self.φ)).prod(axis=1).reshape((-1, 1)) + 1)
-        if not grad:
+        if not ret_grad:
             return y
         else:
             grad_y = empty(xm.shape)
@@ -423,9 +423,10 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         # Inference
         μYi = (Kid @ solve(Kdd, Yd))
         Σii = Kii - Kid @ solve(Kdd, Kid.T)
-        if ret_std is True:
+        if ret_std is True or isinstance(ret_std, float):
             σYi = sqrt(Σii[ind_i, ind_i]).reshape((-1, 1))
-            return μYi.reshape(-1), σYi.reshape(-1)
+            zp = 1 if ret_std is True else sqrt(2) * erfinv(ret_std)
+            return μYi.reshape(-1), zp * σYi.reshape(-1)
         elif ret_std == "covar":
             return μYi.reshape(-1), Σii
     elif trans_type and not f_mean and not basis_type and ret_std and not ret_grad:
@@ -443,16 +444,17 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         # Inference
         μZi = (Kid @ solve(Kdd, Zd))
         Σii = Kii - Kid @ solve(Kdd, Kid.T)
-        if ret_std is True:
+        if ret_std is True or isinstance(ret_std, float):
             σZi = sqrt(Σii[ind_i, ind_i]).reshape((-1, 1))
+            zp = 1 if ret_std is True else sqrt(2) * erfinv(ret_std)
             if untrans is False:
-                return μZi.reshape(-1), σZi.reshape(-1)
+                return μZi.reshape(-1), zp * σZi.reshape(-1)
             else:
-                Zi_lohi = array([(μZi - σZi).reshape(-1), (μZi + σZi).reshape(-1)])
+                Zi_lohi = array([(μZi - zp * σZi).reshape(-1), (μZi + zp * σZi).reshape(-1)])
                 # Return from the transformed space
                 μYi = inv_trans(μZi)
                 Yi_lohi = inv_trans(Zi_lohi)
-                return μYi.reshape(-1), Yi_lohi - μYi.reshape(-1)
+                return μYi.reshape(-1), Yi_lohi
         elif ret_std == "covar":
             if untrans is False:
                 return μZi.reshape(-1), Σii
@@ -476,9 +478,10 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         else:
             μYi = (Kid @ solve(Kdd, Yd - μYd_prior))
         Σii = Kii - Kid @ solve(Kdd, Kid.T)
-        if ret_std is True:
+        if ret_std is True or isinstance(ret_std, float):
             σYi = sqrt(Σii[ind_i, ind_i]).reshape((-1, 1))
-            return μYi.reshape(-1), σYi.reshape(-1)
+            zp = 1 if ret_std is True else sqrt(2) * erfinv(ret_std)
+            return μYi.reshape(-1), zp * σYi.reshape(-1)
         elif ret_std == "covar":
             return μYi.reshape(-1), Σii
     elif trans_type and f_mean and not basis_type and ret_std and not ret_grad:
@@ -504,16 +507,17 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         else:
             μZi = (Kid @ solve(Kdd, Zd - μZd_prior))
         Σii = Kii - Kid @ solve(Kdd, Kid.T)
-        if ret_std is True:
+        if ret_std is True or isinstance(ret_std, float):
             σZi = sqrt(Σii[ind_i, ind_i]).reshape((-1, 1))
+            zp = 1 if ret_std is True else sqrt(2) * erfinv(ret_std)
             if untrans is False:
-                return μZi.reshape(-1), σZi.reshape(-1)
+                return μZi.reshape(-1), zp * σZi.reshape(-1)
             else:
-                Zi_lohi = array([(μZi - σZi).reshape(-1), (μZi + σZi).reshape(-1)])
+                Zi_lohi = array([(μZi - zp * σZi).reshape(-1), (μZi + zp * σZi).reshape(-1)])
                 # Return from the transformed space
                 μYi = inv_trans(μZi)
                 Yi_lohi = inv_trans(Zi_lohi)
-                return μYi.reshape(-1), Yi_lohi - μYi.reshape(-1)
+                return μYi.reshape(-1), Yi_lohi
                 # Note: cannot untransform when (f_mean or basis_type) and exclude_mean
         elif ret_std == "covar":
             if untrans is False:
@@ -542,9 +546,10 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         μYi = (Hi @ μβ + Kid @ solve(Kdd, Yd - Hd @ μβ))
         tmp = Hi - Kid @ solve(Kdd, Hd)
         Σii = Kii - Kid @ solve(Kdd, Kid.T) + tmp @ solve(Σβ_inv, tmp.T)
-        if ret_std is True:
+        if ret_std is True or isinstance(ret_std, float):
             σYi = sqrt(Σii[ind_i, ind_i]).reshape((-1, 1))
-            return μYi.reshape(-1), σYi.reshape(-1)
+            zp = 1 if ret_std is True else sqrt(2) * erfinv(ret_std)
+            return μYi.reshape(-1), zp * σYi.reshape(-1)
         elif ret_std == "covar":
             return μYi.reshape(-1), Σii
     elif trans_type and not f_mean and basis_type == "planar" and ret_std and not ret_grad:
@@ -572,16 +577,17 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         μZi = (Hi @ μβ + Kid @ solve(Kdd, Zd - Hd @ μβ))
         tmp = Hi - Kid @ solve(Kdd, Hd)
         Σii = Kii - Kid @ solve(Kdd, Kid.T) + tmp @ solve(Σβ_inv, tmp.T)
-        if ret_std is True:
+        if ret_std is True or isinstance(ret_std, float):
             σZi = sqrt(Σii[ind_i, ind_i]).reshape((-1, 1))
+            zp = 1 if ret_std is True else sqrt(2) * erfinv(ret_std)
             if untrans is False:
-                return μZi.reshape(-1), σZi.reshape(-1)
+                return μZi.reshape(-1), zp * σZi.reshape(-1)
             else:
-                Zi_lohi = array([(μZi - σZi).reshape(-1), (μZi + σZi).reshape(-1)])
+                Zi_lohi = array([(μZi - zp * σZi).reshape(-1), (μZi + zp * σZi).reshape(-1)])
                 # Return from the transformed space
                 μYi = inv_trans(μZi)
                 Yi_lohi = inv_trans(Zi_lohi)
-                return μYi.reshape(-1), Yi_lohi - μYi.reshape(-1)
+                return μYi.reshape(-1), Yi_lohi
                 # Note: cannot untransform when (f_mean or basis_type) and exclude_mean
         elif ret_std == "covar":
             if untrans is False:
@@ -616,9 +622,10 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
             μYi = (Kid @ solve(Kdd, Yd - (μYd_prior + Hd @ μβ)))
         tmp = Hi - Kid @ solve(Kdd, Hd)
         Σii = Kii - Kid @ solve(Kdd, Kid.T) + tmp @ solve(Σβ_inv, tmp.T)
-        if ret_std is True:
+        if ret_std is True or isinstance(ret_std, float):
             σYi = sqrt(Σii[ind_i, ind_i]).reshape((-1, 1))
-            return μYi.reshape(-1), σYi.reshape(-1)
+            zp = 1 if ret_std is True else sqrt(2) * erfinv(ret_std)
+            return μYi.reshape(-1), zp * σYi.reshape(-1)
         elif ret_std == "covar":
             return μYi.reshape(-1), Σii
     elif trans_type and f_mean and basis_type == "planar" and ret_std and not ret_grad:
@@ -654,16 +661,17 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
             μZi = (Kid @ solve(Kdd, Zd - (μZd_prior + Hd @ μβ)))
         tmp = Hi - Kid @ solve(Kdd, Hd)
         Σii = Kii - Kid @ solve(Kdd, Kid.T) + tmp @ solve(Σβ_inv, tmp.T)
-        if ret_std is True:
+        if ret_std is True or isinstance(ret_std, float):
             σZi = sqrt(Σii[ind_i, ind_i]).reshape((-1, 1))
+            zp = 1 if ret_std is True else sqrt(2) * erfinv(ret_std)
             if untrans is False:
-                return μZi.reshape(-1), σZi.reshape(-1)
+                return μZi.reshape(-1), zp * σZi.reshape(-1)
             else:
-                Zi_lohi = array([(μZi - σZi).reshape(-1), (μZi + σZi).reshape(-1)])
+                Zi_lohi = array([(μZi - zp * σZi).reshape(-1), (μZi + zp * σZi).reshape(-1)])
                 # Return from the transformed space
                 μYi = inv_trans(μZi)
                 Yi_lohi = inv_trans(Zi_lohi)
-                return μYi.reshape(-1), Yi_lohi - μYi.reshape(-1)
+                return μYi.reshape(-1), Yi_lohi
                 # Note: cannot untransform when (f_mean or basis_type) and exclude_mean
         elif ret_std == "covar":
             if untrans is False:
@@ -715,7 +723,7 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
     elif not trans_type and f_mean and not basis_type and not ret_std and ret_grad:
         # Evaluate prior mean at Xd & Xi
         μYd_prior = f_mean(Xd)
-        μYi_prior, μYg_prior = f_mean(Xi, grad=True)
+        μYi_prior, μYg_prior = f_mean(Xi, ret_grad=True)
         # Distance & auto-covariance
         σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
         Rdd = radius(Xd,  Xd, s)
@@ -740,7 +748,7 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
     elif trans_type and f_mean and not basis_type and not ret_std and ret_grad:
         # Evaluate prior mean at Xd & Xi
         μYd_prior = f_mean(Xd)
-        μYi_prior, μYg_prior = f_mean(Xi, grad=True)
+        μYi_prior, μYg_prior = f_mean(Xi, ret_grad=True)
         # Move to the transformed space
         Zd = trans(Yd)
         μZd_prior = trans(μYd_prior)
@@ -853,7 +861,7 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
     elif not trans_type and f_mean and basis_type == "planar" and not ret_std and ret_grad:
         # Evaluate prior mean at Xd & Xi
         μYd_prior = f_mean(Xd)
-        μYi_prior, μYg_prior = f_mean(Xi, grad=True)
+        μYi_prior, μYg_prior = f_mean(Xi, ret_grad=True)
         # Explicit bases
         Hd = empty((nd, (1 + n_xdims)), dtype='float64')
         Hd[:, 0] = 1
@@ -891,7 +899,7 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
     elif trans_type and f_mean and basis_type == "planar" and not ret_std and ret_grad:
         # Evaluate prior mean at Xd & Xi
         μYd_prior = f_mean(Xd)
-        μYi_prior, μYg_prior = f_mean(Xi, grad=True)
+        μYi_prior, μYg_prior = f_mean(Xi, ret_grad=True)
         # Move to the transformed space
         Zd = trans(Yd)
         μZd_prior = trans(μYd_prior)
@@ -967,10 +975,11 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         μYi = (Kid[:ni] @ Kinv_Zd)
         μYg = (Kid[ni:] @ Kinv_Zd).reshape((n_xdims, ni)).T
         Σii = Kii - Kid @ solve(Kdd, Kid.T)
-        if ret_std is True:
+        if ret_std is True or isinstance(ret_std, float):
             σYig = sqrt(Σii[ind_ig, ind_ig]).reshape(-1)
+            zp = 1 if ret_std is True else sqrt(2) * erfinv(ret_std)
             σYi, σYg = σYig[:ni], σYig[ni:].reshape((n_xdims, ni)).T
-            return (μYi.reshape(-1), μYg), (σYi.reshape(-1), σYg)
+            return (μYi.reshape(-1), μYg), (zp * σYi.reshape(-1), zp * σYg)
         elif ret_std == "covar":
             return (μYi.reshape(-1), μYg), Σii
     elif trans_type and not f_mean and not basis_type and ret_std and ret_grad:
@@ -1006,17 +1015,18 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         μZi = (Kid[:ni] @ Kinv_Zd)
         μZg = (Kid[ni:] @ Kinv_Zd).reshape((n_xdims, ni)).T
         Σii = Kii - Kid @ solve(Kdd, Kid.T)
-        if ret_std is True:
+        if ret_std is True or isinstance(ret_std, float):
             σZig = sqrt(Σii[ind_ig, ind_ig]).reshape(-1)
+            zp = 1 if ret_std is True else sqrt(2) * erfinv(ret_std)
             σZi, σZg = σZig[:ni], σZig[ni:].reshape((n_xdims, ni)).T
-            return (μZi.reshape(-1), μZg), (σZi, σZg)
+            return (μZi.reshape(-1), μZg), (zp * σZi, zp * σZg)
         elif ret_std == "covar":
             return (μZi.reshape(-1), μZg), Σii
         # Note: cannot untransform when ret_std and ret_grad
     elif not trans_type and f_mean and not basis_type and ret_std and ret_grad:
         # Evaluate prior mean at Xd & Xi
         μYd_prior = f_mean(Xd)
-        μYi_prior, μYg_prior = f_mean(Xi, grad=True)
+        μYi_prior, μYg_prior = f_mean(Xi, ret_grad=True)
         # Distance & auto-covariance
         σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
         Rdd = radius(Xd,  Xd, s)
@@ -1051,16 +1061,17 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
             μYi = (Kid[:ni] @ Kinv_Zd)
             μYg = (Kid[ni:] @ Kinv_Zd).reshape((n_xdims, ni)).T
         Σii = Kii - Kid @ solve(Kdd, Kid.T)
-        if ret_std is True:
+        if ret_std is True or isinstance(ret_std, float):
             σYig = sqrt(Σii[ind_ig, ind_ig]).reshape(-1)
+            zp = 1 if ret_std is True else sqrt(2) * erfinv(ret_std)
             σYi, σYg = σYig[:ni], σYig[ni:].reshape((n_xdims, ni)).T
-            return (μYi.reshape(-1), μYg), (σYi.reshape(-1), σYg)
+            return (μYi.reshape(-1), μYg), (zp * σYi.reshape(-1), zp * σYg)
         elif ret_std == "covar":
             return (μYi.reshape(-1), μYg), Σii
     elif trans_type and f_mean and not basis_type and ret_std and ret_grad:
         # Evaluate prior mean at Xd & Xi
         μYd_prior = f_mean(Xd)
-        μYi_prior, μYg_prior = f_mean(Xi, grad=True)
+        μYi_prior, μYg_prior = f_mean(Xi, ret_grad=True)
         # Move to the transformed space
         Zd = trans(Yd)
         μZd_prior = trans(μYd_prior)
@@ -1099,10 +1110,11 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
             μZi = (Kid[:ni] @ Kinv_Zd)
             μZg = (Kid[ni:] @ Kinv_Zd).reshape((n_xdims, ni)).T
         Σii = Kii - Kid @ solve(Kdd, Kid.T)
-        if ret_std is True:
+        if ret_std is True or isinstance(ret_std, float):
             σZig = sqrt(Σii[ind_ig, ind_ig]).reshape(-1)
+            zp = 1 if ret_std is True else sqrt(2) * erfinv(ret_std)
             σZi, σZg = σZig[:ni], σZig[ni:].reshape((n_xdims, ni)).T
-            return (μZi.reshape(-1), μZg), (σZi.reshape(-1), σZg)
+            return (μZi.reshape(-1), μZg), (zp * σZi.reshape(-1), zp * σZg)
         elif ret_std == "covar":
             return (μZi.reshape(-1), μZg), Σii
             # Note: cannot untransform when ret_std and ret_grad
@@ -1155,10 +1167,11 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
             μYg = (Kid[ni:] @ Kinv_Zd).reshape((n_xdims, ni)).T
         tmp = Hig.T.reshape(((1 + n_xdims), -1)).T - Kid @ solve(Kdd, Hd)
         Σii = Kii - Kid @ solve(Kdd, Kid.T) + tmp @ solve(Σβ_inv, tmp.T)
-        if ret_std is True:
+        if ret_std is True or isinstance(ret_std, float):
             σYig = sqrt(Σii[ind_ig, ind_ig]).reshape(-1)
+            zp = 1 if ret_std is True else sqrt(2) * erfinv(ret_std)
             σYi, σYg = σYig[:ni], σYig[ni:].reshape((n_xdims, ni)).T
-            return (μYi.reshape(-1), μYg), (σYi.reshape(-1), σYg)
+            return (μYi.reshape(-1), μYg), (zp * σYi.reshape(-1), zp * σYg)
         elif ret_std == "covar":
             return (μYi.reshape(-1), μYg), Σii
     elif trans_type and not f_mean and basis_type == "planar" and ret_std and ret_grad:
@@ -1212,17 +1225,18 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
             μZg = (Kid[ni:] @ Kinv_Zd).reshape((n_xdims, ni)).T
         tmp = Hig.T.reshape(((1 + n_xdims), -1)).T - Kid @ solve(Kdd, Hd)
         Σii = Kii - Kid @ solve(Kdd, Kid.T) + tmp @ solve(Σβ_inv, tmp.T)
-        if ret_std is True:
+        if ret_std is True or isinstance(ret_std, float):
             σZig = sqrt(Σii[ind_ig, ind_ig]).reshape(-1)
+            zp = 1 if ret_std is True else sqrt(2) * erfinv(ret_std)
             σZi, σZg = σZig[:ni], σZig[ni:].reshape((n_xdims, ni)).T
-            return (μZi.reshape(-1), μZg), (σZi.reshape(-1), σZg)
+            return (μZi.reshape(-1), μZg), (zp * σZi.reshape(-1), zp * σZg)
         elif ret_std == "covar":
             return (μZi.reshape(-1), μZg), Σii
             # Note: cannot untransform when ret_std and ret_grad
     elif not trans_type and f_mean and basis_type == "planar" and ret_std and ret_grad:
         # Evaluate prior mean at Xd & Xi
         μYd_prior = f_mean(Xd)
-        μYi_prior, μYg_prior = f_mean(Xi, grad=True)
+        μYi_prior, μYg_prior = f_mean(Xi, ret_grad=True)
         # Explicit bases
         Hd = empty((nd, (1 + n_xdims)), dtype='float64')
         Hd[:, 0] = 1
@@ -1271,16 +1285,17 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
             μYg = (Kid[ni:] @ Kinv_Zd).reshape((n_xdims, ni)).T
         tmp = Hig.T.reshape(((1 + n_xdims), -1)).T - Kid @ solve(Kdd, Hd)
         Σii = Kii - Kid @ solve(Kdd, Kid.T) + tmp @ solve(Σβ_inv, tmp.T)
-        if ret_std is True:
+        if ret_std is True or isinstance(ret_std, float):
             σYig = sqrt(Σii[ind_ig, ind_ig]).reshape(-1)
+            zp = 1 if ret_std is True else sqrt(2) * erfinv(ret_std)
             σYi, σYg = σYig[:ni], σYig[ni:].reshape((n_xdims, ni)).T
-            return (μYi.reshape(-1), μYg), (σYi.reshape(-1), σYg)
+            return (μYi.reshape(-1), μYg), (zp * σYi.reshape(-1), zp * σYg)
         elif ret_std == "covar":
             return (μYi.reshape(-1), μYg), Σii
     elif trans_type and f_mean and basis_type == "planar" and ret_std and ret_grad:
         # Evaluate prior mean at Xd & Xi
         μYd_prior = f_mean(Xd)
-        μYi_prior, μYg_prior = f_mean(Xi, grad=True)
+        μYi_prior, μYg_prior = f_mean(Xi, ret_grad=True)
         # Move to the transformed space
         Zd = trans(Yd)
         μZd_prior = trans(μYd_prior)
@@ -1333,10 +1348,11 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
             μZg = (Kid[ni:] @ Kinv_Zd).reshape((n_xdims, ni)).T
         tmp = Hig.T.reshape(((1 + n_xdims), -1)).T - Kid @ solve(Kdd, Hd)
         Σii = Kii - Kid @ solve(Kdd, Kid.T) + tmp @ solve(Σβ_inv, tmp.T)
-        if ret_std is True:
+        if ret_std is True or isinstance(ret_std, float):
             σZig = sqrt(Σii[ind_ig, ind_ig]).reshape(-1)
+            zp = 1 if ret_std is True else sqrt(2) * erfinv(ret_std)
             σZi, σZg = σZig[:ni], σZig[ni:].reshape((n_xdims, ni)).T
-            return (μZi.reshape(-1), μZg), (σZi.reshape(-1), σZg)
+            return (μZi.reshape(-1), μZg), (zp * σZi.reshape(-1), zp * σZg)
         elif ret_std == "covar":
             return (μZi.reshape(-1), μZg), Σii
             # Note: cannot untransform when ret_std and ret_grad
@@ -1389,7 +1405,7 @@ def consolidated(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         if not ret_grad:
             μYi_prior = f_mean(Xi)
         else:
-            μYi_prior, μYg_prior = f_mean(Xi, grad=True)
+            μYi_prior, μYg_prior = f_mean(Xi, ret_grad=True)
 
     # Shift to the transformed space (or use pointers for the identity transformation)
     Zd = trans(Yd) if trans_type else Yd
@@ -1483,6 +1499,11 @@ def consolidated(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
             if ret_grad:
                 μZg += Hg @ μβ.reshape(-1)
     if ret_std:
+        if isinstance(ret_std, float):
+            zp = sqrt(2) * erfinv(ret_std)
+            ret_std == True
+        elif ret_std is True:
+            zp = 1
         Σii = Kii - Kid @ solve(Kdd, Kid.T)
         if basis_type is not None:
             if not ret_grad:
@@ -1501,11 +1522,11 @@ def consolidated(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         elif ret_std is True:
             if ret_grad is False:
                 σZi = sqrt(Σii[ind_i, ind_i]).reshape((-1, 1))
-                return μZi.reshape(-1), σZi.reshape(-1)
+                return μZi.reshape(-1), zp * σZi.reshape(-1)
             else:
                 σZig = sqrt(Σii[ind_ig, ind_ig]).reshape(-1)
                 σZi, σZg = σZig[:ni], σZig[ni:].reshape((n_xdims, ni)).T
-                return (μZi.reshape(-1), μZg), (σZi.reshape(-1), σZg)
+                return (μZi.reshape(-1), μZg), (zp * σZi.reshape(-1), zp * σZg)
         elif ret_std == "covar":
             if ret_grad is False:
                 return μZi.reshape(-1), Σii
@@ -1525,9 +1546,9 @@ def consolidated(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
             if ret_grad is False:
                 μYi = inv_trans(μZi)
                 σZi = sqrt(Σii[ind_i, ind_i]).reshape((-1, 1))
-                Zi_lohi = array([(μZi - σZi).reshape(-1), (μZi + σZi).reshape(-1)])
+                Zi_lohi = array([(μZi - zp * σZi).reshape(-1), (μZi + zp * σZi).reshape(-1)])
                 Yi_lohi = inv_trans(Zi_lohi)
-                return μYi.reshape(-1), Yi_lohi - μYi.reshape(-1)
+                return μYi.reshape(-1), Yi_lohi
             else:
                 raise InputError(error_trans_grad)  # raised above, noted here for logical symmetry
         elif ret_std == "covar":

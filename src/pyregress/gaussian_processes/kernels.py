@@ -169,7 +169,7 @@ class Kernel(metaclass=ABCMeta):
         else:
             return p
 
-    def ln_priors(self, φ=None, grad=False, trans=False):
+    def ln_priors(self, φ=None, ret_grad=False, trans=False):
         """
         Calculate log of prior distributions for hyper-parameters.
 
@@ -177,8 +177,8 @@ class Kernel(metaclass=ABCMeta):
         ---------
         φ: array-1D (optional),
             array of hyper-parameter values. When no values are provided, use the initial guess.
-        grad: bool (optional),
-            when grad is True also return dlnprior.
+        ret_grad: bool (optional),
+            when ret_grad is True also return dlnprior.
         trans: book (optional),
             indicate whether the input values of φ have been transformed and whether the gradients
             are wrt the transformed space.
@@ -194,7 +194,7 @@ class Kernel(metaclass=ABCMeta):
             φ = [None] * self.n_φ
         lnprior = 0.0
         iφ = 0
-        if not grad:
+        if not ret_grad:
             for key, val in self.φ_dist.items():
                 if not isinstance(val, Iterable):
                     lnprior += val(φ[iφ], trans=trans)
@@ -209,14 +209,14 @@ class Kernel(metaclass=ABCMeta):
             dlnprior = empty(self.n_φ)
             for key, val in self.φ_dist.items():
                 if not isinstance(val, Iterable):
-                    lnP, dlnP = val(φ[iφ], grad=grad, trans=trans)
+                    lnP, dlnP = val(φ[iφ], ret_grad=ret_grad, trans=trans)
                     lnprior += lnP
                     dlnprior[iφ] = dlnP
                     iφ += 1
                 else:
                     for i in range(len(val)):
                         if self.φ_dist[key][i]:
-                            lnP, dlnP = val[i](φ[iφ], grad=grad, trans=trans)
+                            lnP, dlnP = val[i](φ[iφ], ret_grad=ret_grad, trans=trans)
                             lnprior += lnP
                             dlnprior[iφ] = dlnP
                             iφ += 1
@@ -253,7 +253,7 @@ class Kernel(metaclass=ABCMeta):
         return
 
     @abstractmethod
-    def Kφ(self, φ, R, grad=False, trans=False, **kwargs):
+    def Kφ(self, φ, R, ret_grad=False, trans=False, **kwargs):
         """
         Calculate and return kernel values given a vector of hyper
         parameters and the radius array.
@@ -264,7 +264,7 @@ class Kernel(metaclass=ABCMeta):
             array of hyper parameters (potentially transformed),
         R: array-3D,
             directional distance matrix (distance between combination of points in each direction).
-        grad: bool (optional),
+        ret_grad: bool (optional),
             indicate whether to return the gradients with respect to the transformed hyper
             parameters as Kgrad,
         trans: bool (optional),
@@ -277,7 +277,7 @@ class Kernel(metaclass=ABCMeta):
         -------
         K: array-2D,
             kernel values - shape must match argument R,
-        Kgrad: array-3D (optional - depending on argument grad),
+        Kgrad: array-3D (optional - depending on argument ret_grad),
             partial of kernel (first two dimensions) with respect to each hyper param. (3rd dim.).
         """
         return
@@ -333,20 +333,20 @@ class CombiningKernel(Kernel):
         else:
             return p
 
-    def ln_priors(self, φ=None, grad=False, trans=False):
+    def ln_priors(self, φ=None, ret_grad=False, trans=False):
         if φ is None:
             φ = [None] * self.n_φ
         lnprior = 0.0
         iφ = 0
-        if not grad:
+        if not ret_grad:
             for kern in self.terms:
-                lnprior += kern.ln_priors(φ[iφ:(iφ + kern.n_φ)], grad, trans)
+                lnprior += kern.ln_priors(φ[iφ:(iφ + kern.n_φ)], ret_grad, trans)
                 iφ += kern.n_φ
             return lnprior
         else:
             dlnprior = empty(self.n_φ)
             for kern in self.terms:
-                lnp, dlnp = kern.ln_priors(φ[iφ:(iφ + kern.n_φ)], grad, trans)
+                lnp, dlnp = kern.ln_priors(φ[iφ:(iφ + kern.n_φ)], ret_grad, trans)
                 lnprior += lnp
                 dlnprior[iφ:(iφ + kern.n_φ)] = dlnp
                 iφ += kern.n_φ
@@ -381,7 +381,7 @@ class KernelSum(CombiningKernel):
         return K
 
 
-    def Kφ(self, φ, R, grad=False, trans=False, **kwargs):
+    def Kφ(self, φ, R, ret_grad=False, trans=False, **kwargs):
         ni, nj, n_xdims = R.shape
         if 'sum_terms' not in kwargs or kwargs['sum_terms'] == 'all':
             terms = self.terms
@@ -391,7 +391,7 @@ class KernelSum(CombiningKernel):
             terms = [self.terms[i] for i in kwargs['sum_terms']]
         elif type(kwargs['sum_terms']) is int:
             terms = [self.terms[kwargs['sum_terms']]]
-        if not grad:
+        if not ret_grad:
             K = full((ni, nj), 0, dtype='float64')
             iφ = 0
             for kern in terms:
@@ -405,7 +405,7 @@ class KernelSum(CombiningKernel):
             iφ = 0
             for kern in terms:
                 n_φ = kern.n_φ
-                Kt, Kgrad[:, :, iφ:(iφ + n_φ)] = kern.Kφ(φ[iφ:(iφ + n_φ)], R, grad, trans, **kwargs)
+                Kt, Kgrad[:, :, iφ:(iφ + n_φ)] = kern.Kφ(φ[iφ:(iφ + n_φ)], R, ret_grad, trans, **kwargs)
                 K += Kt
                 iφ += n_φ
             return K, Kgrad
@@ -432,9 +432,9 @@ class KernelProd(CombiningKernel):
             K *= kern(R, **kwargs)
         return K
 
-    def Kφ(self, φ, R, grad=False, trans=False, **kwargs):
+    def Kφ(self, φ, R, ret_grad=False, trans=False, **kwargs):
         ni, nj, n_xdims = R.shape
-        if not grad:
+        if not ret_grad:
             K = full((ni, nj), 1, dtype='float64')
             iφ = 0
             for kern in self.terms:
@@ -448,7 +448,7 @@ class KernelProd(CombiningKernel):
             iφ = 0
             for kern in self.terms:
                 n_φ = kern.n_φ
-                Kt, Kgt = kern.Kφ(φ[iφ:(iφ + n_φ)], R, grad, trans, **kwargs)
+                Kt, Kgt = kern.Kφ(φ[iφ:(iφ + n_φ)], R, ret_grad, trans, **kwargs)
                 K *= Kt
                 irange = range(iφ, iφ + n_φ)
                 iother = range(0, iφ) + range(iφ + n_φ, self.n_φ)
@@ -478,13 +478,13 @@ class Noise(Kernel):
             raise InputError("Noise Kernel is not differentiable, separate kernels before "
                              "differentiation")
 
-    def Kφ(self, φ, R, grad=False, trans=False, **kwargs):
+    def Kφ(self, φ, R, ret_grad=False, trans=False, **kwargs):
         ni, nj, n_xdims = R.shape
         p = self.update_p(φ, trans=trans, set=False)
         w = p['w']
         w2 = w**2
         K0 = eye(ni, nj)
-        if not grad:
+        if not ret_grad:
             return w2 * K0
         else:
             Kgrad = empty((ni, nj, self.n_φ))
@@ -532,7 +532,7 @@ class SquareExp(Kernel):
                                                    K[:ni, :nj] / (s[ki] * l[ki] * s[kj] * l[kj]))
         return K
 
-    def Kφ(self, φ, R, grad=False, trans=False, **kwargs):
+    def Kφ(self, φ, R, ret_grad=False, trans=False, **kwargs):
         ni, nj, n_xdims = R.shape
         p = self.update_p(φ, trans=trans, set=False)
         w, l_in = p['w'], p['l']
@@ -542,7 +542,7 @@ class SquareExp(Kernel):
             l = l_in
         Rl2 = ((R / l)**2).sum(axis=2)
         K = w**2 * exp(-0.5 * Rl2)
-        if not grad:
+        if not ret_grad:
             return K
         else:
             Kgrad = empty((ni, nj, self.n_φ,))
@@ -600,7 +600,7 @@ class GammaExp(Kernel):
         K0 = exp(-Rlγ)
         return w2 * K0
 
-    def Kφ(self, φ, R, grad=False, trans=False, **kwargs):
+    def Kφ(self, φ, R, ret_grad=False, trans=False, **kwargs):
         p = self.update_p(φ, trans=trans, set=False)
         w, l, γ = p['w'], p['l'], p['γ']
         if not isinstance(l, Iterable):
@@ -612,7 +612,7 @@ class GammaExp(Kernel):
         Rlγ = sum(Rl**γ, 2)
         w2 = w**2
         K0 = exp(-Rlγ)
-        if not grad:
+        if not ret_grad:
             return w2 * K0
         else:
             Kgrad = empty(R.shape[1:] + (self.n_φ,))
@@ -692,7 +692,7 @@ class RatQuad(Kernel):
                           base**(-(α + 1)))
         return K
 
-    def Kφ(self, φ, R, grad=False, trans=False, **kwargs):
+    def Kφ(self, φ, R, ret_grad=False, trans=False, **kwargs):
         ni, nj, n_xdims = R.shape
         p = self.update_p(φ, trans=trans, set=False)
         w, l_in, α = p['w'], p['l'], p['α']
@@ -704,7 +704,7 @@ class RatQuad(Kernel):
         base = 1 + R2l2 / (2 * α)
         K =  w**2 * base**(-α)
 
-        if not grad:
+        if not ret_grad:
             return K
         else:
             Kgrad = empty((ni, nj, self.n_φ,))

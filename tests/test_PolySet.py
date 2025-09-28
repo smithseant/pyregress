@@ -8,13 +8,13 @@ from numpy.testing import assert_allclose
 from pyregress import PolySet
 
 
-def gold_standard_bases(x, p_type, grad=False):
+def gold_standard_bases(x, p_type, ret_grad=False):
     n_pts, n_xdims = x.shape
     if n_xdims == 1:
         n_bases = 8
         x = x.reshape(-1)
         p = empty((n_bases, n_pts))
-        if grad:
+        if ret_grad:
             gp = empty((n_bases, n_pts))
         if p_type == 'power':
             p[0] = full(n_pts, 1, dtype='float64')
@@ -25,7 +25,7 @@ def gold_standard_bases(x, p_type, grad=False):
             p[5] = x**5
             p[6] = x**6
             p[7] = x**7
-            if grad:
+            if ret_grad:
                 gp[0] = full(n_pts, 0, dtype='float64')
                 gp[1] = full(n_pts, 1, dtype='float64')
                 gp[2] = 2 * x
@@ -43,7 +43,7 @@ def gold_standard_bases(x, p_type, grad=False):
             p[5] = (63 * x**5 - 70 * x**3 + 15 * x) / 8
             p[6] = (231 * x**6 - 315 * x**4 + 105 * x**2 - 5) / 16
             p[7] = (429 * x**7 - 693 * x**5 + 315 * x**3 - 35 * x) / 16
-            if grad:
+            if ret_grad:
                 gp[0] = full(n_pts, 0, dtype='float64')
                 gp[1] = full(n_pts, 1, dtype='float64')
                 gp[2] = (6 * x) / 2
@@ -61,7 +61,7 @@ def gold_standard_bases(x, p_type, grad=False):
             p[5] = 16 * x**5 - 20 * x**3 + 5 * x
             p[6] = 32 * x**6 - 48 * x**4 + 18 * x**2 - 1
             p[7] = 64 * x**7 - 112 * x**5 + 56 * x**3 - 7 * x
-            if grad:
+            if ret_grad:
                 gp[0] = full(n_pts, 0, dtype='float64')
                 gp[1] = full(n_pts, 1, dtype='float64')
                 gp[2] = 4 * x
@@ -79,7 +79,7 @@ def gold_standard_bases(x, p_type, grad=False):
             p[5] = (-x**5 + 25 * x**4 - 200 * x**3 + 600 * x**2 - 600 * x + 120) / 120
             p[6] = (x**6 - 36 * x**5 + 450 * x**4 - 2400 * x**3 + 5400 * x**2 - 4320 * x + 720) / 720
             p[7] = (-x**7 + 49 * x**6 - 882 * x**5 + 7350 * x**4 - 29400 * x**3 + 52920 * x**2 - 35280 * x + 5040) / 5040
-            if grad:
+            if ret_grad:
                 gp[0] = full(n_pts, 0, dtype='float64')
                 gp[1] = full(n_pts, -1, dtype='float64')
                 gp[2] = (2 * x - 4) / 2
@@ -97,7 +97,7 @@ def gold_standard_bases(x, p_type, grad=False):
             p[5] = x**5 - 10 * x**3 + 15 * x
             p[6] = x**6 - 15 * x**4 + 45 * x**2 - 15
             p[7] = x**7 - 21 * x**5 + 105 * x**3 - 105 * x
-            if grad:
+            if ret_grad:
                 gp[0] = full(n_pts, 0, dtype='float64')
                 gp[1] = full(n_pts, 1, dtype='float64')
                 gp[2] = 2 * x
@@ -106,7 +106,7 @@ def gold_standard_bases(x, p_type, grad=False):
                 gp[5] = 5 * x**4 - 30 * x**2 + 15
                 gp[6] = 6 * x**5 - 60 * x**3 + 90 * x
                 gp[7] = 7 * x**6 - 105 * x**4 + 315 * x**2 - 105
-        if not grad:
+        if not ret_grad:
             return p.T
         else:
             return p.T, gp.T.reshape([n_pts, n_bases, -1])
@@ -114,7 +114,7 @@ def gold_standard_bases(x, p_type, grad=False):
         max_order = 3
         n_bases = 10
         p = empty((n_pts, n_bases))
-        if grad:
+        if ret_grad:
             gp = full((n_pts, n_bases, n_xdims), 0, dtype='float64')
         if p_type == 'power':
             p[:, 0] = full(n_pts, 1, dtype='float64')
@@ -127,7 +127,7 @@ def gold_standard_bases(x, p_type, grad=False):
             p[:, 7] = x[:, 0]**2 * x[:, 1]
             p[:, 8] = x[:, 0] * x[:, 1]**2
             p[:, 9] = x[:, 1]**3
-            if grad:
+            if ret_grad:
                 gp[:, 1, 0] = 1
                 gp[:, 2, 1] = 1
                 gp[:, 3, 0] = 2 * x[:, 0]
@@ -151,7 +151,7 @@ def gold_standard_bases(x, p_type, grad=False):
             p[:, 7] = (3 * x[:, 0]**2 - 1) / 2 * x[:, 1]
             p[:, 8] = x[:, 0] * (3 * x[:, 1]**2 - 1) / 2
             p[:, 9] = (5 * x[:, 1]**3 - 3 * x[:, 1]) / 2
-            if grad:
+            if ret_grad:
                 gp[:, 1, 0] = 1
                 gp[:, 2, 1] = 1
                 gp[:, 3, 0] = (6 * x[:, 0]) / 2
@@ -175,7 +175,7 @@ def gold_standard_bases(x, p_type, grad=False):
             p[:, 7] = (2 * x[:, 0]**2 - 1) * x[:, 1]
             p[:, 8] = x[:, 0] * (2 * x[:, 1]**2 - 1)
             p[:, 9] = (4 * x[:, 1]**3 - 3 * x[:, 1])
-            if grad:
+            if ret_grad:
                 gp[:, 1, 0] = 1
                 gp[:, 2, 1] = 1
                 gp[:, 3, 0] = 4 * x[:, 0]
@@ -199,7 +199,7 @@ def gold_standard_bases(x, p_type, grad=False):
             p[:, 7] = (x[:, 0]**2 - 4 * x[:, 0] + 2) / 2 * (-x[:, 1] + 1)
             p[:, 8] = (-x[:, 0] + 1) * (x[:, 1]**2 - 4 * x[:, 1] + 2) / 2
             p[:, 9] = (-x[:, 1]**3 + 9 * x[:, 1]**2 - 18 * x[:, 1] + 6) / 6
-            if grad:
+            if ret_grad:
                 gp[:, 1, 0] = -1
                 gp[:, 2, 1] = -1
                 gp[:, 3, 0] = (2 * x[:, 0] - 4) / 2
@@ -223,7 +223,7 @@ def gold_standard_bases(x, p_type, grad=False):
             p[:, 7] = (x[:, 0]**2 - 1) * x[:, 1]
             p[:, 8] = x[:, 0] * (x[:, 1]**2 - 1)
             p[:, 9] = (x[:, 1]**3 - 3 * x[:, 1])
-            if grad:
+            if ret_grad:
                 gp[:, 1, 0] = 1
                 gp[:, 2, 1] = 1
                 gp[:, 3, 0] = 2 * x[:, 0]
@@ -236,7 +236,7 @@ def gold_standard_bases(x, p_type, grad=False):
                 gp[:, 8, 0] = (x[:, 1]**2 - 1)
                 gp[:, 8, 1] = x[:, 0] * 2 * x[:, 1]
                 gp[:, 9, 1] = 3 * x[:, 1]**2 - 3
-        if not grad:
+        if not ret_grad:
             return p
         else:
             return p, gp
@@ -244,7 +244,7 @@ def gold_standard_bases(x, p_type, grad=False):
         max_order = 2
         n_bases = 10
         p = empty((n_pts, n_bases))
-        if grad:
+        if ret_grad:
             gp = full((n_pts, n_bases, n_xdims), 0, dtype='float64')
         if p_type == 'power':
             p[:, 0] = full(n_pts, 1, dtype='float64')
@@ -257,7 +257,7 @@ def gold_standard_bases(x, p_type, grad=False):
             p[:, 7] = x[:, 1]**2
             p[:, 8] = x[:, 1] * x[:, 2]
             p[:, 9] = x[:, 2]**2
-            if grad:
+            if ret_grad:
                 gp[:, 1, 0] = 1
                 gp[:, 2, 1] = 1
                 gp[:, 3, 2] = 1
@@ -281,7 +281,7 @@ def gold_standard_bases(x, p_type, grad=False):
             p[:, 7] = (3 * x[:, 1]**2 - 1) / 2
             p[:, 8] = x[:, 1] * x[:, 2]
             p[:, 9] = (3 * x[:, 2]**2 - 1) / 2
-            if grad:
+            if ret_grad:
                 gp[:, 1, 0] = 1
                 gp[:, 2, 1] = 1
                 gp[:, 3, 2] = 1
@@ -305,7 +305,7 @@ def gold_standard_bases(x, p_type, grad=False):
             p[:, 7] = 2 * x[:, 1]**2 - 1
             p[:, 8] = x[:, 1] * x[:, 2]
             p[:, 9] = 2 * x[:, 2]**2 - 1
-            if grad:
+            if ret_grad:
                 gp[:, 1, 0] = 1
                 gp[:, 2, 1] = 1
                 gp[:, 3, 2] = 1
@@ -329,7 +329,7 @@ def gold_standard_bases(x, p_type, grad=False):
             p[:, 7] = (x[:, 1]**2 - 4 * x[:, 1] + 2) / 2
             p[:, 8] = (-x[:, 1] + 1) * (-x[:, 2] + 1)
             p[:, 9] = (x[:, 2]**2 - 4 * x[:, 2] + 2) / 2
-            if grad:
+            if ret_grad:
                 gp[:, 1, 0] = -1
                 gp[:, 2, 1] = -1
                 gp[:, 3, 2] = -1
@@ -353,7 +353,7 @@ def gold_standard_bases(x, p_type, grad=False):
             p[:, 7] = x[:, 1]**2 - 1
             p[:, 8] = x[:, 1] * x[:, 2]
             p[:, 9] = x[:, 2]**2 - 1
-            if grad:
+            if ret_grad:
                 gp[:, 1, 0] = 1
                 gp[:, 2, 1] = 1
                 gp[:, 3, 2] = 1
@@ -366,7 +366,7 @@ def gold_standard_bases(x, p_type, grad=False):
                 gp[:, 8, 1] = x[:, 2]
                 gp[:, 8, 2] = x[:, 1]
                 gp[:, 9, 2] = 2 * x[:, 2]
-        if not grad:
+        if not ret_grad:
             return p
         else:
             return p, gp

@@ -168,11 +168,11 @@ class BasisSet(ABC):
         if not hasattr(self, 'n_bases'):
             raise TypeError('Subclasses of BasisSet must define self.n_bases.')
     @abstractmethod
-    def __call__(self, x, grad=False):
+    def __call__(self, x, ret_grad=False):
         """
         With the independent variable `x` conforming to shape (n_pts, n_xdims), return the value
         of the bases evaluated at `x` with shape (n_pts, n_bases), and depending on the optional
-        argument `grad` also return the gradient with shape (n_pts, n_xdims, n_bases).
+        argument `ret_grad` also return the gradient with shape (n_pts, n_xdims, n_bases).
         """
         pass
 
@@ -180,11 +180,11 @@ class Const(BasisSet):
     def __init__(self, n_xdims):
         self.n_xdims = n_xdims
         self.n_bases = 1
-    def __call__(self, x, grad=False):
+    def __call__(self, x, ret_grad=False):
         x_array = atleast_1d(x).reshape((-1, self.n_xdims))
         n_pts = x_array.shape[0]
         H = full((n_pts, 1), 1, dtype="float64")
-        if not grad:
+        if not ret_grad:
             return H
         else:
             Hg = full((n_pts, self.n_xdims, self.n_bases), 0, dtype="float14")
@@ -198,11 +198,11 @@ class FirstOrd(BasisSet):
         elif isinstance(active, ndarray) and active.shape == (self.n_xdims,):
             self.inc = active
         self.n_bases = self.inc.sum()
-    def __call__(self, x, grad=False):
+    def __call__(self, x, ret_grad=False):
         x_array = atleast_1d(x).reshape((-1, self.n_xdims))
         n_pts = x_array.shape[0]
         H = x_array[:, self.inc]
-        if not grad:
+        if not ret_grad:
             return H
         else:
             Hg = full((n_pts, self.n_xdims, self.n_bases), 0, dtype="float64")
@@ -218,11 +218,11 @@ class MOrderUnivar(BasisSet):
         elif isinstance(active, ndarray) and active.shape == (self.n_xdims,):
             self.inc = active
         self.n_bases = self.inc.sum()
-    def __call__(self, x, grad=False):
+    def __call__(self, x, ret_grad=False):
         x_array = atleast_1d(x).reshape((-1, self.n_xdims))
         n_pts = x_array.shape[0]
         H = x_array[:, self.inc]**self.order
-        if not grad:
+        if not ret_grad:
             return H
         else:
             Hg = full((n_pts, self.n_xdims, self.n_bases), 0, dtype="float64")
@@ -244,7 +244,7 @@ class SecondOrd(BasisSet):
         elif isinstance(active, ndarray) and active.shape == (self.n_xdims, self.n_xdims):
             self.inc = active
         self.n_bases = self.inc.sum()
-    def __call__(self, x, grad=False):
+    def __call__(self, x, ret_grad=False):
         x_array = atleast_1d(x).reshape((-1, self.n_xdims))
         n_pts = x_array.shape[0]
         H = empty((n_pts, self.n_bases))
@@ -256,7 +256,7 @@ class SecondOrd(BasisSet):
                     # Evaluate the quadratic:
                     H[:, iH] = x_array[:, i] * x_array[:, j]
                     iH += 1
-        if not grad:
+        if not ret_grad:
             return H
         else:
             Hg = full((n_pts, self.n_xdims, self.n_bases), 0, dtype="float64")
@@ -274,12 +274,12 @@ class BasesList(BasisSet):
         self.n_xdims = n_xdims
         self.list_of_sets = list_of_basis_sets
         self.n_bases = sum([el.n_bases for el in self.list_of_sets])
-    def __call__(self, x, grad=False):
+    def __call__(self, x, ret_grad=False):
         x_array = atleast_1d(x).reshape((-1, self.n_xdims))
         n_pts = x_array.shape[0]
         H = empty((n_pts, self.n_bases))
         i = 0
-        if not grad:
+        if not ret_grad:
             for el in self.list_of_sets:
                 H[:, i:(i + el.n_bases)] = el(x_array)
                 i += el.n_bases
@@ -287,7 +287,7 @@ class BasesList(BasisSet):
         else:
             Hg = empty((n_pts, self.n_xdims, self.n_bases), dtype="float64")
             for el in self.list_of_sets:
-                H[:, i:(i + el.n_bases)], Hg[:, :, i:(i + el.n_bases)] = el(x_array, grad=grad)
+                H[:, i:(i + el.n_bases)], Hg[:, :, i:(i + el.n_bases)] = el(x_array, ret_grad=ret_grad)
             return H, Hg
 
 class PolySet(BasisSet):
@@ -416,7 +416,7 @@ class PolySet(BasisSet):
         else:
             return poly_set, grad_set, j_poly
 
-    def __call__(self, x, grad=False):
+    def __call__(self, x, ret_grad=False):
         x_sca = atleast_1d(x).reshape((-1, self.n_xdims))
         n_pts = x_sca.shape[0]
         max_power = max(self.powers)
@@ -432,33 +432,33 @@ class PolySet(BasisSet):
        # calculate the uni-variate polynomials, take their products & pack those into the output
         polys_uni = empty((max_power + 1, n_pts, self.n_xdims))
         polys_uni[0] = 1
-        if grad:
+        if ret_grad:
             grads_uni = empty((max_power + 1, n_pts, self.n_xdims))
             grads_uni[0] = 0
         if max_power >= 1:
             polys_uni[1] = x_sca if self.ptype != 'Laguerre' else 1 - x_sca
-            if grad:
+            if ret_grad:
                 grads_uni[1] = 1 if self.ptype != 'Laguerre' else -1
             for n in range(1, max_power):
-                if not grad:
+                if not ret_grad:
                     polys_uni[n + 1] = self.recurse_upoly(x_sca, n, polys_uni[n], polys_uni[n - 1])
                 else:
                     polys_uni[n + 1], grads_uni[n + 1] = self.recurse_upoly(x_sca, n,
                                                                     polys_uni[n], polys_uni[n - 1],
                                                                     grads_uni[n], grads_uni[n - 1])
-        if grad:
+        if ret_grad:
             grads_uni /= scaling
             grad_set = full((n_pts, self.n_bases, self.n_xdims), 0, dtype='float64')  # or append on poly_set
         poly_set = empty((n_pts, self.n_bases))
         j = 0
         for m in self.powers:
             # Add the product of all combinations of `polys_uni` of order `m` to `poly_set`
-            if grad is False:
+            if ret_grad is False:
                 poly_set, j = PolySet.multi_polys(poly_set, m, j, polys_uni)
             else:
                 poly_set, grad_set, j = PolySet.multi_polys(poly_set, m, j, polys_uni,
                                                             grad_set, grads_uni)
-        if grad is False:
+        if ret_grad is False:
             return poly_set
         else:
             return poly_set, grad_set

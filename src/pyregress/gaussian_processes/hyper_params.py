@@ -32,14 +32,14 @@ class HyperPrior:
         """
         self.guess = guess
     
-    def __call__(self, x, grad=None):
+    def __call__(self, x, ret_grad=None):
         """
         Arguments:
             x - current hyper-parameter value,
-            grad - bool (optional), when grad is True also return dlnpdf.
+            ret_grad - bool (optional), when ret_grad is True also return dlnpdf.
         Returns:
             lnprior - ln of hyper-parameter prior,
-            dlnprior - derivative of lnprior (optional, grad=True).
+            dlnprior - derivative of lnprior (optional, ret_grad=True).
         """
         pass
 
@@ -51,10 +51,10 @@ class Constant(HyperPrior):
        f = const.
     (A degenerate normal in the case that σ approaches infinity.)
     """
-    def __call__(self, x=None, grad=False, **kwargs):
+    def __call__(self, x=None, ret_grad=False, **kwargs):
         if not x:
             x = self.guess
-        if not grad:
+        if not ret_grad:
             return 1
         else:
             return 1, 0
@@ -70,11 +70,11 @@ class Normal(HyperPrior):
         self.μ = μ
         self.σ = σ
 
-    def __call__(self, x=None, grad=False, **kwargs):
+    def __call__(self, x=None, ret_grad=False, **kwargs):
         if not x:
             x = self.guess
         lnpdf = -log(self.σ) - 0.5*log(2*π) - 0.5 * ((x - self.μ) / self.σ)**2
-        if not grad:
+        if not ret_grad:
             return lnpdf
         else:
             dlnpdf = -(x-self.μ) / self.σ**2
@@ -95,13 +95,13 @@ class Jeffreys(HyperPrior):
         trguess = self.trans(guess)
         self.transformed = Constant(guess=trguess, **kwargs)
 
-    def __call__(self, x=None, grad=False, trans=False):
+    def __call__(self, x=None, ret_grad=False, trans=False):
         if x is None:
             x = self.guess
         if trans:
-            return self.transformed(x=x, grad=grad, trans=False)
+            return self.transformed(x=x, ret_grad=ret_grad, trans=False)
         lnpdf = -log(x)
-        if not grad:
+        if not ret_grad:
             return lnpdf
         else:
             dlnpdf = -1 / x
@@ -145,14 +145,14 @@ class LogNormal(HyperPrior):
                 self.guess = exp(trguess)
             self.transformed = Normal(guess=trguess, μ=self.μ, σ=self.σ)
 
-    def __call__(self, x=None, grad=False, trans=False):
+    def __call__(self, x=None, ret_grad=False, trans=False):
         if not x:
             x = self.guess
         if trans:
-            return self.transformed(x=x, grad=grad, trans=False)
+            return self.transformed(x=x, ret_grad=ret_grad, trans=False)
         lnpdf = (-log(self.σ * x) - 0.5 * log(2 * π) -
                  0.5 * ((log(x) - self.μ) / self.σ)**2)
-        if not grad: 
+        if not ret_grad: 
             return lnpdf
         else:
             dlnpdf = -1 / x - (log(x) - self.μ) / (self.σ**2 * x)
@@ -171,12 +171,12 @@ class Gamma(HyperPrior):
         self.θ = std**2 / mean
         self.denomenator = self.k * log(self.θ) + log(gamma(self.k))
 
-    def __call__(self, x=None, grad=False):
+    def __call__(self, x=None, ret_grad=False):
         if x is None:
             x = self.guess
         k = self.k - 1.
         lnpdf = k * log(x) - x / self.θ - self.denomenator
-        if not grad:
+        if not ret_grad:
             return lnpdf
         else:
             dlnpdf = k / x - 1 / self.θ
@@ -198,14 +198,14 @@ class Uniform(HyperPrior):
         trguess = self.trans(guess)
         self.transformed = Normal(guess=trguess, μ=0, σ=1, **kwargs)
 
-    def __call__(self, x=None, grad=False, trans=False):
+    def __call__(self, x=None, ret_grad=False, trans=False):
         if not x:
             x = self.guess
         if trans:
-            return self.transformed(x=x, grad=grad, trans=False)
+            return self.transformed(x=x, ret_grad=ret_grad, trans=False)
         y = x / self.c
         lnpdf = -self.lnnorm if 0 < y < 1 else 0
-        if not grad:
+        if not ret_grad:
             return lnpdf
         else:
             dlnpdf = 0
@@ -224,14 +224,14 @@ class Beta(HyperPrior):
         self.c = c
         self.lnnorm = log(c * beta(α, β))
 
-    def __call__(self, x=None, grad=False):
+    def __call__(self, x=None, ret_grad=False):
         if not x:
             x = self.guess
         y = x / self.c
         a = self.α - 1
         b = self.β - 1
         lnpdf = (a * log(y) + b * log(1-y)) - self.lnnorm
-        if not grad:
+        if not ret_grad:
             return lnpdf
         else:
             dlnpdf = (a / y - b / (1- y)) / self.c
@@ -251,7 +251,7 @@ class Bounded(HyperPrior):
         self.high = high_b
         self.guess = guess
 
-    def __call__(self, x=None, grad=False):
+    def __call__(self, x=None, ret_grad=False):
         if x is None:
             x = self.guess
 
@@ -261,7 +261,7 @@ class Bounded(HyperPrior):
         else:
             val = -inf
             
-        if not grad:
+        if not ret_grad:
             return array([val])
         else:
             return array([val]), array([0.0])
