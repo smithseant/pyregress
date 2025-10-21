@@ -3,7 +3,7 @@ __all__ = ['OrdLinRegress', 'BasisSet', 'Const', 'FirstOrd', 'MOrderUnivar', 'Se
            'PiecewiseLinear',
            'GPI', 'radius', 'Kernel', 'Noise', 'SquareExp', 'GammaExp', 'RatQuad',
            'HyperPrior', 'Constant', 'Normal', 'Jeffreys', 'LogNormal',
-           'Gamma', 'Uniform', 'Beta', 'Bounded',
+           'Gamma', 'Uniform', 'Rectangular', 'Beta', 'JointlyRobust',
            'BaseTransform', 'Logarithm', 'Logit', 'Probit',# 'ProbitBeta',
            'InputError']
 

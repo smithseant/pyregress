@@ -206,7 +206,7 @@ class GPI:
             self.KinvZd = self.solve(self.LKdd, self.Zd_prime - self.Hd @ self.μβ)
         return self
 
-    def posterior_φ(self, φ, ret_grad=True, trans=True):
+    def posterior_φ(self, φ, ret_grad=True, trans=True):  # TODO: After testing remove the `trans` option from all of the method in `GPI` and from `Kernel`.
         """
         Negative log of the hyper-parameter posterior & its gradient.
 
