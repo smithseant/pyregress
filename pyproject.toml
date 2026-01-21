@@ -1,6 +1,7 @@
 [project]
 name = "pyregress"
 version = "0.9.5"
+requires-python = ">=3.11, <3.14"
 dependencies = [
     "numpy",
     "scipy",
@@ -16,15 +17,5 @@ dev = [
 ]
 
 [build-system]
-requires = ["setuptools>=64", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-package-dir = {"" = "src"}
-
-[tool.setuptools.packages.find]
-# All the following settings are optional:
-where = ["src"]
-# include = ["pyregress*"]  # ["*"] by default
-# exclude = ["tests*"]  # empty by default
-# namespaces = false  # true by default
+requires = ["uv_build>=0.9.5"]
+build-backend = "uv_build"

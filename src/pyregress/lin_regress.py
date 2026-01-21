@@ -471,8 +471,6 @@ if __name__ == '__main__':
     rand = my_rng.random
     std_norm = my_rng.standard_normal
     from numpy.random import rand, randn
-    # from matplotlib import use as mpl_use
-    # mpl_use('Qt5Agg')
     from matplotlib import cm, pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
 

@@ -141,7 +141,7 @@ class Probit(BaseTransform):
         else:
             return sqrt(2) * erfinv(2 * y - 1), (sqrt(2 * π) * exp(erfinv(2 * y - 1)**2)).reshape((-1, 1)) * grad_y
     def inv_transform(self, z, grad_z=None, hess_z=None):
-        y = 0.5 * (erf(z / sqrt(2)) + 1.0)
+        y = 0.5 * (erf(z / sqrt(2)) + 1)
         if grad_z is None:
             return y
         fz = exp(-0.5 * z**2) / sqrt(2 * π)

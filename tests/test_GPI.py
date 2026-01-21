@@ -67,7 +67,7 @@ def test_GPI(example_type, scale_type, trans_ret, mean_flags, basis_type, ret_st
     if prior_flag is None:
         f_mean = None
     bases = {None:None, "planar":PolySet(n_xdims, 1)}[basis_type]
-    K = Noise(φ['σd']) + SquareExp(w=φ['w'], l=φ['ℓ'])
+    K = Noise(φ['σd']) + SquareExp(σ=φ['σ'], l=φ['ℓ'])
 
     # Retrieve the gold standard for these options & setup for the routine being tested
     test_opts = (Xd, Yd, Xi, φ, scale, ret_std, trans_type, untrans,

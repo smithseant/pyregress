@@ -47,8 +47,8 @@ def example_1D(seed=42, nd=8, ni=300, plot=False):
     Hdβ = poly(Xd)
     Hpβ = poly(Xp)
     Xboth = array([el for el in Xd] + [el for el in Xp]).reshape((-1, 1))
-    σd, w, ℓ = 0.02, 0.1, array([3])
-    Kboth = w**2 * exp(-cdist(Xboth, Xboth, 'seuclidean', V=ℓ**2)**2 / 2)
+    σd, σ, ℓ = 0.02, 0.1, array([3])
+    Kboth = σ**2 * exp(-cdist(Xboth, Xboth, 'seuclidean', V=ℓ**2)**2 / 2)
     Λ, V = eigh(Kboth)
     Λ = Λ.clip(min=0)
     gp_both = (V * sqrt(Λ)) @ std_norm((Xboth.shape[0], 1))
@@ -62,7 +62,7 @@ def example_1D(seed=42, nd=8, ni=300, plot=False):
         gp_p = gp_both[nd:]
         Zp = μZp + Hpβ + gp_p
         Yp = (1 + erf(Zp / sqrt(2))) / 2
-        myGPI = GPI(Xd, Yd, Noise(w=σd) + SquareExp(w=w, l=ℓ),
+        myGPI = GPI(Xd, Yd, Noise(σ=σd) + SquareExp(σ=σ, l=ℓ),
                     Ymean=prior_mean, explicit_basis=[0, 1, 2], transform=Probit())
         Yp_post, σp_post = myGPI(Xp, infer_std=True, untransform=True)
 
@@ -101,7 +101,7 @@ def example_1D(seed=42, nd=8, ni=300, plot=False):
 
         plt.savefig('example_1D.pdf')
 
-    return Xd, Yd, Xp, {'σd':σd, 'w':w, 'ℓ':ℓ}, prior_mean
+    return Xd, Yd, Xp, {'σd':σd, 'σ':σ, 'ℓ':ℓ}, prior_mean
 
 
 class MultiDimFunc:
@@ -152,8 +152,8 @@ def example_nD(seed=42, dims=2, ni=(34, 35), log2_n_pts=3, plot=False):
         Xboth = array([el for el in Xd] + [[el1, el2] for el1, el2 in iter_both_dims])
     else:
         Xboth = Xd
-    σd, w, ℓ = 0.02, 0.1, ln_norm(-1.2, 0.5, dims)
-    Kboth = w**2 * exp(-cdist(Xboth, Xboth, 'seuclidean', V=ℓ**2)**2 / 2)  # Consider using rational quadratic
+    σd, σ, ℓ = 0.02, 0.1, ln_norm(-1.2, 0.5, dims)
+    Kboth = σ**2 * exp(-cdist(Xboth, Xboth, 'seuclidean', V=ℓ**2)**2 / 2)  # Consider using rational quadratic
     Λ, V = eigh(Kboth)
     Λ = Λ.clip(min=0)
     gp_both = (V * sqrt(Λ)) @ std_norm((Xboth.shape[0], 1))
@@ -165,7 +165,7 @@ def example_nD(seed=42, dims=2, ni=(34, 35), log2_n_pts=3, plot=False):
         gp_p = gp_both[nd:]
         Zp = (μZp + Hpβ + gp_p).reshape(X1p.shape)
         Yp = 1 / (exp(-Zp) + 1)
-        myGPI = GPI(Xd, Yd, Noise(w=σd) + SquareExp(w=w, l=ℓ),
+        myGPI = GPI(Xd, Yd, Noise(σ=σd) + SquareExp(σ=σ, l=ℓ),
                     explicit_basis=[0, 1], transform=Logit())
         Yp_post, σp_post = myGPI(Xp, infer_std=True, untransform=True)
         Yp_post = Yp_post.reshape(X1p.shape)
@@ -191,7 +191,7 @@ def example_nD(seed=42, dims=2, ni=(34, 35), log2_n_pts=3, plot=False):
 
         plt.savefig('example_2D.pdf')
 
-    return Xd, Yd, Xp, {'σd':σd, 'w':w, 'ℓ':ℓ}, my_yprior
+    return Xd, Yd, Xp, {'σd':σd, 'σ':σ, 'ℓ':ℓ}, my_yprior
 
 def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
                       f_mean, exclude_mean, basis_type, ret_grad):
@@ -229,12 +229,12 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
     # Each combination of input options:
     if not trans_type and not f_mean and not basis_type and not ret_std and not ret_grad:
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = cdist(Xd, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rid = cdist(Xi, Xd, 'seuclidean', V=(s * ℓ)**2)
-        Kdd = w**2 * exp(-0.5 * Rdd**2)
+        Kdd = σ**2 * exp(-0.5 * Rdd**2)
         Kdd[ind_d, ind_d] += σd**2
-        Kid = w**2 * exp(-0.5 * Rid**2)
+        Kid = σ**2 * exp(-0.5 * Rid**2)
         # Inference
         μYi = (Kid @ solve(Kdd, Yd))
         return μYi.reshape(-1)
@@ -242,12 +242,12 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         # Move to the transformed space
         Zd = trans(Yd)
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = cdist(Xd, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rid = cdist(Xi, Xd, 'seuclidean', V=(s * ℓ)**2)
-        Kdd = w**2 * exp(-0.5 * Rdd**2)
+        Kdd = σ**2 * exp(-0.5 * Rdd**2)
         Kdd[ind_d, ind_d] += σd**2
-        Kid = w**2 * exp(-0.5 * Rid**2)
+        Kid = σ**2 * exp(-0.5 * Rid**2)
         # Inference
         μZi = (Kid @ solve(Kdd, Zd))
         if untrans is False:
@@ -261,12 +261,12 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         μYd_prior = f_mean(Xd)
         μYi_prior = f_mean(Xi)
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = cdist(Xd, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rid = cdist(Xi, Xd, 'seuclidean', V=(s * ℓ)**2)
-        Kdd = w**2 * exp(-0.5 * Rdd**2)
+        Kdd = σ**2 * exp(-0.5 * Rdd**2)
         Kdd[ind_d, ind_d] += σd**2
-        Kid = w**2 * exp(-0.5 * Rid**2)
+        Kid = σ**2 * exp(-0.5 * Rid**2)
         # Inference
         if exclude_mean is False:
             μYi = (μYi_prior + Kid @ solve(Kdd, Yd - μYd_prior))
@@ -282,12 +282,12 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         μZd_prior = trans(μYd_prior)
         μZi_prior = trans(μYi_prior)
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = cdist(Xd, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rid = cdist(Xi, Xd, 'seuclidean', V=(s * ℓ)**2)
-        Kdd = w**2 * exp(-0.5 * Rdd**2)
+        Kdd = σ**2 * exp(-0.5 * Rdd**2)
         Kdd[ind_d, ind_d] += σd**2
-        Kid = w**2 * exp(-0.5 * Rid**2)
+        Kid = σ**2 * exp(-0.5 * Rid**2)
         # Inference
         if exclude_mean is False:
             μZi = (μZi_prior + Kid @ solve(Kdd, Zd - μZd_prior))
@@ -309,12 +309,12 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         Hi[:, 0] = 1
         Hi[:, 1:] = Xi
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = cdist(Xd, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rid = cdist(Xi, Xd, 'seuclidean', V=(s * ℓ)**2)
-        Kdd = w**2 * exp(-0.5 * Rdd**2)
+        Kdd = σ**2 * exp(-0.5 * Rdd**2)
         Kdd[ind_d, ind_d] += σd**2
-        Kid = w**2 * exp(-0.5 * Rid**2)
+        Kid = σ**2 * exp(-0.5 * Rid**2)
         # Inference
         Σβ_inv = Hd.T @ solve(Kdd, Hd)
         μβ = solve(Σβ_inv, Hd.T @ solve(Kdd, Yd))
@@ -331,12 +331,12 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         Hi[:, 0] = 1
         Hi[:, 1:] = Xi
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = cdist(Xd, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rid = cdist(Xi, Xd, 'seuclidean', V=(s * ℓ)**2)
-        Kdd = w**2 * exp(-0.5 * Rdd**2)
+        Kdd = σ**2 * exp(-0.5 * Rdd**2)
         Kdd[ind_d, ind_d] += σd**2
-        Kid = w**2 * exp(-0.5 * Rid**2)
+        Kid = σ**2 * exp(-0.5 * Rid**2)
         # Inference
         Σβ_inv = Hd.T @ solve(Kdd, Hd)
         μβ = solve(Σβ_inv, Hd.T @ solve(Kdd, Zd))
@@ -360,12 +360,12 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         Hi[:, 0] = 1
         Hi[:, 1:] = Xi
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = cdist(Xd, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rid = cdist(Xi, Xd, 'seuclidean', V=(s * ℓ)**2)
-        Kdd = w**2 * exp(-0.5 * Rdd**2)
+        Kdd = σ**2 * exp(-0.5 * Rdd**2)
         Kdd[ind_d, ind_d] += σd**2
-        Kid = w**2 * exp(-0.5 * Rid**2)
+        Kid = σ**2 * exp(-0.5 * Rid**2)
         # Inference
         Σβ_inv = Hd.T @ solve(Kdd, Hd)
         μβ = solve(Σβ_inv, Hd.T @ solve(Kdd, Yd - μYd_prior))
@@ -390,12 +390,12 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         Hi[:, 0] = 1
         Hi[:, 1:] = Xi
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = cdist(Xd, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rid = cdist(Xi, Xd, 'seuclidean', V=(s * ℓ)**2)
-        Kdd = w**2 * exp(-0.5 * Rdd**2)
+        Kdd = σ**2 * exp(-0.5 * Rdd**2)
         Kdd[ind_d, ind_d] += σd**2
-        Kid = w**2 * exp(-0.5 * Rid**2)
+        Kid = σ**2 * exp(-0.5 * Rid**2)
         # Inference
         Σβ_inv = Hd.T @ solve(Kdd, Hd)
         μβ = solve(Σβ_inv, Hd.T @ solve(Kdd, Zd - μZd_prior))
@@ -412,14 +412,14 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         # Note: cannot untransform when (f_mean or basis_type) and exclude_mean
     elif not trans_type and not f_mean and not basis_type and ret_std and not ret_grad:
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = cdist(Xd, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rid = cdist(Xi, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rii = cdist(Xi, Xi, 'seuclidean', V=(s * ℓ)**2)
-        Kdd = w**2 * exp(-0.5 * Rdd**2)
+        Kdd = σ**2 * exp(-0.5 * Rdd**2)
         Kdd[ind_d, ind_d] += σd**2
-        Kid = w**2 * exp(-0.5 * Rid**2)
-        Kii = w**2 * exp(-0.5 * Rii**2)
+        Kid = σ**2 * exp(-0.5 * Rid**2)
+        Kii = σ**2 * exp(-0.5 * Rii**2)
         # Inference
         μYi = (Kid @ solve(Kdd, Yd))
         Σii = Kii - Kid @ solve(Kdd, Kid.T)
@@ -433,14 +433,14 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         # Move to the transformed space
         Zd = trans(Yd)
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = cdist(Xd, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rid = cdist(Xi, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rii = cdist(Xi, Xi, 'seuclidean', V=(s * ℓ)**2)
-        Kdd = w**2 * exp(-0.5 * Rdd**2)
+        Kdd = σ**2 * exp(-0.5 * Rdd**2)
         Kdd[ind_d, ind_d] += σd**2
-        Kid = w**2 * exp(-0.5 * Rid**2)
-        Kii = w**2 * exp(-0.5 * Rii**2)
+        Kid = σ**2 * exp(-0.5 * Rid**2)
+        Kii = σ**2 * exp(-0.5 * Rii**2)
         # Inference
         μZi = (Kid @ solve(Kdd, Zd))
         Σii = Kii - Kid @ solve(Kdd, Kid.T)
@@ -464,14 +464,14 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         μYd_prior = f_mean(Xd)
         μYi_prior = f_mean(Xi)
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = cdist(Xd, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rid = cdist(Xi, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rii = cdist(Xi, Xi, 'seuclidean', V=(s * ℓ)**2)
-        Kdd = w**2 * exp(-0.5 * Rdd**2)
+        Kdd = σ**2 * exp(-0.5 * Rdd**2)
         Kdd[ind_d, ind_d] += σd**2
-        Kid = w**2 * exp(-0.5 * Rid**2)
-        Kii = w**2 * exp(-0.5 * Rii**2)
+        Kid = σ**2 * exp(-0.5 * Rid**2)
+        Kii = σ**2 * exp(-0.5 * Rii**2)
         # Inference
         if exclude_mean is False:
             μYi = (μYi_prior + Kid @ solve(Kdd, Yd - μYd_prior))
@@ -493,14 +493,14 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         μZd_prior = trans(μYd_prior)
         μZi_prior = trans(μYi_prior)
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = cdist(Xd, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rid = cdist(Xi, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rii = cdist(Xi, Xi, 'seuclidean', V=(s * ℓ)**2)
-        Kdd = w**2 * exp(-0.5 * Rdd**2)
+        Kdd = σ**2 * exp(-0.5 * Rdd**2)
         Kdd[ind_d, ind_d] += σd**2
-        Kid = w**2 * exp(-0.5 * Rid**2)
-        Kii = w**2 * exp(-0.5 * Rii**2)
+        Kid = σ**2 * exp(-0.5 * Rid**2)
+        Kii = σ**2 * exp(-0.5 * Rii**2)
         # Inference
         if exclude_mean is False:
             μZi = (μZi_prior + Kid @ solve(Kdd, Zd - μZd_prior))
@@ -532,14 +532,14 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         Hi[:, 0] = 1
         Hi[:, 1:] = Xi
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = cdist(Xd, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rid = cdist(Xi, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rii = cdist(Xi, Xi, 'seuclidean', V=(s * ℓ)**2)
-        Kdd = w**2 * exp(-0.5 * Rdd**2)
+        Kdd = σ**2 * exp(-0.5 * Rdd**2)
         Kdd[ind_d, ind_d] += σd**2
-        Kid = w**2 * exp(-0.5 * Rid**2)
-        Kii = w**2 * exp(-0.5 * Rii**2)
+        Kid = σ**2 * exp(-0.5 * Rid**2)
+        Kii = σ**2 * exp(-0.5 * Rii**2)
         # Inference
         Σβ_inv = Hd.T @ solve(Kdd, Hd)
         μβ = solve(Σβ_inv, Hd.T @ solve(Kdd, Yd))
@@ -563,14 +563,14 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         Hi[:, 0] = 1
         Hi[:, 1:] = Xi
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = cdist(Xd, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rid = cdist(Xi, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rii = cdist(Xi, Xi, 'seuclidean', V=(s * ℓ)**2)
-        Kdd = w**2 * exp(-0.5 * Rdd**2)
+        Kdd = σ**2 * exp(-0.5 * Rdd**2)
         Kdd[ind_d, ind_d] += σd**2
-        Kid = w**2 * exp(-0.5 * Rid**2)
-        Kii = w**2 * exp(-0.5 * Rii**2)
+        Kid = σ**2 * exp(-0.5 * Rid**2)
+        Kii = σ**2 * exp(-0.5 * Rii**2)
         # Inference
         Σβ_inv = Hd.T @ solve(Kdd, Hd)
         μβ = solve(Σβ_inv, Hd.T @ solve(Kdd, Zd))
@@ -605,14 +605,14 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         Hi[:, 0] = 1
         Hi[:, 1:] = Xi
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = cdist(Xd, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rid = cdist(Xi, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rii = cdist(Xi, Xi, 'seuclidean', V=(s * ℓ)**2)
-        Kdd = w**2 * exp(-0.5 * Rdd**2)
+        Kdd = σ**2 * exp(-0.5 * Rdd**2)
         Kdd[ind_d, ind_d] += σd**2
-        Kid = w**2 * exp(-0.5 * Rid**2)
-        Kii = w**2 * exp(-0.5 * Rii**2)
+        Kid = σ**2 * exp(-0.5 * Rid**2)
+        Kii = σ**2 * exp(-0.5 * Rii**2)
         # Inference
         Σβ_inv = Hd.T @ solve(Kdd, Hd)
         μβ = solve(Σβ_inv, Hd.T @ solve(Kdd, Yd - μYd_prior))
@@ -644,14 +644,14 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         Hi[:, 0] = 1
         Hi[:, 1:] = Xi
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = cdist(Xd, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rid = cdist(Xi, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rii = cdist(Xi, Xi, 'seuclidean', V=(s * ℓ)**2)
-        Kdd = w**2 * exp(-0.5 * Rdd**2)
+        Kdd = σ**2 * exp(-0.5 * Rdd**2)
         Kdd[ind_d, ind_d] += σd**2
-        Kid = w**2 * exp(-0.5 * Rid**2)
-        Kii = w**2 * exp(-0.5 * Rii**2)
+        Kid = σ**2 * exp(-0.5 * Rid**2)
+        Kii = σ**2 * exp(-0.5 * Rii**2)
         # Inference
         Σβ_inv = Hd.T @ solve(Kdd, Hd)
         μβ = solve(Σβ_inv, Hd.T @ solve(Kdd, Zd - μZd_prior))
@@ -679,14 +679,14 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
             # Note: cannot untransform when ret_std == "covar"
     elif not trans_type and not f_mean and not basis_type and not ret_std and ret_grad:
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = radius(Xd,  Xd, s)
         Rid = radius(Xi, Xd, s)  # will be use repeatedly for Y & each gradient direction
         Rii = radius(Xi, Xi, s)  # will be use repeatedly for Y & each gradient direction
-        Kdd = w**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
+        Kdd = σ**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
         Kdd[ind_d, ind_d] += σd**2
         Kid = empty((ni * (1 + n_xdims), nd))
-        Kid[:ni] = w**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
+        Kid[:ni] = σ**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kid[lo:hi] = -Rid[:, :, k] / (s[k] * ℓ[k]**2) * Kid[:ni]
@@ -699,14 +699,14 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         # Move to the transformed space
         Zd = trans(Yd)
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = radius(Xd,  Xd, s)
         Rid = radius(Xi, Xd, s)  # will be use repeatedly for Y & each gradient direction
         Rii = radius(Xi, Xi, s)  # will be use repeatedly for Y & each gradient direction
-        Kdd = w**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
+        Kdd = σ**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
         Kdd[ind_d, ind_d] += σd**2
         Kid = empty((ni * (1 + n_xdims), nd))
-        Kid[:ni] = w**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
+        Kid[:ni] = σ**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kid[lo:hi] = -Rid[:, :, k] / (s[k] * ℓ[k]**2) * Kid[:ni]
@@ -725,14 +725,14 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         μYd_prior = f_mean(Xd)
         μYi_prior, μYg_prior = f_mean(Xi, ret_grad=True)
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = radius(Xd,  Xd, s)
         Rid = radius(Xi, Xd, s)  # will be use repeatedly for Y & each gradient direction
         Rii = radius(Xi, Xi, s)  # will be use repeatedly for Y & each gradient direction
-        Kdd = w**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
+        Kdd = σ**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
         Kdd[ind_d, ind_d] += σd**2
         Kid = empty((ni * (1 + n_xdims), nd))
-        Kid[:ni] = w**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
+        Kid[:ni] = σ**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kid[lo:hi] = -Rid[:, :, k] / (s[k] * ℓ[k]**2) * Kid[:ni]
@@ -754,14 +754,14 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         μZd_prior = trans(μYd_prior)
         μZi_prior, μZg_prior = trans(μYi_prior, μYg_prior)
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = radius(Xd,  Xd, s)
         Rid = radius(Xi, Xd, s)  # will be use repeatedly for Y & each gradient direction
         Rii = radius(Xi, Xi, s)  # will be use repeatedly for Y & each gradient direction
-        Kdd = w**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
+        Kdd = σ**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
         Kdd[ind_d, ind_d] += σd**2
         Kid = empty((ni * (1 + n_xdims), nd))
-        Kid[:ni] = w**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
+        Kid[:ni] = σ**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kid[lo:hi] = -Rid[:, :, k] / (s[k] * ℓ[k]**2) * Kid[:ni]
@@ -793,14 +793,14 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         for i in range(n_xdims):
             Hg[:, i, i + 1] = 1
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = radius(Xd,  Xd, s)
         Rid = radius(Xi, Xd, s)  # will be use repeatedly for Y & each gradient direction
         Rii = radius(Xi, Xi, s)  # will be use repeatedly for Y & each gradient direction
-        Kdd = w**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
+        Kdd = σ**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
         Kdd[ind_d, ind_d] += σd**2
         Kid = empty((ni * (1 + n_xdims), nd))
-        Kid[:ni] = w**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
+        Kid[:ni] = σ**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kid[lo:hi] = -Rid[:, :, k] / (s[k] * ℓ[k]**2) * Kid[:ni]
@@ -830,14 +830,14 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         for i in range(n_xdims):
             Hg[:, i, i + 1] = 1
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = radius(Xd,  Xd, s)
         Rid = radius(Xi, Xd, s)  # will be use repeatedly for Y & each gradient direction
         Rii = radius(Xi, Xi, s)  # will be use repeatedly for Y & each gradient direction
-        Kdd = w**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
+        Kdd = σ**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
         Kdd[ind_d, ind_d] += σd**2
         Kid = empty((ni * (1 + n_xdims), nd))
-        Kid[:ni] = w**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
+        Kid[:ni] = σ**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kid[lo:hi] = -Rid[:, :, k] / (s[k] * ℓ[k]**2) * Kid[:ni]
@@ -874,14 +874,14 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         for i in range(n_xdims):
             Hg[:, i, i + 1] = 1
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = radius(Xd,  Xd, s)
         Rid = radius(Xi, Xd, s)  # will be use repeatedly for Y & each gradient direction
         Rii = radius(Xi, Xi, s)  # will be use repeatedly for Y & each gradient direction
-        Kdd = w**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
+        Kdd = σ**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
         Kdd[ind_d, ind_d] += σd**2
         Kid = empty((ni * (1 + n_xdims), nd))
-        Kid[:ni] = w**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
+        Kid[:ni] = σ**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kid[lo:hi] = -Rid[:, :, k] / (s[k] * ℓ[k]**2) * Kid[:ni]
@@ -916,14 +916,14 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         for i in range(n_xdims):
             Hg[:, i, i + 1] = 1
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = radius(Xd,  Xd, s)
         Rid = radius(Xi, Xd, s)  # will be use repeatedly for Y & each gradient direction
         Rii = radius(Xi, Xi, s)  # will be use repeatedly for Y & each gradient direction
-        Kdd = w**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
+        Kdd = σ**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
         Kdd[ind_d, ind_d] += σd**2
         Kid = empty((ni * (1 + n_xdims), nd))
-        Kid[:ni] = w**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
+        Kid[:ni] = σ**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kid[lo:hi] = -Rid[:, :, k] / (s[k] * ℓ[k]**2) * Kid[:ni]
@@ -946,19 +946,19 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         # Note: cannot untransform when (f_mean or basis_type) and exclude_mean
     elif not trans_type and not f_mean and not basis_type and ret_std and ret_grad:
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = radius(Xd,  Xd, s)
         Rid = radius(Xi, Xd, s)  # will be use repeatedly for Y & each gradient direction
         Rii = radius(Xi, Xi, s)  # will be use repeatedly for Y & each gradient direction
-        Kdd = w**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
+        Kdd = σ**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
         Kdd[ind_d, ind_d] += σd**2
         Kid = empty((ni * (1 + n_xdims), nd))
-        Kid[:ni] = w**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
+        Kid[:ni] = σ**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kid[lo:hi] = -Rid[:, :, k] / (s[k] * ℓ[k]**2) * Kid[:ni]
         Kii = empty((ni * (1 + n_xdims), ni * (1 + n_xdims)))
-        Kii[:ni, :ni] = w**2 * exp(-0.5 * ((Rii / ℓ)**2).sum(axis=2))
+        Kii[:ni, :ni] = σ**2 * exp(-0.5 * ((Rii / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kii[lo:hi, :ni] = -Rii[:, :, k] / (s[k] * ℓ[k]**2) * Kii[:ni, :ni]
@@ -986,19 +986,19 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         # Move to the transformed space
         Zd = trans(Yd)
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = radius(Xd,  Xd, s)
         Rid = radius(Xi, Xd, s)  # will be use repeatedly for Y & each gradient direction
         Rii = radius(Xi, Xi, s)  # will be use repeatedly for Y & each gradient direction
-        Kdd = w**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
+        Kdd = σ**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
         Kdd[ind_d, ind_d] += σd**2
         Kid = empty((ni * (1 + n_xdims), nd))
-        Kid[:ni] = w**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
+        Kid[:ni] = σ**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kid[lo:hi] = -Rid[:, :, k] / (s[k] * ℓ[k]**2) * Kid[:ni]
         Kii = empty((ni * (1 + n_xdims), ni * (1 + n_xdims)))
-        Kii[:ni, :ni] = w**2 * exp(-0.5 * ((Rii / ℓ)**2).sum(axis=2))
+        Kii[:ni, :ni] = σ**2 * exp(-0.5 * ((Rii / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kii[lo:hi, :ni] = -Rii[:, :, k] / (s[k] * ℓ[k]**2) * Kii[:ni, :ni]
@@ -1028,19 +1028,19 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         μYd_prior = f_mean(Xd)
         μYi_prior, μYg_prior = f_mean(Xi, ret_grad=True)
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = radius(Xd,  Xd, s)
         Rid = radius(Xi, Xd, s)  # will be use repeatedly for Y & each gradient direction
         Rii = radius(Xi, Xi, s)  # will be use repeatedly for Y & each gradient direction
-        Kdd = w**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
+        Kdd = σ**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
         Kdd[ind_d, ind_d] += σd**2
         Kid = empty((ni * (1 + n_xdims), nd))
-        Kid[:ni] = w**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
+        Kid[:ni] = σ**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kid[lo:hi] = -Rid[:, :, k] / (s[k] * ℓ[k]**2) * Kid[:ni]
         Kii = empty((ni * (1 + n_xdims), ni * (1 + n_xdims)))
-        Kii[:ni, :ni] = w**2 * exp(-0.5 * ((Rii / ℓ)**2).sum(axis=2))
+        Kii[:ni, :ni] = σ**2 * exp(-0.5 * ((Rii / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kii[lo:hi, :ni] = -Rii[:, :, k] / (s[k] * ℓ[k]**2) * Kii[:ni, :ni]
@@ -1077,19 +1077,19 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         μZd_prior = trans(μYd_prior)
         μZi_prior, μZg_prior = trans(μYi_prior, μYg_prior)
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = radius(Xd,  Xd, s)
         Rid = radius(Xi, Xd, s)  # will be use repeatedly for Y & each gradient direction
         Rii = radius(Xi, Xi, s)  # will be use repeatedly for Y & each gradient direction
-        Kdd = w**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
+        Kdd = σ**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
         Kdd[ind_d, ind_d] += σd**2
         Kid = empty((ni * (1 + n_xdims), nd))
-        Kid[:ni] = w**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
+        Kid[:ni] = σ**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kid[lo:hi] = -Rid[:, :, k] / (s[k] * ℓ[k]**2) * Kid[:ni]
         Kii = empty((ni * (1 + n_xdims), ni * (1 + n_xdims)))
-        Kii[:ni, :ni] = w**2 * exp(-0.5 * ((Rii / ℓ)**2).sum(axis=2))
+        Kii[:ni, :ni] = σ**2 * exp(-0.5 * ((Rii / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kii[lo:hi, :ni] = -Rii[:, :, k] / (s[k] * ℓ[k]**2) * Kii[:ni, :ni]
@@ -1131,19 +1131,19 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         for i in range(n_xdims):
             Hg[:, i, i + 1] = 1
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = radius(Xd,  Xd, s)
         Rid = radius(Xi, Xd, s)  # will be use repeatedly for Y & each gradient direction
         Rii = radius(Xi, Xi, s)  # will be use repeatedly for Y & each gradient direction
-        Kdd = w**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
+        Kdd = σ**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
         Kdd[ind_d, ind_d] += σd**2
         Kid = empty((ni * (1 + n_xdims), nd))
-        Kid[:ni] = w**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
+        Kid[:ni] = σ**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kid[lo:hi] = -Rid[:, :, k] / (s[k] * ℓ[k]**2) * Kid[:ni]
         Kii = empty((ni * (1 + n_xdims), ni * (1 + n_xdims)))
-        Kii[:ni, :ni] = w**2 * exp(-0.5 * ((Rii / ℓ)**2).sum(axis=2))
+        Kii[:ni, :ni] = σ**2 * exp(-0.5 * ((Rii / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kii[lo:hi, :ni] = -Rii[:, :, k] / (s[k] * ℓ[k]**2) * Kii[:ni, :ni]
@@ -1189,19 +1189,19 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         for i in range(n_xdims):
             Hg[:, i, i + 1] = 1
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = radius(Xd,  Xd, s)
         Rid = radius(Xi, Xd, s)  # will be use repeatedly for Y & each gradient direction
         Rii = radius(Xi, Xi, s)  # will be use repeatedly for Y & each gradient direction
-        Kdd = w**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
+        Kdd = σ**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
         Kdd[ind_d, ind_d] += σd**2
         Kid = empty((ni * (1 + n_xdims), nd))
-        Kid[:ni] = w**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
+        Kid[:ni] = σ**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kid[lo:hi] = -Rid[:, :, k] / (s[k] * ℓ[k]**2) * Kid[:ni]
         Kii = empty((ni * (1 + n_xdims), ni * (1 + n_xdims)))
-        Kii[:ni, :ni] = w**2 * exp(-0.5 * ((Rii / ℓ)**2).sum(axis=2))
+        Kii[:ni, :ni] = σ**2 * exp(-0.5 * ((Rii / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kii[lo:hi, :ni] = -Rii[:, :, k] / (s[k] * ℓ[k]**2) * Kii[:ni, :ni]
@@ -1249,19 +1249,19 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         for i in range(n_xdims):
             Hg[:, i, i + 1] = 1
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = radius(Xd,  Xd, s)
         Rid = radius(Xi, Xd, s)  # will be use repeatedly for Y & each gradient direction
         Rii = radius(Xi, Xi, s)  # will be use repeatedly for Y & each gradient direction
-        Kdd = w**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
+        Kdd = σ**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
         Kdd[ind_d, ind_d] += σd**2
         Kid = empty((ni * (1 + n_xdims), nd))
-        Kid[:ni] = w**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
+        Kid[:ni] = σ**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kid[lo:hi] = -Rid[:, :, k] / (s[k] * ℓ[k]**2) * Kid[:ni]
         Kii = empty((ni * (1 + n_xdims), ni * (1 + n_xdims)))
-        Kii[:ni, :ni] = w**2 * exp(-0.5 * ((Rii / ℓ)**2).sum(axis=2))
+        Kii[:ni, :ni] = σ**2 * exp(-0.5 * ((Rii / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kii[lo:hi, :ni] = -Rii[:, :, k] / (s[k] * ℓ[k]**2) * Kii[:ni, :ni]
@@ -1312,19 +1312,19 @@ def gold_standard_GPs(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
         for i in range(n_xdims):
             Hg[:, i, i + 1] = 1
         # Distance & auto-covariance
-        σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+        σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
         Rdd = radius(Xd,  Xd, s)
         Rid = radius(Xi, Xd, s)  # will be use repeatedly for Y & each gradient direction
         Rii = radius(Xi, Xi, s)  # will be use repeatedly for Y & each gradient direction
-        Kdd = w**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
+        Kdd = σ**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
         Kdd[ind_d, ind_d] += σd**2
         Kid = empty((ni * (1 + n_xdims), nd))
-        Kid[:ni] = w**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
+        Kid[:ni] = σ**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kid[lo:hi] = -Rid[:, :, k] / (s[k] * ℓ[k]**2) * Kid[:ni]
         Kii = empty((ni * (1 + n_xdims), ni * (1 + n_xdims)))
-        Kii[:ni, :ni] = w**2 * exp(-0.5 * ((Rii / ℓ)**2).sum(axis=2))
+        Kii[:ni, :ni] = σ**2 * exp(-0.5 * ((Rii / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kii[lo:hi, :ni] = -Rii[:, :, k] / (s[k] * ℓ[k]**2) * Kii[:ni, :ni]
@@ -1441,31 +1441,31 @@ def consolidated(Xd, Yd, Xi, φ, s, ret_std, trans_type, untrans,
                 Hg[:, i, i + 1] = 1
 
     # Distance & auto-covariance
-    σd, w, ℓ = φ['σd'], φ['w'], φ['ℓ']
+    σd, σ, ℓ = φ['σd'], φ['σ'], φ['ℓ']
     # <the `_id` and `_ii` parts of this next block belong in `kernels`>
     if not ret_grad:
         Rdd = cdist(Xd, Xd, 'seuclidean', V=(s * ℓ)**2)
         Rid = cdist(Xi, Xd, 'seuclidean', V=(s * ℓ)**2)
-        Kdd = w**2 * exp(-0.5 * Rdd**2)
+        Kdd = σ**2 * exp(-0.5 * Rdd**2)
         Kdd[ind_d, ind_d] += σd**2
-        Kid = w**2 * exp(-0.5 * Rid**2)
+        Kid = σ**2 * exp(-0.5 * Rid**2)
         if ret_std:
             Rii = cdist(Xi, Xi, 'seuclidean', V=(s * ℓ)**2)
-            Kii = w**2 * exp(-0.5 * Rii**2)
+            Kii = σ**2 * exp(-0.5 * Rii**2)
     else:
         Rdd = radius(Xd,  Xd, s)
         Rid = radius(Xi, Xd, s)  # will be use repeatedly for Y & each gradient direction
-        Kdd = w**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
+        Kdd = σ**2 * exp(-0.5 * ((Rdd / ℓ)**2).sum(axis=2))
         Kdd[ind_d, ind_d] += σd**2
         Kid = empty((ni * (1 + n_xdims), nd))
-        Kid[:ni] = w**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
+        Kid[:ni] = σ**2 * exp(-0.5 * ((Rid / ℓ)**2).sum(axis=2))
         for k in range(n_xdims):
             lo, hi = ni * (k + 1), ni * (k + 2)
             Kid[lo:hi] = -Rid[:, :, k] / (s[k] * ℓ[k]**2) * Kid[:ni]
         if ret_std:
             Rii = radius(Xi, Xi, s)  # will be use repeatedly for Y & each gradient direction
             Kii = empty((ni * (1 + n_xdims), ni * (1 + n_xdims)))
-            Kii[:ni, :ni] = w**2 * exp(-0.5 * ((Rii / ℓ)**2).sum(axis=2))
+            Kii[:ni, :ni] = σ**2 * exp(-0.5 * ((Rii / ℓ)**2).sum(axis=2))
             for k in range(n_xdims):
                 lo, hi = ni * (k + 1), ni * (k + 2)
                 Kii[lo:hi, :ni] = -Rii[:, :, k] / (s[k] * ℓ[k]**2) * Kii[:ni, :ni]

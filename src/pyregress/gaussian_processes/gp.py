@@ -34,7 +34,7 @@ from scipy.special import erfinv
 from scipy.linalg import cho_factor, cho_solve, eigh, LinAlgError
 from scipy.optimize import minimize
 from .kernels import radius, Kernel
-from .transforms import BaseTransform
+from .transforms import *
 
 HLOG2PI = 0.5 * log(2 * π)
 
@@ -51,7 +51,7 @@ class GPI:
     >>> from pyregress import GPI, Noise, SquareExp
     >>> Xd = array([0.5, 2.7, 3.6, 6.8, 5.7, 3.4])
     >>> Yd = array([0.0, 1.0, 1.2, 0.5, 0.8, 1.16])
-    >>> my_gpi = GPI(Xd, Yd, Noise(w=0.05) + SquareExp(w=2.5, l=2.0))
+    >>> my_gpi = GPI(Xd, Yd, Noise(σ=0.05) + SquareExp(σ=2.5, l=2.0))
     >>> print(my_gpi(1.6))
     [0.50832402]
 
@@ -61,7 +61,7 @@ class GPI:
     >>> Xd = array([[0.00, 0.00], [0.50,-0.10], [1.00, 0.00],
     ...             [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     >>> Yd = array([0.10, 0.30, 0.60, 0.70, 0.90, 0.90])
-    >>> K = RatQuad(w=0.6, l=LogNormal(guess=0.3, σ=0.25), α=1)
+    >>> K = RatQuad(σ=0.6, l=LogNormal(guess=0.3, σ=0.25), α=1)
     >>> my_gpi = GPI(Xd, Yd, K, explicit_basis=[0, 1], transform='Probit', Xscaling='range')
     >>> print(my_gpi( array([[0.10, 0.10], [0.50, 0.42]]) ))
     [0.2361803 0.7968571]
@@ -156,15 +156,13 @@ class GPI:
         if not isinstance(kernel, Kernel):
             raise InputError("GPI argument kernel must be a Kernel object.", kernel)
         self.kernel = kernel
+        self.kernel._finalize(Xd)
         self.fast = fast
 
         # Do as many calculations as possible in preparation for the inference.
         self.Rdd = radius(self.Xd, self.Xd, self.xscale)
         if self.kernel.n_φ > 0 and optimize:
-            if optimize == 'verbose' or optimize == 'v':
-                self.maximize_posterior_φ(optimize, verbose=True)
-            else:
-                self.maximize_posterior_φ(optimize, verbose=False)
+            self.maximize_posterior_φ(verbose=optimize == 'verbose' or optimize == 'v')
         else:
             self._one_time_prep()
 
@@ -206,7 +204,7 @@ class GPI:
             self.KinvZd = self.solve(self.LKdd, self.Zd_prime - self.Hd @ self.μβ)
         return self
 
-    def posterior_φ(self, φ, ret_grad=True, trans=True):  # TODO: After testing remove the `trans` option from all of the method in `GPI` and from `Kernel`.
+    def posterior_φ(self, φ, ret_grad=True):
         """
         Negative log of the hyper-parameter posterior & its gradient.
 
@@ -216,8 +214,6 @@ class GPI:
             hyper parameters in an array for the minimization routine.
         ret_grad:  bool or string (optional),
             when ret_grad is True, also return lnP_grad.
-        trans:  bool (optional),
-            indicate whether the provided φ is in its transformed space.
 
         Returns
         -------
@@ -229,8 +225,8 @@ class GPI:
         if len(φ.shape) > 1:   # Corrects odd behavior of scipy's minimize
             φ = φ[0]           # Corrects odd behavior of scipy's minimize
         n_pts, n_φ = self.n_data, self.kernel.n_φ
-        K = self.kernel.Kφ(φ, self.Rdd, ret_grad=ret_grad, trans=trans)
-        lnprior = self.kernel.ln_priors(φ, ret_grad=ret_grad, trans=trans)
+        K = self.kernel.Kφ(φ, self.Rdd, ret_grad=ret_grad)
+        lnprior = self.kernel.ln_priors(φ, ret_grad=ret_grad)
         if ret_grad:
             K, Kg = K
             lnprior, dlnprior = lnprior
@@ -281,29 +277,28 @@ class GPI:
                 lnP_grad[j] -= 0.5*(sum(βKgβ.T * Σβ) + Δ2 @ Kg[:, :, j] @ KinvHdμβ)
         return lnP_neg, lnP_grad
 
-    def maximize_posterior_φ(self, trans=True, verbose=True):
+    def maximize_posterior_φ(self, verbose=True):
         """
         Find the maximum of the hyper-parameter posterior (minimum of -ln(P)).
 
         Arguments
         ---------
-        trans - specify whether to solve for φ in a transformed space.
         verbose - specify whether to print status of the minimization routine.
         """
         # Warning: running this routine manually requires additional calculations before inference
         #          can be performed properly.
         # Setup hyper-parameters & map values from a single array
-        φ = self.kernel.get_φ(trans=trans)
+        φ = self.kernel.φ
         f = self.posterior_φ
         # Perform minimization
-        out = minimize(f, φ, (False, trans), method='Nelder-Mead',
+        out = minimize(f, φ, (False,), method='Nelder-Mead',
                        options={'maxiter':10000, 'xatol':1e-5, 'fatol':3e-5})
-        # out = minimize(f, φ, (False, trans), method='Powell')
-        # out = minimize(f, φ, (False, trans), method='CG')
-        # out = minimize(f, φ, (True, trans), method='BFGS', jac=True)
+        # out = minimize(f, φ, (False,), method='Powell')
+        # out = minimize(f, φ, (False,), method='CG')
+        # out = minimize(f, φ, (True,), method='BFGS', jac=True)
         # Use the optimized value:
         φ = out.x
-        self.kernel.update_p(φ, trans=trans, set=True)
+        self.kernel.φ = φ
         if verbose:
             print(f'Optimize φ: {out.nfev} post. evals. & {out.nit} iters. gave f={out.fun:5.2g} '
                   f'& p = {self.kernel.p}')
@@ -485,7 +480,8 @@ class GPI:
             elif infer_std == "covar":
                 raise InputError(error_trans_covar)  # raised above, here for logical symmetry
 
-    def sample(self, Xs, n_samples=1, kernel_terms='noisefree', exclude_mean=False, sample_grad=False):
+    def sample(self, Xs, n_samples=1, kernel_terms='noisefree',
+               exclude_mean=False, sample_grad=False):
         """
         Sample the Gaussian process at specified locations.
 
@@ -578,7 +574,7 @@ def cho_solve_gen(C, b, **others):
         return cho_solve(C, b, **others)
 
 
-warn_trans_μ = ("Using `untransform=True`, limits the meaning of the returned `μ` values to the"
+warn_trans_μ = ("Using `untransform=True` limits the meaning of the returned `μ` values to the"
                 " median (& only for monotonic transformations).  ")
 warn_trans_σ = ("`infer_std=True` limits the meaning of the returned `σ` values to the 68.2% inner"
                 " quantile region.  For other quantiles use the sample method.")
@@ -646,7 +642,7 @@ if __name__ == "__main__":
     # (for 1D problems, the shape of the input data is flexible)
     Xd = array([0.5, 2.7, 3.6, 6.8, 5.7, 3.4])  # or w/ `.reshape((-1, 1))`
     Yd = array([0.0, 1.0, 1.2, 0.5, 0.8, 1.16])  # or w/ `.reshape((-1, 1))`
-    my_gpi = GPI(Xd, Yd, Noise(w=0.05) + SquareExp(w=2.5, l=2.0))
+    my_gpi = GPI(Xd, Yd, Noise(σ=0.05) + SquareExp(σ=2.5, l=2.0))
     # Inference at a point...
     # (again, for 1D problems w/ a single point, any of these three forms are accepted)
     xi = 1.6  # `array([1.6])`  or  `array([1.6]).reshape((-1, 1))`
@@ -689,10 +685,10 @@ if __name__ == "__main__":
                 [0.15, 0.50], [0.85, 0.50], [0.50, 0.85]])
     Yd = array([0.10, 0.30, 0.60, 0.70, 0.90, 0.90])
     bases = PolySet(2, 1, x_range=array([[0, -0.5], [1, 1]]))
-    K = RatQuad(w=0.6, l=LogNormal(guess=0.3, σ=0.25), α=1)
+    K = RatQuad(σ=0.6, l=LogNormal(guess=0.3, σ=0.25), α=1)
     my_gpi = GPI(Xd, Yd, K, explicit_basis=bases, transform='Probit', Xscaling='range')
     # Inference at a point...
-    print('Example 2: optimized value of the hyper-parameter:', my_gpi.kernel.get_φ())
+    print(f'Example 2: optimized value of the hyper-parameter: {my_gpi.kernel.φ}')
     xi = array([[0.10, 0.10], [0.50, 0.42]])
     yi_μ = my_gpi(xi)
     # Plotting (w/ inference of the whole function)...
