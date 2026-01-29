@@ -9,9 +9,8 @@
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "justMyCode": true,
-      "envFile": "${workspaceFolder}/.env"
+      "envFile": "${workspaceFolder}/.venv"
     },
-
     {
       "name": "Run module (quick pick)",
       "type": "debugpy",
@@ -20,8 +19,9 @@
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "justMyCode": true,
-      "envFile": "${workspaceFolder}/.env"
-    },
+      "args": ["uv", "run", "--extra", "plot"],
+      "envFile": "${workspaceFolder}/.venv"
+    }
   ],
 
   "inputs": [
